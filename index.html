@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="uz" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NEXUS Transport — Samarqand</title>
+  <meta name="description" content="Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transporti tahlili hamda bashorati: OpenStreetMap, TomTom, “Agar…?” simulyatsiyasi.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M9 23V9l14 14V9' stroke='white' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M9 23V9l14 14V9" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <div class="brand-t"><b>NEXUS Transport</b><small>Samarqand · tarixiy markaz</small></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Boʻlimlar">
+      <button role="tab" data-tab="map" aria-selected="true">Xarita</button>
+      <button role="tab" data-tab="routes" aria-selected="false">Yoʻnalishlar</button>
+      <button role="tab" data-tab="forecast" aria-selected="false">Bashorat</button>
+      <button role="tab" data-tab="report" aria-selected="false">Hisobot</button>
+    </nav>
+    <div class="actions">
+      <span id="dataStatus" class="status busy" aria-live="polite"><i></i><span>Yuklanmoqda…</span></span>
+      <button id="btnRefresh" class="icon-btn" type="button" title="Maʼlumotni yangilash" aria-label="Maʼlumotni yangilash">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="btnTheme" class="icon-btn" type="button" title="Yorugʻ/qorongʻi rejim" aria-label="Yorugʻ yoki qorongʻi rejim">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="btnSettings" class="icon-btn" type="button" title="Sozlamalar" aria-label="Sozlamalar">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="map-wrap" aria-label="Xarita"><div id="map"></div></section>
+    <aside id="panel" class="panel" aria-live="polite"></aside>
+  </main>
+
+  <dialog id="settingsDlg" aria-labelledby="settingsTitle">
+    <form id="settingsForm" method="dialog">
+      <h2 id="settingsTitle">Sozlamalar</h2>
+      <p class="muted small">Kalitlar faqat shu brauzerda (localStorage) saqlanadi va faqat TomTom/OpenAI serverlariga yuboriladi.</p>
+      <label class="field"><span>TomTom API kaliti <a href="https://developer.tomtom.com/" target="_blank" rel="noopener">(bepul olish)</a></span>
+        <span class="pass"><input id="keyTomtom" type="password" autocomplete="off" spellcheck="false" placeholder="Traffic Flow API kaliti"><button type="button" class="btn sm" data-toggle-pass="#keyTomtom">Koʻrsatish</button></span></label>
+      <label class="field"><span>OpenAI API kaliti (ixtiyoriy)</span>
+        <span class="pass"><input id="keyOpenai" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"><button type="button" class="btn sm" data-toggle-pass="#keyOpenai">Koʻrsatish</button></span></label>
+      <div class="row-btns">
+        <button class="btn primary" type="submit">Saqlash</button>
+        <button class="btn" type="button" id="btnCloseSettings">Yopish</button>
+      </div>
+      <hr>
+      <h3>Maʼlumot</h3>
+      <div class="row-btns">
+        <button class="btn" type="button" id="btnClearCache">OSM keshini tozalash</button>
+        <button class="btn" type="button" id="btnClearHistory">TomTom tarixini tozalash</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/analysis/forecast.js"></script>
+  <script src="js/data/osm.js"></script>
+  <script src="js/data/tomtom.js"></script>
+  <script src="js/analysis/model.js"></script>
+  <script src="js/sim/simcore.js"></script>
+  <script src="js/sim/client.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/ui/chart.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/ui/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
