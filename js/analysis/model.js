@@ -1,4 +1,4 @@
-/* NEXUS Transport — OSM maʼlumotidan koʻcha/yoʻnalish modeli, muammolar va koʻrsatkichlar */
+/* City Jam — OSM maʼlumotidan koʻcha/yoʻnalish modeli, muammolar va koʻrsatkichlar */
 (function () {
   'use strict';
   const NX = window.NX;

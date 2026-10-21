@@ -1,4 +1,4 @@
-/* NEXUS Transport — umumiy sozlamalar, geometriya, kesh va yordamchi funksiyalar */
+/* City Jam — umumiy sozlamalar, geometriya, kesh va yordamchi funksiyalar */
 (function () {
   'use strict';
   const NX = (window.NX = window.NX || {});

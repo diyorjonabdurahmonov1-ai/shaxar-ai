@@ -1,4 +1,4 @@
-/* NEXUS Transport — “Agar…?” simulyatsiyasi yadrosi.
+/* City Jam — “Agar…?” simulyatsiyasi yadrosi.
    Bu funksiya toʻliq mustaqil: Web Worker ichida (Blob orqali) yoki zaxira sifatida asosiy oqimda ishlaydi.
    Model: yoʻnaltirilgan graf (OSM), gravitatsion talab matritsasi, MSA foydalanuvchi muvozanati, BPR funksiyasi. */
 function NXSimFactory() {

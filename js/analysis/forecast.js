@@ -1,4 +1,4 @@
-/* NEXUS Transport — soatbay tirbandlik bashorati (TomTom tarixi + tipik shahar profili) */
+/* City Jam — soatbay tirbandlik bashorati (TomTom tarixi + tipik shahar profili) */
 (function () {
   'use strict';
   const NX = window.NX;
@@ -80,7 +80,7 @@
   const forStreet = key => byStreet(key).slice();
 
   function exportJSON() {
-    return { format: 'nexus-tomtom-history', version: 1, exported: new Date().toISOString(), bbox: NX.config.bbox, samples: history };
+    return { format: 'cityjam-tomtom-history', version: 1, exported: new Date().toISOString(), bbox: NX.config.bbox, samples: history };
   }
   // Import: takrorlanuvchi yozuvlar (koʻcha+vaqt) qoʻshilmaydi
   function importJSON(obj) {

@@ -1,4 +1,4 @@
-/* NEXUS Transport — Leaflet xaritasi va qatlamlar */
+/* City Jam — Leaflet xaritasi va qatlamlar */
 (function () {
   'use strict';
   const NX = window.NX;

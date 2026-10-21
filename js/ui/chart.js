@@ -1,4 +1,4 @@
-/* NEXUS Transport — yengil SVG grafik (bashorat chizigʻi + ishonch oraligʻi) */
+/* City Jam — yengil SVG grafik (bashorat chizigʻi + ishonch oraligʻi) */
 (function () {
   'use strict';
   const NX = window.NX;

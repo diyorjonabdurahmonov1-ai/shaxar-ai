@@ -1,4 +1,4 @@
-# NEXUS Transport — Samarqand
+# City Jam — Samarqand
 
 Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transportini **tahlil qiluvchi va bashorat qiluvchi** xaritaga asoslangan veb-ilova. Barcha maʼlumot ochiq manbalardan brauzerning oʻzida yuklanadi. Ilova uchun server yoki pullik xizmat kerak emas.
 

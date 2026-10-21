@@ -1,4 +1,4 @@
-/* NEXUS Transport — OpenStreetMap maʼlumotlarini Overpass API orqali yuklash */
+/* City Jam — OpenStreetMap maʼlumotlarini Overpass API orqali yuklash */
 (function () {
   'use strict';
   const NX = window.NX;

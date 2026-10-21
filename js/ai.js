@@ -1,4 +1,4 @@
-/* NEXUS Transport — AI tahlilchi: savoldan koʻcha va stsenariyni aniqlash, simulyatsiya, OpenAI javobi */
+/* City Jam — AI tahlilchi: savoldan koʻcha va stsenariyni aniqlash, simulyatsiya, OpenAI javobi */
 (function () {
   'use strict';
   const NX = window.NX;

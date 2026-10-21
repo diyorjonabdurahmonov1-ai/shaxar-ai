@@ -1,4 +1,4 @@
-/* NEXUS Transport — panel koʻrinishlari (HTML shablonlar) */
+/* City Jam — panel koʻrinishlari (HTML shablonlar) */
 (function () {
   'use strict';
   const NX = window.NX;

@@ -1,4 +1,4 @@
-/* NEXUS Transport — TomTom Traffic Flow: koʻchadagi joriy tezlik va erkin oqim tezligi */
+/* City Jam — TomTom Traffic Flow: koʻchadagi joriy tezlik va erkin oqim tezligi */
 (function () {
   'use strict';
   const NX = window.NX;

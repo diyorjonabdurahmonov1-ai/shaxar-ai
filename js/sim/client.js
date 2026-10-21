@@ -1,4 +1,4 @@
-/* NEXUS Transport — simulyatsiya mijoz qismi: Web Worker (Blob) va zaxira rejim */
+/* City Jam — simulyatsiya mijoz qismi: Web Worker (Blob) va zaxira rejim */
 (function () {
   'use strict';
   const NX = window.NX;

@@ -1,4 +1,4 @@
-/* NEXUS Transport — ilova boshqaruvchisi: holat, hodisalar, ekranlar */
+/* City Jam — ilova boshqaruvchisi: holat, hodisalar, ekranlar */
 (function () {
   'use strict';
   const NX = window.NX, F = NX.fmt, V = NX.views;
@@ -294,7 +294,7 @@
     const M = S.model;
     const last = S.sim.last;
     return {
-      title: 'NEXUS Transport — Samarqand: hisobot', generated: new Date().toISOString(),
+      title: 'City Jam — Samarqand: hisobot', generated: new Date().toISOString(),
       area: { bbox: NX.config.bbox, center: NX.config.center },
       sources: { openstreetmap: { time: new Date(M.ts).toISOString(), server: M.mirror, licence: 'ODbL © OpenStreetMap hissadorlari' }, tomtom: { measuredStreets: M.kpi.measured } },
       note: 'manba: osm — OpenStreetMap; tomtom — TomTom oʻlchovi; hisob — qoida asosidagi hisob; bashorat — model bashorati (oʻlchov emas).',
@@ -380,8 +380,8 @@
         case 'show-sim': if (S.sim.last) NX.map.showDeltas(S.sim.last.result, S.simInfo.pieces); break;
         case 'ask': askAI(b.dataset.q); break;
         case 'how': setTab('report'); setTimeout(() => { const h = $('#how'); if (h) h.scrollIntoView({ behavior: 'smooth' }); }, 50); break;
-        case 'export': download(`nexus-hisobot-${stamp()}.json`, reportJSON()); toast('Hisobot yuklab olindi.', 'ok'); break;
-        case 'hist-export': download(`nexus-tomtom-tarix-${stamp()}.json`, NX.forecast.exportJSON()); break;
+        case 'export': download(`cityjam-hisobot-${stamp()}.json`, reportJSON()); toast('Hisobot yuklab olindi.', 'ok'); break;
+        case 'hist-export': download(`cityjam-tomtom-tarix-${stamp()}.json`, NX.forecast.exportJSON()); break;
         case 'calibrate': calibrate(); break;
       }
     });
