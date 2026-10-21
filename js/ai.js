@@ -154,7 +154,8 @@ Qoidalar:
   async function ask(q, M, opts) {
     const found = detectStreets(q, M);
     const scen = detectScenario(q);
-    const street = found.length ? found[0].s : null;
+    // Savolda koʻcha nomi boʻlmasa — panelda tanlangan koʻcha olinadi
+    const street = found.length ? found[0].s : opts.defaultStreet || null;
     let sim = null;
     if (street && scen) sim = await opts.simulate(street, scen);
     const ctx = {

@@ -91,16 +91,16 @@ async function clickStreet(page, name) {
   await page.fill('#keyTomtom', 'TESTKEY');
   await page.click('#settingsForm button[type=submit]');
   await page.click('[data-act=measure]');
-  await page.waitForSelector('.meas', { timeout: 10000 });
-  const meas = await page.textContent('.meas');
+  await page.waitForSelector('.status-line b', { timeout: 10000 });
+  await page.waitForFunction(() => /Hozir/.test(document.querySelector('.status-line').textContent), null, { timeout: 10000 });
+  const meas = await page.textContent('.status-line');
   ok('TomTom oʻlchovi koʻrsatiladi', /45%/.test(meas), meas.trim());
   const hist = await page.evaluate(() => NX.forecast.stats().samples);
   ok('Oʻlchov tarixga yoziladi', hist >= 1, 'namunalar: ' + hist);
 
   // What-if: bir tomonlama
-  await page.check('input[name=sc][value="oneway-A"]');
   const t0 = Date.now();
-  await page.click('form[data-form=whatif] button.btn.primary');
+  await page.click('[data-act=sim][data-type="oneway-A"]');
   await page.waitForSelector('.verdict', { timeout: 60000 });
   const verdict = await page.textContent('.verdict b');
   const rows = await page.$$eval('.sim .tbl tbody tr', r => r.length);
@@ -111,8 +111,7 @@ async function clickStreet(page, name) {
   ok('Ogohlantirish matni bor', /soddalashtirilgan model bashorati/.test(disc));
 
   // Yopish stsenariysi: avtobus liniyalari
-  await page.check('input[name=sc][value="close"]');
-  await page.click('form[data-form=whatif] button.btn.primary');
+  await page.click('[data-act=sim][data-type="close"]');
   await page.waitForFunction(() => NX.state.sim.last && NX.state.sim.last.type === 'close' && !NX.state.sim.busy, null, { timeout: 60000 });
   const close = await page.evaluate(() => { const l = NX.state.sim.last; return { v: l.verdict.label, tt: l.result.ttChangePct, target: l.result.target && Math.round(l.result.target.scenVol) }; });
   ok('Yopish stsenariysi: koʻchada hajm 0', close.target === 0, JSON.stringify(close));
@@ -123,8 +122,7 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => /Registon/.test(document.querySelector('#panel h2').textContent));
   const refs = await page.$$eval('.facts .refs .ref', e => e.map(x => x.textContent));
   ok('Registon koʻchasida liniyalar', refs.includes('3') && refs.includes('45'), refs.join(','));
-  await page.check('input[name=sc][value="oneway-A"]');
-  await page.click('form[data-form=whatif] button.btn.primary');
+  await page.click('[data-act=sim][data-type="oneway-A"]');
   await page.waitForFunction(() => NX.state.sim.last && NX.state.sim.last.street !== undefined && !NX.state.sim.busy && /Registon/.test(NX.state.sim.last.label), null, { timeout: 60000 });
   const rl = await page.evaluate(() => NX.state.sim.last.verdict.busLines);
   ok('Bir tomonlamada qaysi liniyalar yoʻnalishini oʻzgartiradi', rl.length === 1 && rl[0] === '3', rl.join(','));
@@ -136,6 +134,7 @@ async function clickStreet(page, name) {
   const low = await page.$('.lowconf');
   ok('Bashorat grafiklari chiziladi', charts === 2, 'grafiklar: ' + charts);
   ok('“maʼlumot kam → ishonch past” yorligʻi', !!low);
+  await page.evaluate(() => document.querySelectorAll('details').forEach(d => (d.open = true)));
   const legend = await page.textContent('.nx-legend');
   ok('Xarita bashorat rejimida', /Bashorat:/.test(legend), legend.slice(0, 40));
   await page.fill('input[data-input=fc-hour]', '8');
@@ -152,6 +151,15 @@ async function clickStreet(page, name) {
   });
   ok('Bashorat: ≥3 namuna → oʻrtacha (50%), ishonch yetarli', Math.abs(fc.v - 50) < 0.01 && !fc.low && fc.n === 3, JSON.stringify(fc));
   ok('Bashorat: tunda namuna yoʻq → profil, ishonch past', fc.nightLow && fc.night < fc.v);
+
+  // AI: koʻcha nomisiz savol — panelda tanlangan koʻcha ishlatiladi (kalitsiz → Hisob javobi)
+  await page.fill('#aiBox textarea[name=q]', 'yopsak nima boʻladi?');
+  await page.click('#aiBox form button');
+  await page.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
+  const ctxAns = await page.evaluate(() => ({ street: NX.state.ai.answer.street && NX.state.ai.answer.street.name, type: NX.state.sim.last.type }));
+  ok('Bashorat boʻlimida koʻcha nomisiz savol', !!ctxAns.street && ctxAns.type === 'close', JSON.stringify(ctxAns));
+  ok('Bashorat boʻlimida “nima qilmoqchisiz” tugmalari', (await page.$$('#whatif [data-act=sim]')).length === 6);
+  await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; document.querySelectorAll('details').forEach(d => (d.open = true)); });
 
   // Kalibrlash
   await page.click('[data-act=calibrate]');
@@ -242,6 +250,13 @@ async function clickStreet(page, name) {
   const w2 = await p4.evaluate(() => document.documentElement.scrollWidth);
   ok('Telefon: koʻcha paneli kengligi ≤ 390', w2 <= 390, String(w2));
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-street.png', fullPage: true });
+  await p4.click('[data-act=sim][data-type="oneway-A"]');
+  await p4.waitForSelector('.verdict', { timeout: 60000 });
+  await p4.waitForTimeout(600);
+  await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-sim.png', fullPage: true });
+  await p4.click('.tabs [data-tab=forecast]');
+  await p4.waitForTimeout(300);
+  await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-forecast.png', fullPage: true });
   ok('Konsolda xato yoʻq (telefon)', e4.length === 0, e4.join(' || '));
 
   await browser.close();

@@ -70,8 +70,6 @@
   function render() {
     document.querySelectorAll('.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
     if (!S.model) return;
-    // Bashorat rejimida xarita bashorat boʻyicha boʻyaladi — simulyatsiya qatlami yashiriladi
-    if (S.tab === 'forecast' && NX.map.hasDeltas()) NX.map.clearDeltas(false);
     NX.map.setColorMode(S.tab === 'forecast' ? { mode: 'forecast', d: S.fc.d, h: S.fc.h } : { mode: 'now' });
     const M = S.model;
     let html;
@@ -79,23 +77,35 @@
     else if (S.tab === 'routes') html = V.routes(S);
     else if (S.tab === 'forecast') html = V.forecast(S);
     else html = V.report(S);
+    // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
+    const open = new Set([...panel.querySelectorAll('details[open] > summary')].map(x => x.textContent));
     panel.innerHTML = html;
+    if (open.size) panel.querySelectorAll('details > summary').forEach(x => { if (open.has(x.textContent)) x.parentElement.open = true; });
   }
 
-  const renderSimOut = () => {
-    const el = $('#simOut');
-    if (!el) return;
-    el.innerHTML = S.sim.busy ? V.progress(S.sim.progress) : S.sim.last && S.sim.last.street === S.street ? V.simResult(S, S.sim.last) : '';
+  // Panelda hozir koʻrsatilayotgan koʻcha (Xarita yoki Bashorat boʻlimida)
+  const ctxStreet = () => {
+    if (!S.model) return null;
+    const id = S.tab === 'forecast' ? S.fc.street : S.tab === 'map' ? S.street : null;
+    return id == null ? null : S.model.streets[id];
   };
-  const renderAI = () => {
-    const el = $('#aiBox');
+  const swap = (sel, html) => {
+    const el = $(sel);
     if (!el) return;
     const tmp = document.createElement('div');
-    tmp.innerHTML = V.home(S);
-    el.replaceWith(tmp.querySelector('#aiBox'));
+    tmp.innerHTML = html;
+    el.replaceWith(tmp.firstElementChild);
   };
+  const renderSimOut = () => {
+    const el = $('#simOut');
+    if (el) el.innerHTML = S.sim.busy ? V.progress(S.sim.progress) : '';
+  };
+  const renderActions = () => { const s = ctxStreet(); if (s) swap('#whatif', V.actions(S, s)); };
+  const renderAI = () => swap('#aiBox', V.aiBox(S, ctxStreet()));
 
   function setTab(t) {
+    // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
+    if (t === 'forecast' && S.tab !== 'forecast') NX.map.clearDeltas(false);
     S.tab = t;
     if (t !== 'routes') { if (S.route != null) NX.map.highlightRoute(null); S.route = null; }
     render();
@@ -173,7 +183,7 @@
     const { sc, label, dirSign } = scenarioFor(s, type);
     S.whatif = { street: streetId, type };
     S.sim.busy = true; S.sim.progress = { p: 0, label: 'Tarmoq tayyorlanmoqda' };
-    renderSimOut();
+    renderActions();
     try {
       await NX.sim.whenReady();
       S.simInfo = NX.sim.info();
@@ -188,7 +198,9 @@
     } finally {
       S.sim.busy = false;
     }
-    renderSimOut();
+    renderActions();
+    const w = $('#whatif');
+    if (w && window.matchMedia('(max-width: 820px)').matches) w.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return S.sim.last;
   }
 
@@ -252,6 +264,7 @@
     const TYPE = { oneway: d => 'oneway-' + (d || 'A'), close: () => 'close', buslane: () => 'buslane', signal: () => 'signal', demand: () => 'demand' };
     try {
       const res = await NX.ai.ask(q, S.model, {
+        defaultStreet: ctxStreet(),
         simulate: async (street, scen) => {
           S.ai.busy = `“${street.name}” uchun simulyatsiya hisoblanmoqda…`; renderAI();
           NX.map.selectStreet(street.id);
@@ -360,6 +373,7 @@
           S.tab = 'routes'; S.route = S.route === id ? null : id;
           NX.map.highlightRoute(S.route); render();
           break;
+        case 'sim': if (id != null && !S.sim.busy) runWhatIf(id, b.dataset.type); break;
         case 'measure': measure(id); break;
         case 'measure-main': measureMain(); break;
         case 'clear-sim': NX.map.clearDeltas(); break;
@@ -375,10 +389,7 @@
     panel.addEventListener('submit', e => {
       const f = e.target;
       e.preventDefault();
-      if (f.dataset.form === 'whatif') {
-        const type = (f.querySelector('input[name=sc]:checked') || {}).value || 'oneway-A';
-        runWhatIf(+f.dataset.id, type);
-      } else if (f.dataset.form === 'ai') askAI(f.q.value);
+      if (f.dataset.form === 'ai') askAI(f.q.value);
     });
     panel.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q') { e.preventDefault(); askAI(e.target.value); }
@@ -394,6 +405,7 @@
       } else if (t.dataset.input === 'fc-hour') {
         S.fc.h = +t.value;
         panel.querySelector('[data-out=fc-hour]').textContent = F.hour(S.fc.h);
+        NX.map.clearDeltas(false);
         NX.map.setColorMode({ mode: 'forecast', d: S.fc.d, h: S.fc.h });
       }
     });
