@@ -12,13 +12,38 @@
   };
   NX.RULES = R;
 
+  // Har bir muammo turi: oddiy tilda tushuntirish (what), yechim (fix) va birlik narxi (cost, soʻm, taxminiy)
   NX.PROBLEM = {
-    school: { uz: 'Maktab/bogʻcha yonida xavfsiz oʻtish yoʻq', short: 'Maktab xavfsizligi', color: '#7c3aed', weight: 100 },
-    junction: { uz: 'Svetoforsiz yirik chorraha', short: 'Svetoforsiz chorraha', color: '#dc2626', weight: 80 },
-    congestion: { uz: 'Tirbandlik 30% va undan yuqori', short: 'Tirbandlik', color: '#b91c1c', weight: 75 },
-    coverage: { uz: '400 m radiusda bekat yoʻq', short: 'Bekatsiz hudud', color: '#e11d48', weight: 50 },
-    spacing: { uz: 'Bekatlar oraligʻi 900 m dan katta', short: 'Bekatlar oraligʻi katta', color: '#d97706', weight: 40 },
-    crossings: { uz: 'Piyoda oʻtish joylari kam (< 2 ta/km)', short: 'Oʻtish joylari kam', color: '#0284c7', weight: 30 },
+    school: {
+      uz: 'Maktab/bogʻcha yonida xavfsiz oʻtish yoʻq', short: 'Maktab oldida xavf', icon: '🏫', color: '#7c3aed', weight: 100, cost: 80e6, unit: 'joy',
+      what: 'Maktab yoki bogʻchaning 150 m atrofida belgilangan piyoda oʻtish joyi ham, svetofor ham yoʻq. Bolalar yoʻlni xavfli joydan kesib oʻtadi.',
+      fix: 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan), “Bolalar” belgisi va 30 km/soat tezlik cheklovi qoʻyish.',
+    },
+    junction: {
+      uz: 'Svetoforsiz yirik chorraha', short: 'Svetoforsiz chorraha', icon: '🚦', color: '#dc2626', weight: 80, cost: 600e6, unit: 'chorraha',
+      what: 'Ikki katta koʻcha kesishadi, lekin svetofor yoʻq. Tigʻiz soatlarda tiqilinch va avariya xavfi yuqori.',
+      fix: 'Avval chorrahada mashinalar sonini sanash. Oqim katta boʻlsa — svetofor yoki aylanma harakat (halqa) qurish.',
+    },
+    congestion: {
+      uz: 'Hozir tirbandlik (TomTom)', short: 'Hozirgi tirbandlik', icon: '🚗', color: '#b91c1c', weight: 75, cost: 30e6, unit: 'koʻcha',
+      what: 'TomTom oʻlchoviga koʻra mashinalar odatdagidan kamida 30% sekin yurmoqda.',
+      fix: 'Svetofor vaqtlarini sozlash, koʻcha chetida toʻxtashni taqiqlash, avtobusga alohida yoʻlak ajratish.',
+    },
+    coverage: {
+      uz: '400 m ichida bekat yoʻq hudud', short: 'Bekat uzoq', icon: '🚏', color: '#e11d48', weight: 50, cost: 35e6, unit: 'bekat',
+      what: 'Bu hududdan eng yaqin avtobus bekatigacha 400 m dan koʻp. Odamlar, ayniqsa keksalar, uzoq piyoda yurishga majbur.',
+      fix: 'Hududga yangi bekat qoʻyish yoki yaqin avtobus yoʻnalishini shu yerdan oʻtkazish.',
+    },
+    spacing: {
+      uz: 'Bekatlar oraligʻi 900 m dan katta', short: 'Bekatlar orasi uzoq', icon: '↔', color: '#d97706', weight: 40, cost: 35e6, unit: 'bekat',
+      what: 'Bitta avtobus yoʻnalishidagi ikki qoʻshni bekat orasi 900 m dan uzun.',
+      fix: 'Ikki bekat oraligʻiga yangi bekat qoʻshish.',
+    },
+    crossings: {
+      uz: 'Piyoda oʻtish joylari kam (< 2 ta/km)', short: 'Oʻtish joyi kam', icon: '🚶', color: '#0284c7', weight: 30, cost: 20e6, unit: 'oʻtish joyi',
+      what: 'Katta koʻchada piyoda oʻtish joylari juda kam. Odamlar yoʻlni xohlagan joydan kesib oʻtadi.',
+      fix: 'Har 300–500 m da “zebra”, belgi va yoritish qoʻyish.',
+    },
   };
 
   const ROUTE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#65a30d', '#c026d3', '#ea580c', '#0d9488', '#4f46e5'];
@@ -322,9 +347,13 @@
     M.streets.forEach(s => {
       if (s.tomtom && s.tomtom.congestion >= R.congestion) add('congestion', { lat: s.center[0], lon: s.center[1], sev: s.tomtom.congestion >= 50 ? 3 : 2, title: nameOf(s), detail: `TomTom: tirbandlik ${NX.fmt.pct(s.tomtom.congestion)} (${NX.fmt.time(s.tomtom.ts)}).`, street: s.id });
     });
-    M.gapCells.forEach(c => {
-      const [lat, lon] = G.ll(c.cx, c.cy);
-      add('coverage', { lat, lon, sev: 1, title: '250×250 m katak', detail: `Katak markazidan ${R.coverage} m ichida bekat yoʻq.`, cell: c });
+    // Bekatsiz kataklar qoʻshni kataklar bilan bitta hududga birlashtiriladi
+    M.gapClusters.forEach(c => {
+      const near = M.streetsNear(c.cx, c.cy, 200);
+      let best = null, bd = Infinity;
+      near.forEach((d, sid) => { if (M.streets[sid].name && d < bd) { bd = d; best = M.streets[sid]; } });
+      const km2 = (c.cells.length * R.cell * R.cell) / 1e6;
+      add('coverage', { lat: c.ll[0], lon: c.ll[1], sev: c.cells.length >= 6 ? 2 : 1, title: (best ? best.name + ' atrofi' : 'Hudud') + ` (~${NX.fmt.num(km2, 2)} km²)`, detail: `${c.cells.length} ta 250×250 m katakda ${R.coverage} m ichida bekat yoʻq.`, cluster: c, qty: Math.ceil(c.cells.length / 6) });
     });
     M.routes.forEach(r => r.gaps.forEach(g => {
       if (g.d <= R.spacingMax) return;

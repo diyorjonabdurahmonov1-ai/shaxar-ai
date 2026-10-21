@@ -176,6 +176,27 @@ async function clickStreet(page, name) {
   const rb = await page.textContent('.rbody');
   ok('Yoʻnalish tafsilotlari (oraliq, koʻchalar)', /oʻrtacha oraligʻi/.test(rb) && /Toshkent/.test(rb));
 
+  // Muammolar boʻlimi
+  await page.click('.tabs [data-tab=problems]');
+  await page.waitForSelector('.prob', { timeout: 5000 });
+  const probCards = await page.$$eval('.prob', e => e.map(x => x.querySelector('.prob-h b').textContent));
+  const fixTxt = await page.textContent('.prob .fix');
+  ok('Muammolar: turlar boʻyicha oddiy tushuntirish va yechim', probCards.length >= 3 && /Nima qilish kerak/.test(fixTxt), probCards.join(', '));
+  const live = await page.textContent('.live');
+  ok('Jonli kuzatuv kartasi', /Jonli kuzatuv/.test(live) && /Oxirgi tahlil/.test(live), live.replace(/\s+/g, ' ').slice(0, 90));
+  const mk = await page.$$eval('.pmk', e => e.length);
+  ok('Muammo belgilari xaritada (faqat shu boʻlimda)', mk > 0, 'belgilar: ' + mk);
+  await page.click('.loc');
+  await page.waitForSelector('.leaflet-popup-content .ppop', { timeout: 5000 });
+  ok('Joyni bosganda xaritada popup ochiladi', /Yechim/.test(await page.textContent('.leaflet-popup-content')));
+  await page.click('.tabs [data-tab=routes]');
+  ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk')).length === 0);
+  // Xarita ustidagi qidiruv
+  await page.fill('.nx-search input', 'regist');
+  await page.click('.nx-search li button');
+  await page.waitForFunction(() => /Registon/.test((document.querySelector('#panel h2') || {}).textContent || ''));
+  ok('Xaritadagi qidiruv orqali koʻcha ochiladi', true);
+
   // Hisobot va JSON eksport
   await page.click('.tabs [data-tab=report]');
   await page.waitForSelector('.recs', { timeout: 5000 });
@@ -257,6 +278,12 @@ async function clickStreet(page, name) {
   await p4.click('.tabs [data-tab=forecast]');
   await p4.waitForTimeout(300);
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-forecast.png', fullPage: true });
+  await p4.click('.tabs [data-tab=problems]');
+  await p4.waitForTimeout(400);
+  await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-problems.png', fullPage: true });
+  await p4.click('.loc');
+  await p4.waitForTimeout(1500);
+  await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-problem-map.png' });
   ok('Konsolda xato yoʻq (telefon)', e4.length === 0, e4.join(' || '));
 
   await browser.close();

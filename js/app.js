@@ -14,7 +14,9 @@
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
     calib: null, calibBusy: null, load: null,
+    live: { last: null, next: null, busy: null, cursor: 0, err: null },
   };
+  const LIVE_EVERY = 10 * 60 * 1000, LIVE_BATCH = 4;
   NX.state = S;
 
   function clampDemand(v) { const c = NX.config.demand; v = +v; return isFinite(v) ? Math.max(c.min, Math.min(40000, Math.round(v / c.step) * c.step)) : c.def; }
@@ -48,6 +50,7 @@
       if (res.warning) toast(res.warning, 'warn');
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
+      startLive();
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -73,7 +76,9 @@
     NX.map.setColorMode(S.tab === 'forecast' ? { mode: 'forecast', d: S.fc.d, h: S.fc.h } : { mode: 'now' });
     const M = S.model;
     let html;
+    NX.map.showProblems(S.tab === 'problems');
     if (S.tab === 'map') html = S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
+    else if (S.tab === 'problems') html = V.problems(S);
     else if (S.tab === 'routes') html = V.routes(S);
     else if (S.tab === 'forecast') html = V.forecast(S);
     else html = V.report(S);
@@ -255,6 +260,43 @@
     render();
   }
 
+  // ---------- Jonli kuzatuv: har 10 daqiqada qayta tahlil ----------
+  let liveTimer = null, lastHour = new Date().getHours();
+  function startLive() {
+    S.live.next = Date.now();
+    if (!liveTimer) liveTimer = setInterval(liveTick, 30000);
+    liveTick();
+  }
+  function liveTick() {
+    if (!S.model || document.hidden) return;
+    const h = new Date().getHours();
+    if (h !== lastHour) { lastHour = h; NX.map.restyle(); NX.map.updateLegend(); }
+    if (Date.now() >= S.live.next && !S.live.busy) liveCycle();
+    else renderLive();
+  }
+  const renderLive = () => { if (S.tab === 'problems') swap('.live', V.problems(S)); };
+  async function liveCycle() {
+    const M = S.model;
+    S.live.err = null;
+    if (NX.tomtom.key()) {
+      const list = V.mainStreets(M);
+      for (let k = 0; k < Math.min(LIVE_BATCH, list.length); k++) {
+        const s = list[(S.live.cursor + k) % list.length];
+        S.live.busy = `TomTom oʻlchamoqda: ${s.name} (${k + 1}/${Math.min(LIVE_BATCH, list.length)})`;
+        renderLive();
+        try { s.tomtom = await NX.tomtom.measureStreet(s, M); } catch (e) {
+          S.live.err = e.message;
+          if (e.status === 401 || e.status === 403 || e.status === 429 || e.noKey) break;
+        }
+        if (S.model !== M) return;
+      }
+      S.live.cursor = (S.live.cursor + LIVE_BATCH) % Math.max(1, list.length);
+    }
+    NX.analysis.refresh(M); NX.map.restyle(); NX.map.drawProblems(); NX.map.updateLegend();
+    S.live.busy = null; S.live.last = Date.now(); S.live.next = Date.now() + LIVE_EVERY;
+    if (S.tab === 'problems') render(); else renderLive();
+  }
+
   // ---------- AI ----------
   async function askAI(q) {
     q = (q || '').trim();
@@ -365,9 +407,12 @@
         case 'problem': {
           const p = M.problems.find(x => x.id === b.dataset.id);
           if (!p) break;
-          if (p.street != null) openStreet(p.street); else NX.map.flyTo(p.lat, p.lon, 17);
+          NX.map.focusProblem(p);
+          if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
           break;
         }
+        case 'tab': setTab(b.dataset.tab); break;
+        case 'settings': openSettings('tomtom'); break;
         case 'route':
           if (id == null) break;
           S.tab = 'routes'; S.route = S.route === id ? null : id;

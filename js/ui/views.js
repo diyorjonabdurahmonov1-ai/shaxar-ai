@@ -56,14 +56,10 @@
       ${kpi('Svetoforsiz chorrahalar', F.int(k.unsignalised), `${k.majorJunctions} tadan`, 'hisob')}
       ${kpi('Bekatlar orasi', F.km(k.avgSpacing), 'oʻrtacha', 'hisob')}
     </section>
-    <section class="card">
-      <h3>Topilgan muammolar ${B('hisob')}</h3>
-      ${groups.length ? groups.map(g => `<details class="pgroup">
-        <summary class="pgroup-h"><i style="background:${NX.PROBLEM[g.t].color}"></i><span>${E(NX.PROBLEM[g.t].short)}</span><span class="pill">${g.items.length}</span></summary>
-        <p class="muted small">${E(NX.PROBLEM[g.t].uz)}</p>
-        <ul class="plist">${g.items.slice(0, 5).map(p => `<li><button class="link" data-act="problem" data-id="${p.id}">${E(p.title)}</button></li>`).join('')}</ul>
-        ${g.items.length > 5 ? `<p class="muted small">yana ${g.items.length - 5} ta — xaritada</p>` : ''}</details>`).join('') : '<p class="muted">Muammo topilmadi.</p>'}
-      <p class="muted small">Har birini bosib, xaritada koʻring.</p>
+    <section class="card prob-link">
+      <div><b>${M.problems.length ? `${groups.length} xil muammo topildi` : 'Muammo topilmadi'}</b>
+      <p class="small muted">${groups.slice(0, 3).map(g => NX.PROBLEM[g.t].icon + ' ' + E(NX.PROBLEM[g.t].short)).join(' · ')}</p></div>
+      <button class="btn primary" data-act="tab" data-tab="problems">Koʻrish va yechimlar</button>
     </section>
     ${aiBox(S, null)}
     <p class="center"><button class="btn" data-act="how">Qanday ishlaydi?</button></p>`;
@@ -232,6 +228,53 @@
       <p class="disclaimer">${E(DISCLAIMER)}</p>
       <div class="row-btns"><button class="btn sm" data-act="show-sim">Xaritada koʻrsatish</button><button class="btn sm" data-act="clear-sim">Xaritadan olib tashlash</button></div>
     </div>`;
+  }
+
+  // ---------- Muammolar (jonli kuzatuv + oddiy tilda yechimlar) ----------
+  function liveCard(S) {
+    const M = S.model, L = S.live, now = new Date();
+    const hasKey = !!NX.tomtom.key();
+    const freshMs = 45 * 60 * 1000;
+    const measured = M.streets.filter(s => s.tomtom && Date.now() - s.tomtom.ts < freshMs).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion);
+    const expected = M.namedStreets.filter(s => s.rank >= 4).map(s => ({ s, p: NX.forecast.predict(s, now.getDay(), now.getHours()) }))
+      .sort((a, b) => b.p.value - a.p.value).slice(0, 4);
+    const nextMin = L.next ? Math.max(0, Math.round((L.next - Date.now()) / 60000)) : null;
+    const line = (s, v, src) => `<li><button class="link" data-act="street" data-id="${s.id}">${E(s.name || 'Nomsiz yoʻl')}</button><span class="tag ${congCls(v)}">${trafficWord(v)} · ${F.pct(v)}</span>${B(src)}</li>`;
+    return `<section class="card live">
+      <div class="live-h"><span class="live-dot ${L.busy ? 'busy' : ''}" aria-hidden="true"></span><b>Jonli kuzatuv</b>
+        <small>${L.busy ? E(L.busy) : `Oxirgi tahlil: ${L.last ? F.time(L.last).slice(-5) : '—'}${nextMin != null ? ` · keyingisi ${nextMin} daqiqadan keyin` : ''}`}</small></div>
+      ${measured.length ? `<h4>Hozir eng tirband koʻchalar</h4><ul class="live-list">${measured.slice(0, 5).map(s => line(s, s.tomtom.congestion, 'tomtom')).join('')}</ul>` : ''}
+      ${!measured.length ? `<h4>Shu soatda (${F.hour(now.getHours())}) tirband boʻlishi kutilayotgan koʻchalar</h4><ul class="live-list">${expected.map(x => line(x.s, x.p.value, 'bashorat')).join('')}</ul>` : ''}
+      ${hasKey ? `<p class="muted small">Har 10 daqiqada ${LIVE_BATCH} ta asosiy koʻcha navbatma-navbat TomTom bilan oʻlchanadi va muammolar qayta hisoblanadi.</p>`
+        : `<p class="small">Hozircha bu <b>bashorat</b>. Real vaqtdagi tirbandlikni koʻrish uchun bepul TomTom kalitini kiriting — sayt koʻchalarni oʻzi oʻlchab turadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`}
+    </section>`;
+  }
+  const LIVE_BATCH = 4;
+
+  function problems(S) {
+    const M = S.model;
+    const groups = Object.keys(NX.PROBLEM).map(t => ({ t, meta: NX.PROBLEM[t], items: M.problems.filter(p => p.type === t) })).filter(g => g.items.length)
+      .sort((a, b) => b.meta.weight - a.meta.weight);
+    const total = groups.reduce((t, g) => t + g.items.length, 0);
+    return `
+    ${liveCard(S)}
+    <section class="card">
+      <h2>Shaharda nima muammo bor?</h2>
+      <p class="small">${total ? `Tahlil <b>${groups.length} xil</b> muammoni topdi (${total} joyda). Eng muhimlari tepada. Joy nomini bossangiz, xaritada koʻrsatiladi.` : 'Qoidalar boʻyicha muammo topilmadi.'}</p>
+    </section>
+    ${groups.map(g => {
+      const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
+      const list = g.items.map(p => `<li><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button></li>`);
+      return `<section class="card prob" style="--c:${g.meta.color}">
+        <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy</small></div></div>
+        <p><b>Muammo:</b> ${E(g.meta.what)}</p>
+        <p class="fix"><b>Nima qilish kerak:</b> ${E(g.meta.fix)}</p>
+        <p class="muted small">Taxminiy narx: ${F.uzs(qty * g.meta.cost)} (${F.int(qty)} ${E(g.meta.unit)}) <span class="tag">taxminiy</span> ${B('hisob')}</p>
+        <ul class="locs">${list.slice(0, 4).join('')}</ul>
+        ${list.length > 4 ? `<details class="more"><summary>Yana ${list.length - 4} ta joy</summary><ul class="locs">${list.slice(4, 60).join('')}</ul></details>` : ''}
+      </section>`;
+    }).join('')}
+    <p class="muted small center">Manba: ${B('osm')} ${B('hisob')} — narxlar umumiy baholar, aniq qiymat smeta bilan belgilanadi.</p>`;
   }
 
   // ---------- Yoʻnalishlar ----------
@@ -422,5 +465,5 @@
       </div></section>`;
   }
 
-  NX.views = { loading, error, home, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

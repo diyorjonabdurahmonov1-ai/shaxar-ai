@@ -10,20 +10,28 @@
   let wayLines = [];         // har bir yoʻl uchun polyline
   let selected = null, selLayer = null, routeHi = null, deltaLayer = null;
   let colorMode = { mode: 'now' };
-  const vis = NX.store.get('layers', { traffic: true, routes: true, stops: true, problems: true, schools: false });
+  let forcedProblems = false, hoverId = null;
+  const probMarkers = new Map();
+  // Odatiy holatda xarita toza: faqat koʻchalar (tirbandlik rangida)
+  const vis = NX.store.get('layers2', { traffic: true, routes: false, stops: false, problems: false, schools: false });
+  const FRESH_MS = 45 * 60 * 1000; // TomTom oʻlchovi shu muddat “hozirgi” hisoblanadi
 
   function init(el, handlers) {
     h = handlers || {};
     const c = NX.config;
-    map = L.map(el, { zoomControl: true, preferCanvas: true, minZoom: 13, maxZoom: 19 })
+    map = L.map(el, { zoomControl: false, preferCanvas: true, minZoom: 13, maxZoom: 19 })
       .setView(c.center, 15);
-    renderer = L.canvas({ tolerance: 7, padding: 0.3 });
+    L.control.zoom({ position: 'bottomright', zoomInTitle: 'Yaqinlashtirish', zoomOutTitle: 'Uzoqlashtirish' }).addTo(map);
+    // Katta “tolerance” — koʻchani barmoq bilan bosish oson boʻlishi uchun
+    renderer = L.canvas({ tolerance: 12, padding: 0.3 });
     map.setMaxBounds([[c.bbox.s - 0.03, c.bbox.w - 0.05], [c.bbox.n + 0.03, c.bbox.e + 0.05]]);
     addBasemap();
     L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
     map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
     ['traffic', 'routes', 'stops', 'problems', 'schools'].forEach(k => (L_[k] = L.layerGroup()));
+    L_.hover = L.layerGroup().addTo(map);
     L_.hl = L.layerGroup().addTo(map);
+    addSearch();
     addLayerControl();
     addLegend();
     // Hudud chegarasi
@@ -53,13 +61,36 @@
       options: { position: 'topright' },
       onAdd() {
         const d = L.DomUtil.create('div', 'nx-layers leaflet-bar');
-        const items = [['traffic', 'Tirbandlik'], ['routes', 'Avtobus yoʻnalishlari'], ['stops', 'Bekatlar'], ['problems', 'Muammolar'], ['schools', 'Maktab va bogʻchalar']];
+        const items = [['traffic', 'Tirbandlik ranglari'], ['routes', 'Avtobus yoʻnalishlari'], ['stops', 'Bekatlar'], ['problems', 'Muammolar'], ['schools', 'Maktab va bogʻchalar']];
         d.innerHTML = `<button type="button" class="nx-layers-btn" aria-expanded="false" aria-label="Qatlamlar"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5Zm-10 9 10 5 10-5M2 16l10 5 10-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Qatlamlar</span></button>
           <div class="nx-layers-list">${items.map(([k, t]) => `<label><input type="checkbox" data-layer="${k}" ${vis[k] ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
         L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
         const btn = d.querySelector('button');
         btn.addEventListener('click', () => { const o = d.classList.toggle('open'); btn.setAttribute('aria-expanded', o); });
         d.addEventListener('change', e => { const k = e.target.dataset.layer; if (k) setVisible(k, e.target.checked); });
+        return d;
+      },
+    });
+    new Ctl().addTo(map);
+  }
+
+  // Koʻcha nomi boʻyicha qidiruv (xarita ustida)
+  function addSearch() {
+    const Ctl = L.Control.extend({
+      options: { position: 'topleft' },
+      onAdd() {
+        const d = L.DomUtil.create('div', 'nx-search');
+        d.innerHTML = `<input type="search" placeholder="Koʻcha qidirish…" aria-label="Koʻcha qidirish" autocomplete="off"><ul role="listbox"></ul>`;
+        L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+        const inp = d.querySelector('input'), ul = d.querySelector('ul');
+        const pick = id => { inp.value = ''; ul.innerHTML = ''; inp.blur(); h.onStreet && h.onStreet(+id); };
+        inp.addEventListener('input', () => {
+          if (!M || !inp.value.trim()) { ul.innerHTML = ''; return; }
+          const res = NX.analysis.searchStreets(M, inp.value).slice(0, 8);
+          ul.innerHTML = res.length ? res.map(s => `<li><button type="button" data-id="${s.id}">${NX.esc(s.name)}<small>${NX.esc(NX.HW[s.hw].uz)}</small></button></li>`).join('') : '<li class="empty">Topilmadi</li>';
+        });
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = ul.querySelector('button'); if (b) pick(b.dataset.id); } if (e.key === 'Escape') { inp.value = ''; ul.innerHTML = ''; } });
+        ul.addEventListener('click', e => { const b = e.target.closest('button'); if (b) pick(b.dataset.id); });
         return d;
       },
     });
@@ -84,19 +115,25 @@
     } else if (!vis.traffic) {
       legendEl.innerHTML = '';
     } else if (colorMode.mode === 'forecast') {
-      legendEl.innerHTML = `<b>Bashorat: ${NX.days[colorMode.d]}, ${NX.fmt.hour(colorMode.h)} ${NX.badge('bashorat')}</b>${sw(COL.green, '< 15%')}${sw(COL.amber, '15–30%')}${sw(COL.red, '≥ 30%')}`;
+      legendEl.innerHTML = `<b>Bashorat: ${NX.days[colorMode.d]}, ${NX.fmt.hour(colorMode.h)} ${NX.badge('bashorat')}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Oʻrtacha')}${sw(COL.red, 'Tirband')}`;
     } else {
-      legendEl.innerHTML = `<b>Tirbandlik</b>${sw(COL.green, 'Erkin / past xavf')}${sw(COL.amber, 'Oʻrtacha')}${sw(COL.red, 'Tirband / yuqori xavf')}<small>Qalin chiziq — TomTom oʻlchovi; xira — xavf taxmini (Hisob)</small>`;
+      const measured = M && M.streets.some(s => fresh(s));
+      legendEl.innerHTML = `<b>Hozir, ${NX.fmt.hour(new Date().getHours())}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Oʻrtacha')}${sw(COL.red, 'Tirband')}<small>${measured ? 'Qalin — TomTom oʻlchovi, xira — bashorat' : 'Soatbay bashorat (TomTom kaliti bilan — real oʻlchov)'}</small>`;
     }
     legendEl.style.display = legendEl.innerHTML ? '' : 'none';
   }
 
   function setVisible(k, on) {
     vis[k] = on;
-    NX.store.set('layers', vis);
+    NX.store.set('layers2', vis);
     if (k === 'traffic') { restyle(); updateLegend(); return; }
+    applyVis(k);
+  }
+  function applyVis(k) {
+    const on = vis[k] || (k === 'problems' && forcedProblems);
     if (on) L_[k].addTo(map); else map.removeLayer(L_[k]);
   }
+  const fresh = s => s.tomtom && Date.now() - s.tomtom.ts < FRESH_MS;
 
   function styleFor(w) {
     const s = M.streets[w.street], H = NX.HW[w.hw];
@@ -106,8 +143,9 @@
       const p = NX.forecast.predict(s, colorMode.d, colorMode.h);
       return { color: col(p.value, 15, 30), weight: H.w, opacity: p.low ? 0.65 : 0.95 };
     }
-    if (s.tomtom) return { color: col(s.tomtom.congestion, 15, 30), weight: H.w + 2, opacity: 1 };
-    return { color: col(s.risk.value, 35, 60), weight: H.w, opacity: 0.5 };
+    if (fresh(s)) return { color: col(s.tomtom.congestion, 15, 30), weight: H.w + 2, opacity: 1 };
+    const now = new Date(), p = NX.forecast.predict(s, now.getDay(), now.getHours());
+    return { color: col(p.value, 15, 30), weight: H.w, opacity: 0.6 };
   }
 
   function setModel(model) {
@@ -116,7 +154,9 @@
     wayLines = M.ways.map(w => {
       const pl = L.polyline(w.ll, Object.assign({ renderer, bubblingMouseEvents: false }, styleFor(w)));
       pl.on('click', () => h.onStreet && h.onStreet(w.street));
-      pl.bindTooltip(() => M.streets[w.street].name || 'Nomsiz yoʻl', { sticky: true, direction: 'top', opacity: 0.9 });
+      pl.on('mouseover', () => hover(w.street));
+      pl.on('mouseout', () => hover(null));
+      pl.bindTooltip(() => (M.streets[w.street].name || 'Nomsiz yoʻl') + ' — bosing', { sticky: true, direction: 'top', opacity: 0.9 });
       L_.traffic.addLayer(pl);
       return pl;
     });
@@ -144,23 +184,48 @@
         .addTo(L_.schools);
     });
     drawProblems();
-    Object.keys(vis).forEach(k => { if (k !== 'traffic') { if (vis[k]) L_[k].addTo(map); else map.removeLayer(L_[k]); } });
+    Object.keys(vis).forEach(k => { if (k !== 'traffic') applyVis(k); });
     L_.traffic.addTo(map);
+    updateLegend();
+  }
+
+  // Sichqoncha ustiga kelgan koʻcha butunligicha ajratiladi
+  function hover(id) {
+    if (id === hoverId) return;
+    hoverId = id;
+    L_.hover.clearLayers();
+    if (id == null || id === selected) return;
+    M.streets[id].ways.forEach(i => {
+      const w = M.ways[i];
+      L.polyline(w.ll, { renderer, color: '#0f172a', weight: NX.HW[w.hw].w + 6, opacity: 0.25, interactive: false }).addTo(L_.hover);
+    });
   }
 
   function drawProblems() {
     L_.problems.clearLayers();
-    const G = NX.geo, cell = NX.RULES.cell;
+    probMarkers.clear();
+    const cell = NX.RULES.cell;
     M.problems.forEach(p => {
       const meta = NX.PROBLEM[p.type];
-      const popup = `<b>${NX.esc(meta.uz)}</b><br>${NX.esc(p.title)}<br><small>${NX.esc(p.detail)}</small><br>${NX.badge(p.type === 'congestion' ? 'tomtom' : 'osm')} ${NX.badge('hisob')}`;
+      const popup = `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p>${NX.badge(p.type === 'congestion' ? 'tomtom' : 'osm')} ${NX.badge('hisob')}</div>`;
       if (p.type === 'coverage') {
-        const c = p.cell, a = G.ll(c.cy - cell / 2, c.cx - cell / 2), b = G.ll(c.cy + cell / 2, c.cx + cell / 2);
-        L.rectangle([[a[0], a[1]], [b[0], b[1]]], { renderer, color: meta.color, weight: 0.5, fillOpacity: 0.12, opacity: 0.5 }).bindPopup(popup).addTo(L_.problems);
-        return;
+        const r = Math.sqrt((p.cluster.cells.length * cell * cell) / Math.PI);
+        L.circle([p.lat, p.lon], { renderer, radius: Math.max(150, r), color: meta.color, weight: 1, dashArray: '4 4', fillOpacity: 0.08, interactive: false }).addTo(L_.problems);
       }
-      L.circleMarker([p.lat, p.lon], { renderer, radius: 7 + p.sev, color: '#fff', weight: 2, fillColor: meta.color, fillOpacity: 0.95 }).bindPopup(popup).addTo(L_.problems);
+      const icon = L.divIcon({ className: 'pmk', html: `<span style="--c:${meta.color}">${meta.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] });
+      const mk = L.marker([p.lat, p.lon], { icon, title: meta.short, riseOnHover: true }).bindPopup(popup, { maxWidth: 260, autoPanPaddingTopLeft: [10, 60] });
+      mk.addTo(L_.problems);
+      probMarkers.set(p.id, mk);
     });
+  }
+
+  function showProblems(on) { forcedProblems = on; applyVis('problems'); }
+
+  function focusProblem(p) {
+    forcedProblems = true; applyVis('problems');
+    map.flyTo([p.lat, p.lon], p.type === 'coverage' ? 16 : 17, { duration: 0.6 });
+    const mk = probMarkers.get(p.id);
+    if (mk) map.once('moveend', () => { mk.openPopup(); const el = mk.getElement(); if (el) { el.classList.add('pulse'); setTimeout(() => el.classList.remove('pulse'), 2400); } });
   }
 
   function restyle() {
@@ -174,6 +239,7 @@
   function selectStreet(id, fit = true) {
     selected = id;
     L_.hl.clearLayers();
+    L_.hover.clearLayers(); hoverId = null;
     if (id == null) return;
     const s = M.streets[id];
     s.ways.forEach(i => {
@@ -216,7 +282,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems,
+    init, setModel, restyle, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

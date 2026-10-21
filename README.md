@@ -9,7 +9,8 @@ Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transportini **tahlil
 | Boʻlim | Nima qiladi |
 |---|---|
 | **Xarita** | Tirbandlik ranglari, avtobus yoʻnalishlari, bekatlar, muammolar va maktablar qatlamlari. Istalgan koʻchani bosib, uning toʻliq maʼlumotini, TomTom oʻlchovini, xavf indeksini, 24 soatlik bashoratini koʻrish va “Agar…?” simulyatsiyasini ishga tushirish mumkin. |
-| **Yoʻnalishlar** | Avtobus yoʻnalishlarini qidirish. Har bir yoʻnalish uchun bekatlar, bekatlar oraligʻi va oʻtadigan koʻchalar koʻrsatiladi, yoʻnalish xaritada ajratib koʻrsatiladi. |
+| **Muammolar** | Jonli kuzatuv: har 10 daqiqada qayta tahlil (TomTom kaliti bilan asosiy koʻchalar navbatma-navbat oʻlchanadi, kalitsiz — joriy soat bashorati). Har bir muammo turi oddiy tilda: muammo nima, nima qilish kerak, taxminiy narx; joyni bosganda xaritada koʻrsatiladi. |
+| **Avtobuslar** | Avtobus yoʻnalishlarini qidirish. Har bir yoʻnalish uchun bekatlar, bekatlar oraligʻi va oʻtadigan koʻchalar koʻrsatiladi, yoʻnalish xaritada ajratib koʻrsatiladi. |
 | **Bashorat** | Soatbay tirbandlik bashorati va uning ishonch oraligʻi. Xaritani kun va soat boʻyicha bashoratga koʻra boʻyash mumkin. TomTom tarixini import/eksport qilish va modelni kalibrlash ham shu yerda. |
 | **Hisobot** | Koʻrsatkichlar, eng tirband koʻchalar, ustuvorlik boʻyicha tavsiyalar (taxminiy narxlari soʻmda), maʼlumot manbalari, “Qanday ishlaydi” boʻlimi va JSON eksport. |
 | **AI tahlilchi** | Oʻzbekcha savoldan koʻcha nomi va stsenariyni aniqlaydi, simulyatsiyani ishga tushiradi va natijani OpenAI’ga faqat haqiqiy raqamlar bilan yuboradi. Kalit kiritilmagan boʻlsa, javob hisoblangan raqamlardan avtomatik tuziladi. |
