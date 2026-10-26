@@ -6,6 +6,8 @@
   const NX = window.NX;
   let ymap = null, provider = null, loading = null, active = false, hl = null, h = {};
 
+  // Kalit boʻlmasa — Yandex’ning rasmiy xarita vidjeti (iframe, kalitsiz): probkalar (trf) va yoʻl hodisalari (trfe)
+  const widgetUrl = (center, zoom) => `https://yandex.uz/map-widget/v1/?ll=${center[1].toFixed(6)}%2C${center[0].toFixed(6)}&z=${Math.round(zoom)}&l=map%2Ctrf%2Ctrfe`;
   const key = () => (NX.store.get('key:yandex', '') || (window.CITYJAM_KEYS && window.CITYJAM_KEYS.yandex) || '').trim();
 
   function load() {
@@ -34,7 +36,13 @@
   async function show(center, zoom, handlers) {
     h = handlers || {};
     active = true;
-    document.getElementById('ymap').hidden = false;
+    const el = document.getElementById('ymap');
+    el.hidden = false;
+    if (!key()) {
+      el.innerHTML = `<iframe src="${widgetUrl(center, zoom)}" title="Yandex probkalar" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`;
+      if (h.onState) h.onState(null);
+      return;
+    }
     const ymaps = await load();
     if (!active) return;
     if (!ymap) {
@@ -65,5 +73,5 @@
     hl.forEach(p => ymap.geoObjects.add(p));
   }
 
-  NX.yandex = { key, show, hide, highlight, state, isActive: () => active };
+  NX.yandex = { key, show, hide, highlight, state, isActive: () => active, mode: () => (key() ? 'api' : 'widget') };
 })();

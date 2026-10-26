@@ -38,6 +38,7 @@ async function setupRoutes(ctx, opts = {}) {
     if (b.model === 'gpt-5.4-mini') return route.fulfill({ status: 404, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: { code: 'model_not_found', message: 'The model does not exist' } }) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nSinov javobi.\n\n**Nima boʻladi**\n…\n\n**Xavflar**\n…\n\n**Eng yaxshi yechim**\n1. …' } }] }) });
   });
+  await ctx.route(/yandex\.uz\/map-widget/, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Yandex</body></html>' }));
   await ctx.route(/tile\.openstreetmap\.org|arcgisonline/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
 }
 
@@ -193,9 +194,8 @@ async function clickStreet(page, name) {
   ok('Muammolar: turlar boʻyicha oddiy tushuntirish va yechim', probCards.length >= 3 && /Nima qilish kerak/.test(fixTxt), probCards.join(', '));
   const live = await page.textContent('.live');
   ok('“Hozir Samarqandda”: ob-havo, real tirbandlik, yoʻl hodisasi', /17°C/.test(live) && /Yomgʻir/.test(live) && /Yoʻl taʼmiri/.test(live) && /\+4 daq/.test(live), live.replace(/\s+/g, ' ').slice(0, 160));
-  ok('Xaritada TomTom real tirbandlik qatlami', await page.evaluate(() => NX.map.hasRealTiles()));
-  const leg = await page.textContent('.nx-legend');
-  ok('Legend: “Hozirgi tirbandlik — TomTom, real vaqt”', /Hozirgi tirbandlik/.test(leg) && /real vaqt/.test(leg), leg);
+  ok('Boʻsh TomTom plitalari oʻchiq', !(await page.evaluate(() => NX.map.hasRealTiles())));
+  ok('“Yandex probkalar” tugmasi koʻrinadi (kalitsiz)', await page.isVisible('#btnYandex'));
   const sci = await page.evaluate(() => { const t = document.body.innerText; return ['V/C', 'RMSE', 'iteratsiya', 'MSA', 'BPR', 'gravitats'].filter(w => t.includes(w)); });
   ok('Ilmiy atamalar koʻrinmaydi', sci.length === 0, sci.join(','));
   const mk = await page.$$eval('.pmk:not(.inc)', e => e.length);
@@ -205,6 +205,14 @@ async function clickStreet(page, name) {
   ok('Joyni bosganda xaritada popup ochiladi', /Yechim/.test(await page.textContent('.leaflet-popup-content')));
   await page.click('.tabs [data-tab=routes]');
   ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc)')).length === 0);
+  // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari
+  await page.click('#btnYandex');
+  await page.waitForSelector('#ymap iframe', { timeout: 5000 });
+  const ysrc = await page.getAttribute('#ymap iframe', 'src');
+  ok('Yandex vidjeti probkalar bilan ochiladi (kalitsiz)', /map-widget\/v1/.test(ysrc) && /trf/.test(ysrc) && /trfe/.test(ysrc), ysrc);
+  await page.click('#btnYandex');
+  ok('Tahlil xaritasiga qaytish', await page.evaluate(() => document.getElementById('ymap').hidden));
+
   // Xarita ustidagi qidiruv
   await page.fill('.nx-search input', 'regist');
   await page.click('.nx-search li button');

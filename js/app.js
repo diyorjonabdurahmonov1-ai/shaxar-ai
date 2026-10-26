@@ -52,7 +52,7 @@
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
       startLive();
-      $('#btnYandex').hidden = !NX.yandex.key();
+      $('#btnYandex').hidden = false;
       if (NX.yandex.key() && S.yandexOn == null) setYandex(true);
     } catch (e) {
       console.warn(e);
@@ -324,7 +324,8 @@
     const M = S.model;
     S.live.busy = 'Yangilanmoqda…'; renderLive();
     // TomTom kvotasini tejash: butun shahar uchun bitta plita qatlami + bitta hodisalar soʻrovi
-    NX.map.setRealTraffic(NX.yandex.key() ? null : NX.tomtom.flowTileUrl());
+    // TomTom plitalari Samarqandda deyarli boʻsh — real tirbandlik Yandex orqali koʻrsatiladi
+    NX.map.setRealTraffic(null);
     const jobs = [
       NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
     ];

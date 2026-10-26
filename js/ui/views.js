@@ -130,7 +130,7 @@
       ${status}
       <div class="row-btns">${hasKey ? `<button class="btn sm" data-act="measure" data-id="${s.id}" ${S.measuring ? 'disabled' : ''}>${S.measuring === s.id ? 'Oʻlchanmoqda…' : tt ? 'Yangilash' : 'Hozir oʻlchash'}</button>` : '<button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>'}</div>
       ${S.measureErr ? `<p class="alert">${E(S.measureErr)}</p>` : ''}
-      ${NX.yandex.key() && !S.yandexOn ? '<button class="btn sm primary" data-act="yandex">🚦 Bu koʻchani Yandex probkalarida koʻrish</button>' : ''}
+      ${!S.yandexOn ? '<button class="btn sm primary" data-act="yandex">🚦 Bu koʻchani Yandex probkalarida koʻrish</button>' : ''}
     </section>`;
   }
 
@@ -260,9 +260,9 @@
         <p class="small">${NX.weather.roadAdvice(w).map(E).join(' ')}</p>`;
     }
     let traffic;
-    const ya = NX.yandex.key(), yst = S.yandexState;
-    const yandexLine = ya ? `<p class="small"><b>Real tirbandlik — Yandex Probkalar.</b> ${S.yandexOn ? 'Hozir xaritada koʻrsatilmoqda.' : ''}${yst && yst.level != null ? ` Shahar boʻyicha: <b>${yst.level} ball</b> (10 balldan).` : ''} ${B('yandex')}</p>${S.yandexOn ? '' : '<button class="btn sm" data-act="yandex">🚦 Probkalarni koʻrish</button>'}` : '';
-    if (ya) traffic = yandexLine + (inc && inc.list && inc.list.length ? `<h4>Yoʻl hodisalari ${B('tomtom')}</h4><ul class="live-list">${inc.list.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → '))}</small></li>`).join('')}</ul>` : '');
+    const ya = true, yst = S.yandexState;
+    const yandexLine = ya ? `<p class="small"><b>Real tirbandlik va yoʻl hodisalari — Yandex xaritasida.</b> ${S.yandexOn ? 'Hozir xaritada koʻrsatilmoqda.' : 'Koʻrish uchun pastdagi tugmani bosing.'}${yst && yst.level != null ? ` Shahar boʻyicha: <b>${yst.level} ball</b> (10 balldan).` : ''} ${B('yandex')}</p>${S.yandexOn ? '' : '<button class="btn sm" data-act="yandex">🚦 Probkalarni koʻrish</button>'}` : '';
+    if (ya) traffic = yandexLine + (inc && inc.list && inc.list.length ? `<h4>Yoʻl hodisalari ${B('tomtom')}</h4><ul class="live-list">${inc.list.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → '))}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>` : '');
     else if (!hasKey) traffic = `<p class="small"><b>Real tirbandlik ulanmagan.</b> TomTom kaliti kiritilsa, xarita real vaqtda boʻyaladi va avariya, yoʻl taʼmiri koʻrinadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`;
     else {
       const incList = inc && inc.list ? inc.list : null;

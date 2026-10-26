@@ -120,7 +120,7 @@
     } else if (realTiles) {
       legendEl.innerHTML = `<b>Hozirgi tirbandlik</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}<small>TomTom, real vaqt · ${tilesTs ? NX.fmt.time(tilesTs).slice(-5) : ''}</small>`;
     } else {
-      legendEl.innerHTML = `<b>Real tirbandlik ulanmagan</b><small>TomTom kaliti kiritilsa, koʻchalar real vaqtda boʻyaladi</small>`;
+      legendEl.innerHTML = `<b>Tahlil xaritasi</b><small>Real tirbandlik — pastdagi “🚦 Yandex probkalar” tugmasida</small>`;
     }
     legendEl.style.display = legendEl.innerHTML ? '' : 'none';
   }
