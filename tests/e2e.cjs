@@ -98,9 +98,10 @@ async function clickStreet(page, name) {
   // Ob-havo (real manba) bosh sahifada
   ok('Ob-havo koʻrsatiladi', true);
   // TomTom: kalitsiz → kalit kiritish tugmasi
-  await page.click('#panel [data-act=settings]');
+  ok('Kalitsiz koʻchada TomTom haqida xato chiqmaydi, Yandex koʻrsatiladi', /Yandex xaritasida/.test(await page.textContent('.status-line')) && !/TomTom/.test(await page.textContent('#panel section.card')));
+  await page.click('#btnSettings');
   await page.waitForSelector('#settingsDlg[open]', { timeout: 5000 });
-  ok('Kalitsiz koʻchada “kalit kiritish” tugmasi', true);
+  ok('Sozlamalarda ixtiyoriy TomTom kaliti', true);
   await page.fill('#keyTomtom', 'TESTKEY');
   await page.click('#settingsForm button[type=submit]');
   await page.waitForSelector('[data-act=measure]');
@@ -419,6 +420,7 @@ async function clickStreet(page, name) {
   await p6.goto(BASE);
   await p6.waitForFunction(() => document.getElementById('ymap').dataset.ymap === '1' && !document.getElementById('ymap').hidden, null, { timeout: 20000 });
   ok('Yandex kaliti boʻlsa probkalar avtomatik ochiladi', /apikey=YA-TEST/.test(yaUrl));
+  ok('Yandex ochiq: eski tugmalar yashirin, qidiruv koʻrinadi', !(await p6.isVisible('.nx-mark')) && !(await p6.isVisible('.nx-legend')) && (await p6.isVisible('.nx-search input')));
   await p6.waitForFunction(() => /4 ball/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('“Hozir” kartasida Yandex tirbandlik balli', true);
   ok('Yandex rejimida TomTom plitalari oʻchiq', !(await p6.evaluate(() => NX.map.hasRealTiles())));

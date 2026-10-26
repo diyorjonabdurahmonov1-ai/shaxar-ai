@@ -384,3 +384,7 @@ details.pgroup .pill { margin-left: auto; }
 .pmk.fixmk span { width: 26px; height: 26px; font-size: 13px; }
 .fix-hint { background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; }
 .picking .leaflet-marker-icon, .picking .leaflet-popup-pane, .picking .leaflet-overlay-pane svg, .picking canvas { pointer-events: none !important; }
+/* Yandex probkalar ochiq: eski xarita boshqaruvlari yashiriladi, faqat koʻcha qidiruvi qoladi */
+.map-wrap.ya-on .leaflet-control-container .leaflet-control:not(.nx-search) { display: none !important; }
+.map-wrap.ya-on .leaflet-top { z-index: 700; }
+.map-wrap.ya-on .leaflet-top.leaflet-left { top: 0; left: 50px; }

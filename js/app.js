@@ -318,6 +318,7 @@
     if (on === S.yandexOn) return;
     S.yandexOn = on;
     btn.classList.toggle('on', on);
+    $('.map-wrap').classList.toggle('ya-on', !!on);
     btn.textContent = on ? '🗺 Tahlil xaritasi' : '🚦 Yandex probkalar';
     if (on) {
       const c = L.getCenter();
@@ -584,7 +585,8 @@
       onStreet: id => {
         if (!S.model) return;
         if (S.tab === 'forecast') { S.fc.street = id; NX.map.selectStreet(id, false); render(); focusPanel(); return; }
-        openStreet(id);
+        // Qidiruvdan tanlansa ham Yandex probkalar ochiq qoladi
+        openStreet(id, { keepYandex: S.yandexOn });
       },
       onFix: f => { if (S.model) onFix(f); },
       onRoute: i => { S.tab = 'routes'; S.route = i; NX.map.highlightRoute(i); render(); focusPanel(); },

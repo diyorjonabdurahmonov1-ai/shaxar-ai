@@ -123,13 +123,13 @@
       ? `<div class="status-line ${congCls(tt.congestion)}"><b>Hozir: ${trafficWord(tt.congestion)}</b> ${B('tomtom')}
           <span>${E(speedLine(tt))}${tt.freeFlowSpeed ? ` (odatda ${F.num(tt.freeFlowSpeed, 0)} km/soat)` : ''}</span>
           ${tt.delay >= 30 ? `<span>Kechikish: <b>+${Math.round(tt.delay / 60) || 1} daqiqa</b></span>` : ''}<small>Oʻlchandi: ${ago(tt.ts)}</small></div>`
-      : `<div class="status-line"><b>Hozirgi holat nomaʼlum</b><small>${hasKey ? 'Pastdagi tugma bilan oʻlchang.' : 'Real maʼlumot uchun TomTom kaliti kerak.'}</small></div>`;
+      : `<div class="status-line"><b>Real tirbandlik — Yandex xaritasida</b> ${B('yandex')}<small>${S.yandexOn ? 'Koʻcha rangiga qarang: yashil — erkin, sariq — sekin, qizil — tirband.' : 'Pastdagi tugma bilan probkalarni oching.'}</small></div>`;
     return `<section class="card">
       <h2>${streetName(s)}</h2>
-      <p class="muted">${E(NX.HW[s.hw].uz)} · ${bits.join(' · ')} ${B('osm')}</p>
+      <p class="muted">${E(NX.HW[s.hw].uz)} · ${bits.join(' · ')}</p>
       ${status}
-      <div class="row-btns">${hasKey ? `<button class="btn sm" data-act="measure" data-id="${s.id}" ${S.measuring ? 'disabled' : ''}>${S.measuring === s.id ? 'Oʻlchanmoqda…' : tt ? 'Yangilash' : 'Hozir oʻlchash'}</button>` : '<button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>'}</div>
-      ${S.measureErr ? `<p class="alert">${E(S.measureErr)}</p>` : ''}
+      ${hasKey ? `<div class="row-btns"><button class="btn sm" data-act="measure" data-id="${s.id}" ${S.measuring ? 'disabled' : ''}>${S.measuring === s.id ? 'Oʻlchanmoqda…' : tt ? 'Yangilash' : 'Tezligini oʻlchash (TomTom)'}</button></div>` : ''}
+      ${S.measureErr && hasKey ? `<p class="alert">${E(S.measureErr)}</p>` : ''}
       ${!S.yandexOn ? '<button class="btn sm primary" data-act="yandex">🚦 Bu koʻchani Yandex probkalarida koʻrish</button>' : ''}
     </section>`;
   }

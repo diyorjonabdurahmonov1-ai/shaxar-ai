@@ -7,5 +7,5 @@
 window.CITYJAM_KEYS = {
   yandex: 'cac5c421-e0f9-4d7e-875c-f112c310a77c',
   aiProxy: 'https://cityjam-ai.diyorjonabdurahmonov1.workers.dev',
-  tomtom: 'JeJCBCRbOhEGl3Bp7KSdSTdz3ZeL1qdn',
+  tomtom: '', // Samarqandda TomTom maʼlumoti yoʻq — real tirbandlik Yandex orqali
 };
