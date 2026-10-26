@@ -54,7 +54,7 @@ function watchErrors(page) {
 
 async function clickStreet(page, name) {
   // Asosiy ekranda Yandex probkalar ochiq — tahlil xaritasiga oʻtiladi
-  await page.evaluate(() => { if (NX.state.yandexOn) document.getElementById('btnYandex').click(); });
+  await page.evaluate(() => { if (NX.state.widgetOn) document.getElementById('btnYandex').click(); });
   await page.waitForFunction(() => document.getElementById('ymap').hidden);
   const pt = await page.evaluate(n => {
     const M = NX.state.model, s = M.streets.find(x => x.name === n);
@@ -79,8 +79,7 @@ async function clickStreet(page, name) {
   const errs = watchErrors(page);
   await page.goto(BASE);
   await page.waitForSelector('.index-card', { timeout: 20000 });
-  await page.waitForSelector('#ymap iframe', { timeout: 10000 });
-  ok('Sayt ochilganda Yandex probkalar avtomatik koʻrinadi', !(await page.evaluate(() => document.getElementById('ymap').hidden)));
+  ok('Yandex kaliti yoʻq: zaxira xarita va “Yandex probkalar” tugmasi', await page.isVisible('#btnYandex') && (await page.evaluate(() => document.getElementById('ymap').hidden)));
   const kpis = await page.$$eval('.kpi .kpi-v', els => els.map(e => e.textContent));
   ok('Maʼlumot yuklandi va KPI koʻrsatildi', kpis.length === 4, kpis.join(' | '));
   const info = await page.evaluate(() => ({ streets: NX.state.model.namedStreets.length, routes: NX.state.model.routes.length, lines: NX.state.model.kpi.lines, problems: NX.state.model.problems.length, idx: NX.state.model.index.value, status: document.getElementById('dataStatus').textContent }));
@@ -231,6 +230,7 @@ async function clickStreet(page, name) {
   await page.click('.nx-mark-btn');
   await page.click('.nx-mark-list [data-kind="signal"]');
   await page.waitForSelector('.nx-pickbar');
+  await page.waitForTimeout(900); // oldingi xarita animatsiyasi tugashi
   const mb = await page.$eval('#map', el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.mouse.click(mb.x, mb.y);
   await page.waitForFunction(n => NX.state.model.signals.length === n + 1, nSig, { timeout: 10000 });
@@ -405,14 +405,21 @@ async function clickStreet(page, name) {
     yaUrl = route.request().url();
     route.fulfill({ status: 200, contentType: 'text/javascript', body: `
       window.__yaClick = null;
+      const Coll = function () { this.items = []; this.add = o => this.items.push(o); this.each = f => this.items.forEach(f); };
+      window.__balloon = 0;
       window.ymaps = {
         ready: cb => setTimeout(cb, 10),
-        Map: function (id, o) { const self = this; this.c = o.center; this.z = o.zoom; this.geoObjects = { n: 0, add() { this.n++; }, remove() { this.n--; } };
+        Map: function (id, o) { const self = this; this.c = o.center; this.z = o.zoom;
+          this.geoObjects = { list: [], add(x) { this.list.push(x); }, remove(x) { this.list = this.list.filter(y => y !== x); }, get n() { return this.list.length; } };
           this.events = { add(ev, fn) { if (ev === 'click') window.__yaClick = fn; } };
-          this.setCenter = (c, z) => { self.c = c; self.z = z; }; this.getCenter = () => self.c; this.getZoom = () => self.z; this.container = { fitToViewport() {} };
+          this.setCenter = (c, z) => { self.c = c; self.z = z || self.z; return Promise.resolve(); }; this.getCenter = () => self.c; this.getZoom = () => self.z; this.setZoom = z => { self.z = z; };
+          this.setBounds = () => Promise.resolve(); this.balloon = { close() {} }; this.container = { fitToViewport() {} };
           document.getElementById(id).dataset.ymap = '1'; window.__ymap = this; },
         traffic: { provider: { Actual: function () { this.setMap = () => {}; this.state = { get: k => (k === 'level' ? 4 : null), events: { add() {} } }; } } },
-        Polyline: function (ll) { this.ll = ll; },
+        Polyline: function (ll, p, o) { this.ll = ll; this.o = o; },
+        GeoObjectCollection: Coll,
+        Placemark: function (c, p) { this.p = p; this.geometry = { getCoordinates: () => c }; this.balloon = { open() { window.__balloon++; } }; },
+        templateLayoutFactory: { createClass: () => function () {} },
       };` });
   });
   const p6 = await ctx6.newPage();
@@ -420,7 +427,7 @@ async function clickStreet(page, name) {
   await p6.goto(BASE);
   await p6.waitForFunction(() => document.getElementById('ymap').dataset.ymap === '1' && !document.getElementById('ymap').hidden, null, { timeout: 20000 });
   ok('Yandex kaliti boʻlsa probkalar avtomatik ochiladi', /apikey=YA-TEST/.test(yaUrl));
-  ok('Yandex ochiq: eski tugmalar yashirin, qidiruv koʻrinadi', !(await p6.isVisible('.nx-mark')) && !(await p6.isVisible('.nx-legend')) && (await p6.isVisible('.nx-search input')));
+  ok('Bitta xarita: Yandex ustida qidiruv, “Belgilash”, legend; almashtirish tugmasi yoʻq', (await p6.isVisible('.nx-mark')) && /Yandex, real vaqt/.test(await p6.textContent('.nx-legend')) && (await p6.isVisible('.nx-search input')) && !(await p6.isVisible('#btnYandex')) && !(await p6.isVisible('.leaflet-control-layers, .nx-layers')));
   await p6.waitForFunction(() => /4 ball/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('“Hozir” kartasida Yandex tirbandlik balli', true);
   ok('Yandex rejimida TomTom plitalari oʻchiq', !(await p6.evaluate(() => NX.map.hasRealTiles())));
@@ -431,10 +438,26 @@ async function clickStreet(page, name) {
   // Simulyatsiya → tahlil xaritasiga avtomatik qaytadi
   await p6.click('[data-act=sim][data-type="close"]');
   await p6.waitForSelector('.verdict', { timeout: 60000 });
-  ok('Simulyatsiyada tahlil xaritasiga qaytadi', await p6.evaluate(() => document.getElementById('ymap').hidden));
-  await p6.click('#btnYandex');
-  await p6.waitForFunction(() => !document.getElementById('ymap').hidden);
-  ok('Tugma bilan Yandex probkalarga oʻtish', /Tahlil xaritasi/.test(await p6.textContent('#btnYandex')));
+  const deltaLines = await p6.evaluate(() => window.__ymap.geoObjects.list.reduce((t, c) => t + (c.items ? c.items.filter(x => x.o && (x.o.strokeColor === '#dc2626' || x.o.strokeColor === '#16a34a')).length : 0), 0));
+  ok('Simulyatsiya natijasi Yandex xaritasining oʻzida chiziladi', !(await p6.evaluate(() => document.getElementById('ymap').hidden)) && deltaLines > 0, 'chiziqlar: ' + deltaLines);
+  // Muammolar Yandex’da: belgi + balloon + “Muammo emas” tugmasi
+  await p6.click('.tabs [data-tab=problems]');
+  const probMarks = await p6.evaluate(() => window.__ymap.geoObjects.list.reduce((t, c) => t + (c.items ? c.items.filter(x => x.p && x.p.balloonContent).length : 0), 0));
+  ok('Muammo belgilari Yandex xaritasida', probMarks > 0 && !(await p6.evaluate(() => document.getElementById('ymap').hidden)), 'belgilar: ' + probMarks);
+  await p6.click('.prob .loc');
+  await p6.waitForFunction(() => window.__balloon > 0, null, { timeout: 5000 });
+  const n6 = await p6.evaluate(() => NX.state.model.problems.length);
+  await p6.evaluate(() => { const p = NX.state.model.problems[0]; const b = document.createElement('button'); b.dataset.fix = 'dismiss'; b.dataset.pid = p.id; document.getElementById('ymap').appendChild(b); b.click(); });
+  await p6.waitForFunction(n => NX.state.model.problems.length < n, n6, { timeout: 10000 });
+  ok('Yandex balloonidagi “Bu muammo emas” ishlaydi', true);
+  // “➕ Belgilash” Yandex’da: joyni bosish → svetofor
+  const s6 = await p6.evaluate(() => NX.state.model.signals.length);
+  await p6.click('.nx-mark-btn');
+  await p6.click('.nx-mark-list [data-kind="signal"]');
+  await p6.waitForSelector('.ypick');
+  await p6.evaluate(() => window.__yaClick({ get: () => [39.655, 66.97] }));
+  await p6.waitForFunction(n => NX.state.model.signals.length === n + 1, s6, { timeout: 10000 });
+  ok('“➕ Belgilash” Yandex xaritasida ishlaydi', true);
   ok('Konsolda xato yoʻq (Yandex)', e6.length === 0, e6.join(' || '));
 
   // ---------- 7. Yandex kaliti ishlamasa → kalitsiz vidjet ----------
@@ -444,8 +467,10 @@ async function clickStreet(page, name) {
   await ctx7.route(/api-maps\.yandex\.ru/, route => route.abort('failed'));
   const p7 = await ctx7.newPage();
   await p7.goto(BASE);
-  await p7.waitForSelector('#ymap iframe', { timeout: 30000 });
-  ok('Yandex kaliti ishlamasa kalitsiz probkalar vidjeti ochiladi', /map-widget/.test(await p7.getAttribute('#ymap iframe', 'src')));
+  await p7.waitForSelector('#btnYandex:not([hidden])', { timeout: 30000 });
+  await p7.click('#btnYandex');
+  await p7.waitForSelector('#ymap iframe', { timeout: 10000 });
+  ok('Yandex kaliti ishlamasa: zaxira xarita + tugma bilan kalitsiz probkalar', /map-widget/.test(await p7.getAttribute('#ymap iframe', 'src')));
 
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));

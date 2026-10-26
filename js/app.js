@@ -13,7 +13,7 @@
     ai: { q: '', busy: null, answer: null },
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
-    calib: null, calibBusy: null, load: null, yandexOn: null, yandexState: null,
+    calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
   };
@@ -45,9 +45,9 @@
       if (S.street != null && !M.streets[S.street]) S.street = null;
       S.route = null; S.sim.last = null;
       S.fc.street = (M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value)[0] || M.streets[0]).id;
-      NX.map.clearDeltas();
-      NX.map.setModel(M);
-      NX.map.drawFixes(NX.fixes.list());
+      NX.view.clearDeltas();
+      NX.view.setModel(M);
+      NX.view.drawFixes(NX.fixes.list());
       setStatus(res.source, res.data.ts);
       render();
       if (res.warning) toast(res.warning, 'warn');
@@ -56,9 +56,9 @@
       startLive();
       // Boshqa foydalanuvchilar saqlagan tuzatishlar (svetofor bor, muammo emas…) serverdan olinadi
       NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); });
-      $('#btnYandex').hidden = false;
-      // Asosiy xarita — real tirbandlik (Yandex probkalar) doim koʻrinib turadi
+      // Asosiy xarita — Yandex (real tirbandlik + tahlil). Ishlamasa — zaxira xarita va probkalar tugmasi
       if (S.yandexOn == null) setYandex(true);
+      else if (S.yandexMain) NX.view.syncYandex(M, NX.fixes.list());
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -81,10 +81,10 @@
   function render() {
     document.querySelectorAll('.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
     if (!S.model) return;
-    NX.map.setColorMode(S.tab === 'forecast' ? { mode: 'forecast', d: S.fc.d, h: S.fc.h } : { mode: 'now' });
+    NX.view.setColorMode(S.tab === 'forecast' ? { mode: 'forecast', d: S.fc.d, h: S.fc.h } : { mode: 'now' });
     const M = S.model;
     let html;
-    NX.map.showProblems(S.tab === 'problems');
+    NX.view.showProblems(S.tab === 'problems');
     if (S.tab === 'map') html = S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') html = V.problems(S);
     else if (S.tab === 'routes') html = V.routes(S);
@@ -119,9 +119,9 @@
   function setTab(t) {
     if (t !== 'map') ensureLeaflet();
     // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
-    if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.map.clearDeltas(false);
+    if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     S.tab = t;
-    if (t !== 'routes') { if (S.route != null) NX.map.highlightRoute(null); S.route = null; }
+    if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
     render();
     panel.scrollTop = 0;
   }
@@ -133,9 +133,8 @@
 
   function openStreet(id, opt) {
     S.tab = 'map'; S.street = id; S.measureErr = null;
-    if (!(opt && opt.keepYandex)) ensureLeaflet();
-    NX.map.selectStreet(id, !S.yandexOn);
-    highlightOnYandex(id);
+    ensureLeaflet();
+    NX.view.selectStreet(id, true);
     render(); focusPanel();
     // Kalit boʻlsa — koʻcha ochilganda real holati avtomatik oʻlchanadi (10 daqiqadan eski boʻlsa)
     const s = S.model.streets[id];
@@ -210,8 +209,8 @@
       const r = await NX.sim.run({ demand: S.demand, scenario: sc, iters }, (p, l) => { S.sim.progress = { p, label: l }; renderSimOut(); });
       S.sim.last = { street: streetId, type, label, demand: S.demand, result: r, verdict: verdict(r, sc, s, type, dirSign || 1), iters };
       ensureLeaflet();
-      NX.map.showDeltas(r, S.simInfo.pieces);
-      NX.map.selectStreet(streetId, false);
+      NX.view.showDeltas(r, S.simInfo.pieces);
+      NX.view.selectStreet(streetId, false);
     } catch (e) {
       console.error(e);
       toast('Simulyatsiya xatosi: ' + e.message, 'bad');
@@ -247,7 +246,7 @@
     S.measuring = id; S.measureErr = null; render();
     try {
       s.tomtom = await NX.tomtom.measureStreet(s, M);
-      NX.analysis.refresh(M); NX.map.restyle(); NX.map.drawProblems();
+      NX.analysis.refresh(M); NX.view.restyle(); NX.view.drawProblems();
       toast(`${s.name || 'Koʻcha'}: tirbandlik ${F.pct(s.tomtom.congestion)} (TomTom).`, 'ok');
     } catch (e) {
       S.measureErr = e.message;
@@ -270,7 +269,7 @@
       await NX.sleep(250);
     }
     S.batch = null;
-    NX.analysis.refresh(M); NX.map.restyle(); NX.map.drawProblems();
+    NX.analysis.refresh(M); NX.view.restyle(); NX.view.drawProblems();
     toast(`${ok} ta koʻcha oʻlchandi.`, ok ? 'ok' : 'warn');
     render();
   }
@@ -282,9 +281,9 @@
     NX.analysis.applyTomTom(M, NX.tomtom.latest());
     NX.analysis.refresh(M);
     S.model = M;
-    NX.map.setModel(M);
-    NX.map.drawFixes(NX.fixes.list());
-    if (S.street != null) NX.map.selectStreet(S.street, false);
+    NX.view.setModel(M);
+    NX.view.drawFixes(NX.fixes.list());
+    if (S.street != null) NX.view.selectStreet(S.street, false);
     render();
   }
   async function onFix(f) {
@@ -297,7 +296,7 @@
     }
     if (f.action === 'pick-crossing' || f.action === 'pick-stop') {
       ensureLeaflet();
-      NX.map.pickPoint(f.action.slice(5), ll => onFix({ action: 'add', kind: f.action.slice(5), lat: ll.lat, lon: ll.lng, key: p && p.key }));
+      NX.view.pickPoint(f.action.slice(5), ll => onFix({ action: 'add', kind: f.action.slice(5), lat: ll.lat, lon: ll.lng, key: p && p.key }));
       return;
     }
     if (f.action === 'add') item = { kind: f.kind, lat: f.lat, lon: f.lon, key: f.key || '' };
@@ -313,45 +312,54 @@
   }
 
   // ---------- Yandex probkalar (real tirbandlik) ----------
+  // Asosiy xarita — Yandex (probkalar + tahlil qatlamlari). Yandex JS API ishlamasa: Leaflet tahlil xaritasi,
+  // probkalar esa kalitsiz Yandex vidjetida (pastdagi tugma) koʻriladi.
   async function setYandex(on) {
     const btn = $('#btnYandex'), L = NX.map.leaflet();
     if (on === S.yandexOn) return;
     S.yandexOn = on;
-    btn.classList.toggle('on', on);
-    $('.map-wrap').classList.toggle('ya-on', !!on);
-    btn.textContent = on ? '🗺 Tahlil xaritasi' : '🚦 Yandex probkalar';
     if (on) {
       const c = L.getCenter();
       try {
+        if (!NX.yandex.key() || NX.yandex.mode() === 'widget') throw new Error('kalit yoʻq');
         await NX.yandex.show([c.lat, c.lng], L.getZoom(), {
           onClick: (lat, lon) => {
             if (!S.model) return;
             const [x, y] = NX.geo.xy(lat, lon);
             let best = null, bd = Infinity;
             S.model.streetsNear(x, y, 40).forEach((d, id) => { if (d < bd) { bd = d; best = id; } });
-            if (best != null) openStreet(best, { keepYandex: true });
+            if (best != null) openStreet(best);
           },
           onState: st => { S.yandexState = st; renderLive(); },
         });
-        if (S.street != null) highlightOnYandex(S.street);
+        S.yandexMain = true;
+        $('.map-wrap').classList.add('ya-on');
+        btn.hidden = true;
+        NX.view.syncYandex(S.model, NX.fixes.list());
+        NX.view.showProblems(S.tab === 'problems');
+        if (S.street != null) NX.view.selectStreet(S.street, false);
+        NX.map.updateLegend();
       } catch (e) {
-        // Kalit ishlamasa yoki kunlik limit tugasa — kalitsiz Yandex vidjeti (probkalar baribir koʻrinadi)
         console.warn('Yandex JS API:', e.message);
-        try { await NX.yandex.show([c.lat, c.lng], L.getZoom(), {}, { widget: true }); }
-        catch (e2) { toast('Yandex xaritasi ochilmadi.', 'bad'); S.yandexOn = true; setYandex(false); }
+        NX.yandex.hide();
+        S.yandexMain = false; S.yandexOn = false;
+        $('.map-wrap').classList.remove('ya-on');
+        btn.hidden = false;
+        if (!/kalit yoʻq/.test(e.message)) toast('Yandex xaritasi ochilmadi — oddiy xarita koʻrsatilmoqda. Probkalar: pastdagi tugma.', 'warn');
       }
-    } else {
-      const v = NX.yandex.hide();
-      if (v) L.setView(v.center, v.zoom, { animate: false });
-      NX.map.invalidate();
-    }
+    } else NX.yandex.hide();
     renderLive();
   }
-  const ensureLeaflet = () => { if (S.yandexOn) setYandex(false); };
-  function highlightOnYandex(id) {
-    if (!S.yandexOn) return;
-    NX.yandex.highlight(id == null ? null : S.model.streets[id].ways.map(i => S.model.ways[i].ll));
+  // Zaxira rejim: probkalarni kalitsiz Yandex vidjetida koʻrsatish/yopish
+  async function toggleWidget() {
+    const btn = $('#btnYandex'), L = NX.map.leaflet();
+    S.widgetOn = !S.widgetOn;
+    btn.classList.toggle('on', S.widgetOn);
+    btn.textContent = S.widgetOn ? '🗺 Tahlil xaritasi' : '🚦 Yandex probkalar';
+    if (S.widgetOn) { const c = L.getCenter(); await NX.yandex.show([c.lat, c.lng], L.getZoom(), {}, { widget: true }); }
+    else { NX.yandex.hide(); NX.map.invalidate(); }
   }
+  const ensureLeaflet = () => { if (S.widgetOn) toggleWidget(); };
 
   // ---------- Jonli kuzatuv: har 5 daqiqada real maʼlumot (ob-havo, tirbandlik, yoʻl hodisalari) ----------
   let liveTimer = null;
@@ -370,15 +378,15 @@
     S.live.busy = 'Yangilanmoqda…'; renderLive();
     // TomTom kvotasini tejash: butun shahar uchun bitta plita qatlami + bitta hodisalar soʻrovi
     // TomTom plitalari Samarqandda deyarli boʻsh — real tirbandlik Yandex orqali koʻrsatiladi
-    NX.map.setRealTraffic(null);
+    NX.view.setRealTraffic(null);
     const jobs = [
       NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
     ];
-    if (NX.tomtom.key()) jobs.push(NX.tomtom.incidents().then(list => { S.incidents = { list, ts: Date.now() }; NX.map.setIncidents(list); }).catch(e => { S.incidents = { err: e.message }; }));
-    else { S.incidents = null; NX.map.setIncidents([]); }
+    if (NX.tomtom.key()) jobs.push(NX.tomtom.incidents().then(list => { S.incidents = { list, ts: Date.now() }; NX.view.setIncidents(list); }).catch(e => { S.incidents = { err: e.message }; }));
+    else { S.incidents = null; NX.view.setIncidents([]); }
     await Promise.all(jobs);
     if (S.model !== M) return;
-    NX.analysis.refresh(M); NX.map.restyle(); NX.map.drawProblems(); NX.map.updateLegend();
+    NX.analysis.refresh(M); NX.view.restyle(); NX.view.drawProblems(); NX.map.updateLegend();
     S.live.busy = null; S.live.last = Date.now(); S.live.next = Date.now() + LIVE_EVERY;
     renderLive();
   }
@@ -397,7 +405,7 @@
         defaultStreet: ctxStreet(),
         simulate: async (street, scen) => {
           S.ai.busy = `“${street.name}” uchun simulyatsiya hisoblanmoqda…`; renderAI();
-          NX.map.selectStreet(street.id);
+          NX.view.selectStreet(street.id);
           return runWhatIf(street.id, TYPE[scen.type](scen.dir));
         },
         onModel: () => { S.ai.busy = 'AI javob yozmoqda…'; renderAI(); },
@@ -483,7 +491,7 @@
     $('#btnClearHistory').addEventListener('click', () => {
       if (!confirm('TomTom oʻlchovlari tarixi va oxirgi oʻlchovlar oʻchirilsinmi?')) return;
       NX.forecast.clear(); NX.tomtom.clear();
-      if (S.model) { S.model.streets.forEach(s => (s.tomtom = null)); NX.analysis.refresh(S.model); NX.map.restyle(); NX.map.drawProblems(); render(); }
+      if (S.model) { S.model.streets.forEach(s => (s.tomtom = null)); NX.analysis.refresh(S.model); NX.view.restyle(); NX.view.drawProblems(); render(); }
       toast('Tarix tozalandi.', 'ok');
     });
     dlg.querySelectorAll('[data-toggle-pass]').forEach(b => b.addEventListener('click', () => {
@@ -497,34 +505,34 @@
       const M = S.model;
       switch (b.dataset.act) {
         case 'retry': loadData(!!(S.model || S.load === 'error')); break;
-        case 'home': S.street = null; NX.map.selectStreet(null); highlightOnYandex(null); render(); break;
+        case 'home': S.street = null; NX.view.selectStreet(null); render(); break;
         case 'street': if (id != null) { openStreet(id); } break;
         case 'problem': {
           const p = M.problems.find(x => x.id === b.dataset.id);
           if (!p) break;
           ensureLeaflet();
-          NX.map.focusProblem(p);
+          NX.view.focusProblem(p);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
         case 'incident': {
           const it = S.incidents && S.incidents.list && S.incidents.list.find(x => x.id === b.dataset.id);
-          if (it) { NX.map.flyTo(it.lat, it.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+          if (it) { NX.view.flyTo(it.lat, it.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
           break;
         }
         case 'settings': openSettings('tomtom'); break;
-        case 'yandex': setYandex(true); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+        case 'yandex': if (!S.yandexMain) toggleWidget(); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
         case 'route':
           if (id == null) break;
           S.tab = 'routes'; S.route = S.route === id ? null : id;
-          NX.map.highlightRoute(S.route); render();
+          NX.view.highlightRoute(S.route); render();
           break;
         case 'sim': if (id != null && !S.sim.busy) runWhatIf(id, b.dataset.type); break;
         case 'measure': measure(id); break;
         case 'measure-main': measureMain(); break;
-        case 'clear-sim': NX.map.clearDeltas(); break;
-        case 'show-sim': if (S.sim.last) NX.map.showDeltas(S.sim.last.result, S.simInfo.pieces); break;
+        case 'clear-sim': NX.view.clearDeltas(); break;
+        case 'show-sim': if (S.sim.last) NX.view.showDeltas(S.sim.last.result, S.simInfo.pieces); break;
         case 'ask': askAI(b.dataset.q); break;
         case 'how': setTab('report'); setTimeout(() => { const h = $('#how'); if (h) h.scrollIntoView({ behavior: 'smooth' }); }, 50); break;
         case 'export': download(`cityjam-hisobot-${stamp()}.json`, reportJSON()); toast('Hisobot yuklab olindi.', 'ok'); break;
@@ -552,13 +560,13 @@
       } else if (t.dataset.input === 'fc-hour') {
         S.fc.h = +t.value;
         panel.querySelector('[data-out=fc-hour]').textContent = F.hour(S.fc.h);
-        NX.map.clearDeltas(false);
-        NX.map.setColorMode({ mode: 'forecast', d: S.fc.d, h: S.fc.h });
+        NX.view.clearDeltas(false);
+        NX.view.setColorMode({ mode: 'forecast', d: S.fc.d, h: S.fc.h });
       }
     });
     panel.addEventListener('change', e => {
       const t = e.target;
-      if (t.dataset.input === 'fc-street') { S.fc.street = +t.value; NX.map.selectStreet(S.fc.street); render(); }
+      if (t.dataset.input === 'fc-street') { S.fc.street = +t.value; NX.view.selectStreet(S.fc.street); render(); }
       else if (t.dataset.input === 'fc-day') { S.fc.d = +t.value; render(); }
       else if (t.dataset.input === 'fc-hour') { render(); }
       else if (t.dataset.input === 'hist-import' && t.files[0]) {
@@ -567,7 +575,7 @@
           try {
             const r = NX.forecast.importJSON(JSON.parse(fr.result));
             toast(`${r.added} ta namuna qoʻshildi${r.bad ? `, ${r.bad} tasi notoʻgʻri` : ''}.`, 'ok');
-            NX.map.restyle(); render();
+            NX.view.restyle(); render();
           } catch (err) { toast('Import xatosi: ' + err.message, 'bad'); }
         };
         fr.readAsText(t.files[0]);
@@ -584,15 +592,15 @@
     NX.map.init('map', {
       onStreet: id => {
         if (!S.model) return;
-        if (S.tab === 'forecast') { S.fc.street = id; NX.map.selectStreet(id, false); render(); focusPanel(); return; }
-        // Qidiruvdan tanlansa ham Yandex probkalar ochiq qoladi
-        openStreet(id, { keepYandex: S.yandexOn });
+        if (S.tab === 'forecast') { S.fc.street = id; NX.view.selectStreet(id, false); render(); focusPanel(); return; }
+        openStreet(id);
       },
       onFix: f => { if (S.model) onFix(f); },
-      onRoute: i => { S.tab = 'routes'; S.route = i; NX.map.highlightRoute(i); render(); focusPanel(); },
+      onRoute: i => { S.tab = 'routes'; S.route = i; NX.view.highlightRoute(i); render(); focusPanel(); },
     });
     bind();
-    $('#btnYandex').addEventListener('click', () => setYandex(!S.yandexOn));
+    $('#btnYandex').addEventListener('click', toggleWidget);
+    NX.view.onFix = f => { if (S.model) onFix(f); };
     loadData(false);
   }
 

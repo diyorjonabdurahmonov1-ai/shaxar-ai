@@ -128,7 +128,7 @@
           const b = e.target.closest('[data-kind]');
           if (!b) return;
           d.classList.remove('open');
-          pickPoint(b.dataset.kind, ll => h.onFix && h.onFix({ action: 'add', kind: b.dataset.kind, lat: ll.lat, lon: ll.lng }));
+          (NX.view ? NX.view.pickPoint : pickPoint)(b.dataset.kind, ll => h.onFix && h.onFix({ action: 'add', kind: b.dataset.kind, lat: ll.lat, lon: ll.lng }));
         });
         return d;
       },
@@ -165,7 +165,7 @@
     (list || []).filter(x => x.kind !== 'dismiss').forEach(x => {
       const k = NX.fixes.KIND[x.kind];
       const icon = L.divIcon({ className: 'pmk fixmk', html: `<span style="--c:#16a34a">${k.icon}</span>`, iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -12] });
-      L.marker([x.lat, x.lon], { icon, title: k.uz }).bindPopup(`<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu brauzerda (PIN-kod kiritilmagan).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`).addTo(L_.fixes);
+      L.marker([x.lat, x.lon], { icon, title: k.uz }).bindPopup(fixPopup(x)).addTo(L_.fixes);
     });
   }
 
@@ -188,6 +188,8 @@
       legendEl.innerHTML = '';
     } else if (colorMode.mode === 'forecast') {
       legendEl.innerHTML = `<b>Taxmin: ${NX.days[colorMode.d]}, ${NX.fmt.hour(colorMode.h)}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}`;
+    } else if (NX.view && NX.view.yandexActive && NX.view.yandexActive()) {
+      legendEl.innerHTML = `<b>Hozirgi tirbandlik</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}<small>Yandex, real vaqt</small>`;
     } else if (realTiles) {
       legendEl.innerHTML = `<b>Hozirgi tirbandlik</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}<small>TomTom, real vaqt · ${tilesTs ? NX.fmt.time(tilesTs).slice(-5) : ''}</small>`;
     } else {
@@ -274,19 +276,28 @@
     });
   }
 
+  function problemPopup(p) {
+    const meta = NX.PROBLEM[p.type];
+    const fixBtn = {
+      junction: ['signal', '🚦 Bu yerda svetofor bor'], school: ['crossing', '🚶 Yaqinida oʻtish joyi bor'],
+      crossings: ['pick-crossing', '🚶 Oʻtish joyini belgilash'], coverage: ['pick-stop', '🚏 Yaqinida bekat bor (joyini bosing)'],
+    }[p.type];
+    const fixes = `<div class="fix-row">${fixBtn ? `<button type="button" class="btn sm primary" data-fix="${fixBtn[0]}" data-pid="${p.id}">${fixBtn[1]}</button>` : ''}<button type="button" class="btn sm" data-fix="dismiss" data-pid="${p.id}">❌ Bu muammo emas</button></div>
+      <a class="osm-edit" href="${NX.fixes.osmEditUrl(p.lat, p.lon)}" target="_blank" rel="noopener">✏️ OpenStreetMap’da ham tuzatish</a>`;
+    return `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
+  }
+  function fixPopup(x) {
+    const k = NX.fixes.KIND[x.kind];
+    return `<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu brauzerda (PIN-kod kiritilmagan).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`;
+  }
+
   function drawProblems() {
     L_.problems.clearLayers();
     probMarkers.clear();
     const cell = NX.RULES.cell;
     M.problems.forEach(p => {
       const meta = NX.PROBLEM[p.type];
-      const fixBtn = {
-        junction: ['signal', '🚦 Bu yerda svetofor bor'], school: ['crossing', '🚶 Yaqinida oʻtish joyi bor'],
-        crossings: ['pick-crossing', '🚶 Oʻtish joyini belgilash'], coverage: ['pick-stop', '🚏 Yaqinida bekat bor (joyini bosing)'],
-      }[p.type];
-      const fixes = `<div class="fix-row">${fixBtn ? `<button type="button" class="btn sm primary" data-fix="${fixBtn[0]}" data-pid="${p.id}">${fixBtn[1]}</button>` : ''}<button type="button" class="btn sm" data-fix="dismiss" data-pid="${p.id}">❌ Bu muammo emas</button></div>
-        <a class="osm-edit" href="${NX.fixes.osmEditUrl(p.lat, p.lon)}" target="_blank" rel="noopener">✏️ OpenStreetMap’da ham tuzatish</a>`;
-      const popup = `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p>${NX.badge(p.type === 'congestion' ? 'tomtom' : 'osm')} ${NX.badge('hisob')}<p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
+      const popup = problemPopup(p);
       if (p.type === 'coverage') {
         const r = Math.sqrt((p.cluster.cells.length * cell * cell) / Math.PI);
         L.circle([p.lat, p.lon], { renderer, radius: Math.max(150, r), color: meta.color, weight: 1, dashArray: '4 4', fillOpacity: 0.08, interactive: false }).addTo(L_.problems);
@@ -384,7 +395,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

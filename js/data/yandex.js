@@ -33,7 +33,7 @@
     return { level: st.get('level'), localtime: st.get('localtime'), ts: Date.now() };
   }
 
-  let forceWidget = false;
+  let forceWidget = false, picker = null;
   async function show(center, zoom, handlers, opt) {
     h = handlers || {};
     active = true;
@@ -52,7 +52,11 @@
       ymap = new ymaps.Map('ymap', { center, zoom, controls: ['zoomControl'] }, { suppressMapOpenBlock: true });
       provider = new ymaps.traffic.provider.Actual({}, { infoLayerShown: true });
       provider.setMap(ymap);
-      ymap.events.add('click', e => { const c = e.get('coords'); if (h.onClick) h.onClick(c[0], c[1]); });
+      ymap.events.add('click', e => {
+        const c = e.get('coords');
+        if (picker) { const f = picker; picker = null; f(c[0], c[1]); return; }
+        if (h.onClick) h.onClick(c[0], c[1]);
+      });
       provider.state.events.add('change', () => { if (h.onState) h.onState(state()); });
     } else {
       ymap.setCenter(center, zoom);
@@ -76,5 +80,8 @@
     hl.forEach(p => ymap.geoObjects.add(p));
   }
 
-  NX.yandex = { key, show, hide, highlight, state, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
+  NX.yandex = {
+    key, show, hide, highlight, state,
+    getMap: () => (active && ymap ? ymap : null),
+    setPicker: fn => { picker = fn; }, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
 })();
