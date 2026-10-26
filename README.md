@@ -30,6 +30,11 @@ npx http-server -p 8080 .     # yoki: python3 -m http.server 8080
 
 **GitHub Pages:** repo sozlamalarida *Settings → Pages → Deploy from a branch → `main` / root* ni tanlang.
 
+### Real maʼlumot manbalari
+- **Ob-havo** — Open-Meteo, kalitsiz, har 10 daqiqada.
+- **Real tirbandlik (butun shahar xaritasi), yoʻl hodisalari va koʻcha tezligi** — TomTom. Hamma tashrif buyuruvchilar koʻrishi uchun sayt egasi `js/keys.js` fayliga TomTom kalitini yozadi va TomTom panelida kalitni faqat sayt domeniga cheklaydi.
+- Real maʼlumot boʻlmagan joyda sayt taxminiy rang chizmaydi — “ulanmagan” deb yozadi.
+
 ### Kalitlar (ixtiyoriy)
 “Sozlamalar” (⚙) oynasida kiritiladi va **faqat shu brauzerda** saqlanadi:
 - **TomTom** — [developer.tomtom.com](https://developer.tomtom.com/) saytida bepul kalit olish mumkin (Traffic Flow API). Kalit bilan koʻchalarning haqiqiy tirbandligi oʻlchanadi, bashorat uchun tarix toʻplanadi va model kalibrlanadi.

@@ -21,7 +21,10 @@ async function setupRoutes(ctx, opts = {}) {
     await new Promise(r => setTimeout(r, 150));
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(isRoutes ? FX.routes : FX.streets) });
   });
-  await ctx.route(/api\.tomtom\.com/, route => {
+  await ctx.route(/api\.open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ current: { time: '2026-10-26T12:00', temperature_2m: 17.4, apparent_temperature: 16.1, precipitation: 0.6, rain: 0.6, snowfall: 0, weather_code: 61, wind_speed_10m: 12, visibility: 9000 } }) }));
+  await ctx.route(/api\.tomtom\.com\/traffic\/map/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  await ctx.route(/api\.tomtom\.com\/traffic\/services\/5\/incidentDetails/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ incidents: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[66.9690, 39.6550], [66.9730, 39.6550]] }, properties: { iconCategory: 9, magnitudeOfDelay: 2, from: 'Registon koʻchasi', to: 'Sinov tor koʻchasi 6', delay: 240, length: 340, startTime: '2026-10-26T06:00:00Z' } }] }) }));
+  await ctx.route(/api\.tomtom\.com\/traffic\/services\/4/, route => {
     const u = new URL(route.request().url());
     if (u.searchParams.get('key') === 'BAD') return route.fulfill({ status: 403, body: '{}' });
     const [lat, lon] = u.searchParams.get('point').split(',').map(Number);
@@ -84,17 +87,20 @@ async function clickStreet(page, name) {
   const facts = await page.textContent('.facts');
   ok('Koʻcha faktlari (polosa, liniyalar…)', /Polosalar/.test(facts) && /Svetoforlar/.test(facts));
 
-  // TomTom: kalitsiz → xato va sozlamalar
-  await page.click('[data-act=measure]');
+  // Ob-havo (real manba) bosh sahifada
+  ok('Ob-havo koʻrsatiladi', true);
+  // TomTom: kalitsiz → kalit kiritish tugmasi
+  await page.click('#panel [data-act=settings]');
   await page.waitForSelector('#settingsDlg[open]', { timeout: 5000 });
-  ok('Kalitsiz oʻlchashda sozlamalar ochiladi', true);
+  ok('Kalitsiz koʻchada “kalit kiritish” tugmasi', true);
   await page.fill('#keyTomtom', 'TESTKEY');
   await page.click('#settingsForm button[type=submit]');
+  await page.waitForSelector('[data-act=measure]');
   await page.click('[data-act=measure]');
   await page.waitForSelector('.status-line b', { timeout: 10000 });
-  await page.waitForFunction(() => /Hozir/.test(document.querySelector('.status-line').textContent), null, { timeout: 10000 });
+  await page.waitForFunction(() => /km\/soat/.test(document.querySelector('.status-line').textContent), null, { timeout: 10000 });
   const meas = await page.textContent('.status-line');
-  ok('TomTom oʻlchovi koʻrsatiladi', /45%/.test(meas), meas.trim());
+  ok('TomTom oʻlchovi oddiy tilda', /22 km\/soat/.test(meas) && /baravar sekin/.test(meas), meas.replace(/\s+/g, ' ').trim());
   const hist = await page.evaluate(() => NX.forecast.stats().samples);
   ok('Oʻlchov tarixga yoziladi', hist >= 1, 'namunalar: ' + hist);
 
@@ -108,7 +114,7 @@ async function clickStreet(page, name) {
   ok('Simulyatsiya natija qaytaradi (bir tomonlama)', ['Mos keladi', 'Ehtiyotkorlik bilan', 'Tavsiya etilmaydi'].includes(verdict) && rows > 0, `${verdict}; ${rows} qator; ΔTT=${sim.tt.toFixed(2)}%; target=${sim.target}; ${Date.now() - t0} ms; worker=${sim.info.worker}; tugun=${sim.info.nodes}, zona=${sim.info.zones}`);
   ok('Xaritada oʻzgarishlar chiziladi', sim.deltas > 0, 'boʻlaklar: ' + sim.deltas);
   const disc = await page.textContent('.sim .disclaimer');
-  ok('Ogohlantirish matni bor', /soddalashtirilgan model bashorati/.test(disc));
+  ok('Ogohlantirish matni bor', /taxminiy hisob/.test(disc));
 
   // Yopish stsenariysi: avtobus liniyalari
   await page.click('[data-act=sim][data-type="close"]');
@@ -136,7 +142,7 @@ async function clickStreet(page, name) {
   ok('“maʼlumot kam → ishonch past” yorligʻi', !!low);
   await page.evaluate(() => document.querySelectorAll('details').forEach(d => (d.open = true)));
   const legend = await page.textContent('.nx-legend');
-  ok('Xarita bashorat rejimida', /Bashorat:/.test(legend), legend.slice(0, 40));
+  ok('Xarita bashorat rejimida', /Taxmin:/.test(legend), legend.slice(0, 40));
   await page.fill('input[data-input=fc-hour]', '8');
   await page.dispatchEvent('input[data-input=fc-hour]', 'input');
   const legend2 = await page.textContent('.nx-legend');
@@ -165,7 +171,7 @@ async function clickStreet(page, name) {
   await page.click('[data-act=calibrate]');
   await page.waitForSelector('.calib', { timeout: 90000 });
   const cal = await page.textContent('.calib');
-  ok('Kalibrlash natijasi va xatosi', /RMSE/.test(cal), cal.trim().slice(0, 120));
+  ok('Kalibrlash natijasi oddiy tilda', /oʻrtacha farq/.test(cal), cal.trim().slice(0, 120));
 
   // Yoʻnalishlar
   await page.click('.tabs [data-tab=routes]');
@@ -183,14 +189,19 @@ async function clickStreet(page, name) {
   const fixTxt = await page.textContent('.prob .fix');
   ok('Muammolar: turlar boʻyicha oddiy tushuntirish va yechim', probCards.length >= 3 && /Nima qilish kerak/.test(fixTxt), probCards.join(', '));
   const live = await page.textContent('.live');
-  ok('Jonli kuzatuv kartasi', /Jonli kuzatuv/.test(live) && /Oxirgi tahlil/.test(live), live.replace(/\s+/g, ' ').slice(0, 90));
-  const mk = await page.$$eval('.pmk', e => e.length);
+  ok('“Hozir Samarqandda”: ob-havo, real tirbandlik, yoʻl hodisasi', /17°C/.test(live) && /Yomgʻir/.test(live) && /Yoʻl taʼmiri/.test(live) && /\+4 daq/.test(live), live.replace(/\s+/g, ' ').slice(0, 160));
+  ok('Xaritada TomTom real tirbandlik qatlami', await page.evaluate(() => NX.map.hasRealTiles()));
+  const leg = await page.textContent('.nx-legend');
+  ok('Legend: “Hozirgi tirbandlik — TomTom, real vaqt”', /Hozirgi tirbandlik/.test(leg) && /real vaqt/.test(leg), leg);
+  const sci = await page.evaluate(() => { const t = document.body.innerText; return ['V/C', 'RMSE', 'iteratsiya', 'MSA', 'BPR', 'gravitats'].filter(w => t.includes(w)); });
+  ok('Ilmiy atamalar koʻrinmaydi', sci.length === 0, sci.join(','));
+  const mk = await page.$$eval('.pmk:not(.inc)', e => e.length);
   ok('Muammo belgilari xaritada (faqat shu boʻlimda)', mk > 0, 'belgilar: ' + mk);
   await page.click('.loc');
   await page.waitForSelector('.leaflet-popup-content .ppop', { timeout: 5000 });
   ok('Joyni bosganda xaritada popup ochiladi', /Yechim/.test(await page.textContent('.leaflet-popup-content')));
   await page.click('.tabs [data-tab=routes]');
-  ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk')).length === 0);
+  ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc)')).length === 0);
   // Xarita ustidagi qidiruv
   await page.fill('.nx-search input', 'regist');
   await page.click('.nx-search li button');

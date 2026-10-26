@@ -22,6 +22,9 @@
     tomtomTimeoutMs: 15000,
     openaiUrl: 'https://api.openai.com/v1/chat/completions',
     openaiModels: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'],
+    weatherUrl: 'https://api.open-meteo.com/v1/forecast',
+    tomtomIncidentsUrl: 'https://api.tomtom.com/traffic/services/5/incidentDetails',
+    tomtomFlowTiles: 'https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png',
     demand: { min: 3000, max: 20000, step: 500, def: 8000 },
   };
 
@@ -172,8 +175,8 @@
   NX.esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const SRC = {
-    osm: ['OpenStreetMap', 'b-osm'], tomtom: ['TomTom', 'b-tt'], hisob: ['Hisob', 'b-calc'],
-    bashorat: ['Bashorat', 'b-pred'], ai: ['AI', 'b-ai'],
+    osm: ['OpenStreetMap', 'b-osm'], tomtom: ['TomTom · real', 'b-tt'], hisob: ['Hisob', 'b-calc'],
+    bashorat: ['Taxmin', 'b-pred'], ai: ['AI', 'b-ai'], meteo: ['Open-Meteo · real', 'b-osm'],
   };
   NX.badge = k => `<span class="badge ${SRC[k][1]}" title="Manba: ${SRC[k][0]}">${SRC[k][0]}</span>`;
 

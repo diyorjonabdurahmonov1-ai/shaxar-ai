@@ -340,3 +340,12 @@ details.pgroup .pill { margin-left: auto; }
   .nx-legend b { width: 100%; font-size: .72rem; }
   .nx-legend small { display: none; }
 }
+
+/* ---------- Ob-havo ---------- */
+.wx { display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; }
+.wx-ico { font-size: 2rem; line-height: 1; }
+.wx div { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.wx small { color: var(--muted); font-size: .78rem; }
+.status-line span { width: 100%; font-size: .9rem; }
+.pmk.inc span { background: #fff1f2; }
+@media (max-width: 820px) { .leaflet-bottom.leaflet-left .nx-legend { margin-bottom: 26px; } }

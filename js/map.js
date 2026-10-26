@@ -10,7 +10,7 @@
   let wayLines = [];         // har bir yoʻl uchun polyline
   let selected = null, selLayer = null, routeHi = null, deltaLayer = null;
   let colorMode = { mode: 'now' };
-  let forcedProblems = false, hoverId = null;
+  let forcedProblems = false, hoverId = null, realTiles = null, tilesTs = null;
   const probMarkers = new Map();
   // Odatiy holatda xarita toza: faqat koʻchalar (tirbandlik rangida)
   const vis = NX.store.get('layers2', { traffic: true, routes: false, stops: false, problems: false, schools: false });
@@ -29,6 +29,7 @@
     L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
     map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
     ['traffic', 'routes', 'stops', 'problems', 'schools'].forEach(k => (L_[k] = L.layerGroup()));
+    L_.incidents = L.layerGroup().addTo(map);
     L_.hover = L.layerGroup().addTo(map);
     L_.hl = L.layerGroup().addTo(map);
     addSearch();
@@ -115,10 +116,11 @@
     } else if (!vis.traffic) {
       legendEl.innerHTML = '';
     } else if (colorMode.mode === 'forecast') {
-      legendEl.innerHTML = `<b>Bashorat: ${NX.days[colorMode.d]}, ${NX.fmt.hour(colorMode.h)} ${NX.badge('bashorat')}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Oʻrtacha')}${sw(COL.red, 'Tirband')}`;
+      legendEl.innerHTML = `<b>Taxmin: ${NX.days[colorMode.d]}, ${NX.fmt.hour(colorMode.h)}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}`;
+    } else if (realTiles) {
+      legendEl.innerHTML = `<b>Hozirgi tirbandlik</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Sekin')}${sw(COL.red, 'Tirband')}<small>TomTom, real vaqt · ${tilesTs ? NX.fmt.time(tilesTs).slice(-5) : ''}</small>`;
     } else {
-      const measured = M && M.streets.some(s => fresh(s));
-      legendEl.innerHTML = `<b>Hozir, ${NX.fmt.hour(new Date().getHours())}</b>${sw(COL.green, 'Erkin')}${sw(COL.amber, 'Oʻrtacha')}${sw(COL.red, 'Tirband')}<small>${measured ? 'Qalin — TomTom oʻlchovi, xira — bashorat' : 'Soatbay bashorat (TomTom kaliti bilan — real oʻlchov)'}</small>`;
+      legendEl.innerHTML = `<b>Real tirbandlik ulanmagan</b><small>TomTom kaliti kiritilsa, koʻchalar real vaqtda boʻyaladi</small>`;
     }
     legendEl.style.display = legendEl.innerHTML ? '' : 'none';
   }
@@ -143,9 +145,9 @@
       const p = NX.forecast.predict(s, colorMode.d, colorMode.h);
       return { color: col(p.value, 15, 30), weight: H.w, opacity: p.low ? 0.65 : 0.95 };
     }
+    if (realTiles) return { color: '#0f172a', weight: H.w + 2, opacity: 0.04 };
     if (fresh(s)) return { color: col(s.tomtom.congestion, 15, 30), weight: H.w + 2, opacity: 1 };
-    const now = new Date(), p = NX.forecast.predict(s, now.getDay(), now.getHours());
-    return { color: col(p.value, 15, 30), weight: H.w, opacity: 0.6 };
+    return { color: COL.grey, weight: H.w * 0.8, opacity: 0.5 };
   }
 
   function setModel(model) {
@@ -219,6 +221,29 @@
     });
   }
 
+  // TomTom real vaqt tirbandlik plitalari (butun shahar, har 2 daqiqada yangilanadi)
+  function setRealTraffic(url) {
+    if (!url) { if (realTiles) { map.removeLayer(realTiles); realTiles = null; restyle(); updateLegend(); } return; }
+    if (!realTiles) {
+      realTiles = L.tileLayer(url, { maxZoom: 19, opacity: 0.95, zIndex: 5, attribution: 'Tirbandlik &copy; TomTom' }).addTo(map);
+      realTiles.on('tileerror', () => { if (h.onTilesError) h.onTilesError(); });
+      restyle();
+    } else realTiles.setUrl(url);
+    tilesTs = Date.now();
+    updateLegend();
+  }
+
+  // Yoʻl hodisalari (avariya, taʼmir, yopiq yoʻl) — real vaqt
+  function setIncidents(list) {
+    L_.incidents.clearLayers();
+    (list || []).forEach(it => {
+      if (it.line.length > 1) L.polyline(it.line, { renderer, color: COL.red, weight: 5, opacity: 0.55, dashArray: '6 6', interactive: false }).addTo(L_.incidents);
+      const icon = L.divIcon({ className: 'pmk inc', html: `<span style="--c:#dc2626">${it.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] });
+      const where = [it.from, it.to].filter(Boolean).join(' → ');
+      L.marker([it.lat, it.lon], { icon, title: it.name, zIndexOffset: 500 }).bindPopup(`<div class="ppop"><b>${it.icon} ${NX.esc(it.name)}</b>${where ? `<div>${NX.esc(where)}</div>` : ''}<p>${it.delay ? `Kechikish: <b>+${Math.max(1, Math.round(it.delay / 60))} daqiqa</b>` : NX.esc(it.magText)}${it.start ? `<br>Boshlangan: ${NX.fmt.time(Date.parse(it.start))}` : ''}</p>${NX.badge('tomtom')}</div>`, { maxWidth: 240 }).addTo(L_.incidents);
+    });
+  }
+
   function showProblems(on) { forcedProblems = on; applyVis('problems'); }
 
   function focusProblem(p) {
@@ -282,7 +307,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

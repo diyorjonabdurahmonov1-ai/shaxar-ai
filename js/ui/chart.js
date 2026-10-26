@@ -21,7 +21,7 @@
     const day = opts.dayBreaks ? opts.dayBreaks.map(i => `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H - B}" class="ch-day"/>`).join('') : '';
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${NX.esc(opts.title || 'Tirbandlik bashorati')}">
       ${grid.join('')}${thr}${day}<path d="${band}" class="ch-band"/>${now}<path d="${line}" class="ch-line"/>${dots}${xl}
-      </svg><p class="ch-cap">Gorizontal oʻq — soat, vertikal — tirbandlik (%). Soyali soha — ishonch oraligʻi; ochiq nuqtalar — maʼlumot kam.</p>`;
+      </svg><p class="ch-cap">Pastda — soat, chapda — tirbandlik. Yuqoriroq — tirbandroq.</p>`;
   }
 
   // Oddiy gorizontal ustunlar

@@ -14,9 +14,10 @@
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
     calib: null, calibBusy: null, load: null,
-    live: { last: null, next: null, busy: null, cursor: 0, err: null },
+    live: { last: null, next: null, busy: null, err: null },
+    weather: null, incidents: null,
   };
-  const LIVE_EVERY = 10 * 60 * 1000, LIVE_BATCH = 4;
+  const LIVE_EVERY = 5 * 60 * 1000;
   NX.state = S;
 
   function clampDemand(v) { const c = NX.config.demand; v = +v; return isFinite(v) ? Math.max(c.min, Math.min(40000, Math.round(v / c.step) * c.step)) : c.def; }
@@ -110,7 +111,7 @@
 
   function setTab(t) {
     // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
-    if (t === 'forecast' && S.tab !== 'forecast') NX.map.clearDeltas(false);
+    if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.map.clearDeltas(false);
     S.tab = t;
     if (t !== 'routes') { if (S.route != null) NX.map.highlightRoute(null); S.route = null; }
     render();
@@ -126,6 +127,9 @@
     S.tab = 'map'; S.street = id; S.measureErr = null;
     NX.map.selectStreet(id);
     render(); focusPanel();
+    // Kalit boʻlsa — koʻcha ochilganda real holati avtomatik oʻlchanadi (10 daqiqadan eski boʻlsa)
+    const s = S.model.streets[id];
+    if (NX.tomtom.key() && !S.measuring && (!s.tomtom || Date.now() - s.tomtom.ts > 10 * 60 * 1000)) measure(id);
   }
 
   // ---------- Simulyatsiya ----------
@@ -162,14 +166,14 @@
     let lv = 0; const why = [];
     const up = x => { lv = Math.max(lv, x); };
     const tt = r.ttChangePct;
-    if (tt > 8) { up(2); why.push(`Umumiy yoʻl vaqti ${F.signed(tt, 1)}% ga oshadi (chegara: 8%).`); }
-    else if (tt > 2) { up(1); why.push(`Umumiy yoʻl vaqti ${F.signed(tt, 1)}% ga oshadi.`); }
-    else why.push(`Umumiy yoʻl vaqti oʻzgarishi ${F.signed(tt, 1)}% — ${tt < -0.5 ? 'ijobiy' : 'sezilarli emas'}.`);
-    if (r.overloadedCount >= 3) { up(2); why.push(`${r.overloadedCount} ta koʻcha sigʻimidan oshib ketadi (V/C > 1).`); }
-    else if (r.overloadedCount >= 1) { up(1); why.push(`${r.overloadedCount} ta koʻcha sigʻimidan oshib ketadi (V/C > 1).`); }
-    if (r.relievedCount) why.push(`${r.relievedCount} ta koʻchada ortiqcha yuklama yoʻqoladi.`);
+    if (tt > 8) { up(2); why.push(`Hammaning yoʻlda yuradigan vaqti ${F.num(tt, 1)}% ga koʻpayadi — bu juda koʻp.`); }
+    else if (tt > 2) { up(1); why.push(`Hammaning yoʻlda yuradigan vaqti ${F.num(tt, 1)}% ga koʻpayadi.`); }
+    else why.push(tt < -0.5 ? `Yoʻlda yuradigan vaqt ${F.num(-tt, 1)}% ga kamayadi.` : 'Yoʻlda yuradigan vaqt deyarli oʻzgarmaydi.');
+    if (r.overloadedCount >= 3) { up(2); why.push(`${r.overloadedCount} ta koʻchaga mashinalar sigʻmay qoladi.`); }
+    else if (r.overloadedCount >= 1) { up(1); why.push(`${r.overloadedCount} ta koʻchaga mashinalar sigʻmay qoladi.`); }
+    if (r.relievedCount) why.push(`${r.relievedCount} ta koʻchada tirbandlik yoʻqoladi.`);
     const dUn = r.scen.unassigned - r.base.unassigned * (r.scen.demand / Math.max(1, r.base.demand));
-    if (dUn > 0.01 * r.scen.demand) { up(2); why.push(`Tarmoq bogʻlanishi buziladi: ${F.int(dUn)} reys/soat manziliga yeta olmaydi.`); }
+    if (dUn > 0.01 * r.scen.demand) { up(2); why.push(`Ayrim joylarga mashinada borib boʻlmay qoladi (soatiga ${F.int(dUn)} ta safar).`); }
     const lines = linesToReroute(s, type, dirSign);
     if (lines.length >= 3) { up(1); why.push(`${lines.length} ta avtobus liniyasi yoʻnalishini oʻzgartirishi kerak.`); }
     else if (lines.length) why.push(`${lines.length} ta avtobus liniyasi yoʻnalishini oʻzgartirishi kerak.`);
@@ -178,7 +182,7 @@
       else { up(1); why.push('Bu koʻchada avtobus liniyasi yoʻq — alohida polosa foyda bermaydi.'); }
       if ((r.notes || []).includes('single-lane')) { up(1); why.push('Koʻchada har tomonga 1 polosa: polosa ajratilsa avtomobillar sigʻimi ikki baravar kamayadi.'); }
     }
-    if (r.target && sc.type !== 'close' && r.target.scenVC > 1.1) { up(1); why.push(`Koʻchaning oʻzida V/C ${F.num(r.target.scenVC, 2)} ga yetadi.`); }
+    if (r.target && sc.type !== 'close' && r.target.scenVC > 1.1) { up(1); why.push(`Bu koʻchaning oʻzi ham sigʻmay qoladi (${F.pct(r.target.scenVC * 100)} toʻladi).`); }
     const labels = sc.type === 'demand' ? ['Tarmoq bardosh beradi', 'Chegarada', 'Tarmoq bardosh bermaydi'] : ['Mos keladi', 'Ehtiyotkorlik bilan', 'Tavsiya etilmaydi'];
     return { level: lv, label: labels[lv], reasons: why, busLines: lines };
   }
@@ -260,8 +264,8 @@
     render();
   }
 
-  // ---------- Jonli kuzatuv: har 10 daqiqada qayta tahlil ----------
-  let liveTimer = null, lastHour = new Date().getHours();
+  // ---------- Jonli kuzatuv: har 5 daqiqada real maʼlumot (ob-havo, tirbandlik, yoʻl hodisalari) ----------
+  let liveTimer = null;
   function startLive() {
     S.live.next = Date.now();
     if (!liveTimer) liveTimer = setInterval(liveTick, 30000);
@@ -269,33 +273,27 @@
   }
   function liveTick() {
     if (!S.model || document.hidden) return;
-    const h = new Date().getHours();
-    if (h !== lastHour) { lastHour = h; NX.map.restyle(); NX.map.updateLegend(); }
     if (Date.now() >= S.live.next && !S.live.busy) liveCycle();
-    else renderLive();
   }
-  const renderLive = () => { if (S.tab === 'problems') swap('.live', V.problems(S)); };
+  const renderLive = () => { if (S.tab === 'problems' || (S.tab === 'map' && S.street == null)) swap('.live', V.nowCard(S)); };
   async function liveCycle() {
     const M = S.model;
-    S.live.err = null;
-    if (NX.tomtom.key()) {
-      const list = V.mainStreets(M);
-      for (let k = 0; k < Math.min(LIVE_BATCH, list.length); k++) {
-        const s = list[(S.live.cursor + k) % list.length];
-        S.live.busy = `TomTom oʻlchamoqda: ${s.name} (${k + 1}/${Math.min(LIVE_BATCH, list.length)})`;
-        renderLive();
-        try { s.tomtom = await NX.tomtom.measureStreet(s, M); } catch (e) {
-          S.live.err = e.message;
-          if (e.status === 401 || e.status === 403 || e.status === 429 || e.noKey) break;
-        }
-        if (S.model !== M) return;
-      }
-      S.live.cursor = (S.live.cursor + LIVE_BATCH) % Math.max(1, list.length);
-    }
+    S.live.busy = 'Yangilanmoqda…'; renderLive();
+    // TomTom kvotasini tejash: butun shahar uchun bitta plita qatlami + bitta hodisalar soʻrovi
+    NX.map.setRealTraffic(NX.tomtom.flowTileUrl());
+    const jobs = [
+      NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
+    ];
+    if (NX.tomtom.key()) jobs.push(NX.tomtom.incidents().then(list => { S.incidents = { list, ts: Date.now() }; NX.map.setIncidents(list); }).catch(e => { S.incidents = { err: e.message }; }));
+    else { S.incidents = null; NX.map.setIncidents([]); }
+    await Promise.all(jobs);
+    if (S.model !== M) return;
     NX.analysis.refresh(M); NX.map.restyle(); NX.map.drawProblems(); NX.map.updateLegend();
     S.live.busy = null; S.live.last = Date.now(); S.live.next = Date.now() + LIVE_EVERY;
-    if (S.tab === 'problems') render(); else renderLive();
+    renderLive();
   }
+  // Kalit oʻzgarganda darhol yangilash
+  function refreshLiveNow() { S.live.next = 0; liveTick(); }
 
   // ---------- AI ----------
   async function askAI(q) {
@@ -381,7 +379,7 @@
       NX.store.set('key:tomtom', $('#keyTomtom').value.trim());
       NX.store.set('key:openai', $('#keyOpenai').value.trim());
       closeSettings(); toast('Sozlamalar saqlandi (faqat shu brauzerda).', 'ok');
-      if (S.model) render();
+      if (S.model) { render(); refreshLiveNow(); }
     });
     $('#btnCloseSettings').addEventListener('click', closeSettings);
     $('#btnClearCache').addEventListener('click', () => { NX.osm.clearCache(); toast('OSM keshi tozalandi. “Yangilash” bilan qayta yuklang.', 'ok'); });
@@ -412,6 +410,11 @@
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
+        case 'incident': {
+          const it = S.incidents && S.incidents.list && S.incidents.list.find(x => x.id === b.dataset.id);
+          if (it) { NX.map.flyTo(it.lat, it.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+          break;
+        }
         case 'settings': openSettings('tomtom'); break;
         case 'route':
           if (id == null) break;

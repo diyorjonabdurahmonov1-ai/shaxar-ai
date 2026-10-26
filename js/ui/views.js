@@ -5,7 +5,7 @@
   const E = NX.esc, F = NX.fmt, B = NX.badge;
 
   const COST = { stop: 35e6, signal: 600e6, crossing: 20e6, schoolCrossing: 80e6, signalOpt: 30e6 };
-  const DISCLAIMER = 'Bu soddalashtirilgan model bashorati; aniq natija uchun chorraha sanogʻi bilan kalibrlash kerak.';
+  const DISCLAIMER = 'Bu taxminiy hisob. Aniq natija uchun chorrahalarda mashinalarni sanash kerak.';
   const VERDICT_CLS = ['ok', 'warn', 'bad'];
 
   const refBadges = (M, refs, routesSet) => {
@@ -40,9 +40,9 @@
       .sort((a, b) => NX.PROBLEM[b.t].weight - NX.PROBLEM[a.t].weight);
     const ixWord = ix.value == null ? '' : ix.value >= 70 ? 'yaxshi' : ix.value >= 45 ? 'oʻrtacha' : 'past';
     return `
+    ${nowCard(S)}
     <section class="card hint-card">
-      <b>Qanday boshlash kerak?</b>
-      <p class="small">Xaritada istalgan <b>koʻchani bosing</b> — keyin “Bu koʻchaga nima qilmoqchisiz?” tugmalaridan birini tanlang. Dastur oqibatini hisoblab beradi.</p>
+      <p class="small"><b>Koʻchani bosing</b> yoki xaritadagi qidiruvga nomini yozing — uning hozirgi holatini koʻrasiz va “nima boʻladi?” deb sinab koʻrasiz.</p>
     </section>
     <section class="card index-card">
       <div class="ring" style="--v:${ix.value || 0}"><b>${ix.value != null ? ix.value : '—'}</b><small>/100</small></div>
@@ -114,14 +114,17 @@
     const tt = s.tomtom;
     const dir = s.oneway === 'yes' ? 'bir tomonlama' : s.oneway === 'mixed' ? 'qisman bir tomonlama' : 'ikki tomonlama';
     const bits = [dir, F.km(s.length), s.busRefs.length ? plural(s.busRefs.length, 'avtobus liniyasi') : 'avtobus yoʻq', plural(s.stops.length, 'bekat')];
+    const hasKey = !!NX.tomtom.key();
     const status = tt
-      ? `<div class="status-line ${congCls(tt.congestion)}"><b>Hozir: ${trafficWord(tt.congestion)}</b> — tirbandlik ${F.pct(tt.congestion)} ${B('tomtom')}<small>${F.time(tt.ts)}</small></div>`
-      : `<div class="status-line ${s.risk.value < 35 ? 'g' : s.risk.value < 60 ? 'a' : 'r'}"><b>Tirbandlik xavfi: ${riskWord(s.risk.value)}</b> ${B('hisob')}<small>taxmin, oʻlchov emas</small></div>`;
+      ? `<div class="status-line ${congCls(tt.congestion)}"><b>Hozir: ${trafficWord(tt.congestion)}</b> ${B('tomtom')}
+          <span>${E(speedLine(tt))}${tt.freeFlowSpeed ? ` (odatda ${F.num(tt.freeFlowSpeed, 0)} km/soat)` : ''}</span>
+          ${tt.delay >= 30 ? `<span>Kechikish: <b>+${Math.round(tt.delay / 60) || 1} daqiqa</b></span>` : ''}<small>Oʻlchandi: ${ago(tt.ts)}</small></div>`
+      : `<div class="status-line"><b>Hozirgi holat nomaʼlum</b><small>${hasKey ? 'Pastdagi tugma bilan oʻlchang.' : 'Real maʼlumot uchun TomTom kaliti kerak.'}</small></div>`;
     return `<section class="card">
       <h2>${streetName(s)}</h2>
       <p class="muted">${E(NX.HW[s.hw].uz)} · ${bits.join(' · ')} ${B('osm')}</p>
       ${status}
-      <div class="row-btns"><button class="btn sm" data-act="measure" data-id="${s.id}" ${S.measuring ? 'disabled' : ''}>${S.measuring === s.id ? 'Oʻlchanmoqda…' : tt ? 'Qayta oʻlchash' : 'Hozirgi tirbandlikni oʻlchash'}</button></div>
+      <div class="row-btns">${hasKey ? `<button class="btn sm" data-act="measure" data-id="${s.id}" ${S.measuring ? 'disabled' : ''}>${S.measuring === s.id ? 'Oʻlchanmoqda…' : tt ? 'Yangilash' : 'Hozir oʻlchash'}</button>` : '<button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>'}</div>
       ${S.measureErr ? `<p class="alert">${E(S.measureErr)}</p>` : ''}
     </section>`;
   }
@@ -131,15 +134,14 @@
     const stopNames = [...new Set(s.stops.map(x => x.name).filter(Boolean))];
     return `<details class="card more-card"><summary>Batafsil maʼlumot ${B('osm')}</summary>
       <dl class="facts">
-        <dt>Polosalar</dt><dd>${s.lanes ? s.lanes : `belgilanmagan (modelda ${s.lanesPerDir} ta/tomon)`}</dd>
+        <dt>Polosalar</dt><dd>${s.lanes ? s.lanes : 'xaritada belgilanmagan'}</dd>
         <dt>Tezlik chegarasi</dt><dd>${s.maxspeed ? s.maxspeed + ' km/soat' : 'belgilanmagan'}</dd>
         <dt>Avtobus liniyalari</dt><dd class="refs">${refBadges(M, s.busRefs, s.routes)}</dd>
         <dt>Bekatlar</dt><dd>${s.stops.length}${stopNames.length ? ` — ${E(stopNames.slice(0, 6).join(', '))}${stopNames.length > 6 ? '…' : ''}` : ''}</dd>
         <dt>Svetoforlar</dt><dd>${s.signals.length} (${F.num(s.signals.length / Math.max(km, 0.01), 1)}/km)</dd>
         <dt>Piyoda oʻtishlar</dt><dd>${s.crossings.length}</dd>
         <dt>Yaqin maktab/bogʻcha</dt><dd>${s.schools.length ? s.schools.map(o => E(o.name || (o.kind === 'kindergarten' ? 'Bogʻcha' : 'Maktab')) + (o.safe ? '' : ' <span class="tag r">xavfsiz oʻtish yoʻq</span>')).join('<br>') : '0'}</dd>
-        ${tt ? `<dt>TomTom</dt><dd>${F.num(tt.currentSpeed, 0)} / ${F.num(tt.freeFlowSpeed, 0)} km/soat (joriy / erkin) ${B('tomtom')}</dd>` : ''}
-        <dt>Xavf indeksi</dt><dd>${s.risk.value}/100 ${B('hisob')}<br><small class="muted">turi ${rp.turi} + avtobus ${rp.avtobus} + svetofor ${F.num(rp.svetofor, 0)} + polosa ${rp.polosa} + bekat ${F.num(rp.bekat, 0)}</small></dd>
+        <dt>Tirbandlik xavfi</dt><dd>${riskWord(s.risk.value)} (${s.risk.value}/100) ${B('hisob')}<br><small class="muted">Koʻcha turi, avtobuslar, svetofor va bekatlar soniga qarab baholangan. Bu oʻlchov emas.</small></dd>
       </dl></details>`;
   }
 
@@ -148,10 +150,10 @@
     const peak = fc.reduce((a, b) => (b.value > a.value ? b : a)), calm = fc.reduce((a, b) => (b.value < a.value ? b : a));
     const low = fc.some(p => p.low);
     return `<section class="card">
-      <h3>${title || 'Kun davomida qanday boʻladi?'} ${B('bashorat')}</h3>
-      <p>Eng tirband vaqt — <b>${peak.label}</b> (~${F.num(peak.value, 0)}%), eng boʻsh — <b>${calm.label}</b>.</p>
+      <h3>${title || 'Odatda qachon tirband?'} ${B('bashorat')}</h3>
+      <p>Eng tirband — <b>${peak.label}</b> atrofida, eng boʻsh — <b>${calm.label}</b>.</p>
       ${NX.chart.forecastChart(fc, { now: 0, title: 'Keyingi 24 soat' })}
-      ${low ? '<p class="lowconf">maʼlumot kam → ishonch past</p><p class="muted small">TomTom oʻlchovlari hali kam, shuning uchun bu tipik shahar kunining taxmini. Turli soatlarda “oʻlchash”ni bossangiz, bashorat aniqlashadi.</p>' : ''}
+      ${low ? '<p class="lowconf">Bu taxmin: real oʻlchovlar hali kam.</p><p class="muted small">Koʻcha har gal oʻlchanganda natija saqlanadi va taxmin real maʼlumotga yaqinlashadi.</p>' : '<p class="muted small ok-text">Shu koʻchaning real TomTom oʻlchovlari asosida.</p>'}
     </section>`;
   }
 
@@ -215,15 +217,15 @@
     if (better.length) items.push(`<li class="down">Yengillashadi: ${better.map(x => `<b>${nm(x)}</b> (${F.signed(x.dv)})`).join(', ')}.</li>`);
     if (r.overloadedCount) items.push(`<li class="up">${plural(r.overloadedCount, 'koʻcha')} sigʻimidan oshib ketadi.</li>`);
     if (v.busLines.length) items.push(`<li>Avtobus liniyalari yoʻnalishini oʻzgartiradi: <b>${v.busLines.map(E).join(', ')}</b>.</li>`);
-    const row = x => `<tr><td>${nm(x)}</td><td class="n">${F.int(x.baseVol)}</td><td class="n">${F.int(x.scenVol)}</td><td class="n ${x.dv > 0 ? 'up' : 'down'}">${F.signed(x.dv)}</td><td class="n">${F.num(x.baseVC, 2)}→${F.num(x.scenVC, 2)}</td></tr>`;
+    const row = x => `<tr><td>${nm(x)}</td><td class="n">${F.int(x.baseVol)}</td><td class="n">${F.int(x.scenVol)}</td><td class="n ${x.dv > 0 ? 'up' : 'down'}">${F.signed(x.dv)}</td><td class="n">${F.pct(x.baseVC * 100)}→${F.pct(x.scenVC * 100)}</td></tr>`;
     return `<div class="sim">
       <div class="verdict ${VERDICT_CLS[v.level]}"><b>${E(v.label)}</b><span>${E(last.label)}</span></div>
       <ul class="simple">${items.join('')}</ul>
       <p class="muted small">Xaritada: <span class="sw r"></span> qizil — yuklama oshadi, <span class="sw g"></span> yashil — kamayadi.</p>
       <details class="more"><summary>Batafsil (jadval va sabablar)</summary>
         <ul class="reasons">${v.reasons.map(x => `<li>${E(x)}</li>`).join('')}</ul>
-        ${r.affected.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Oldin</th><th class="n">Keyin</th><th class="n">Δ</th><th class="n">V/C</th></tr></thead><tbody>${r.affected.map(row).join('')}</tbody></table></div>` : ''}
-        <p class="muted small">Hajm — mashina/soat (ikki yoʻnalish yigʻindisi). V/C — yuklama/sigʻim; 1 dan katta — tirbandlik. Talab ${F.int(last.demand)} safar/soat; tarmoq ${S.simInfo ? `${F.int(S.simInfo.nodes)} tugun, ${S.simInfo.zones} zona` : ''}; ${last.iters} iteratsiya.</p>
+        ${r.affected.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Oldin</th><th class="n">Keyin</th><th class="n">Farq</th><th class="n">Toʻlishi</th></tr></thead><tbody>${r.affected.map(row).join('')}</tbody></table></div>` : ''}
+        <p class="muted small">Raqamlar — bir soatda oʻtadigan mashinalar soni. “Toʻlishi” 100% dan oshsa — koʻcha sigʻmaydi, tirbandlik boʻladi.</p>
       </details>
       <p class="disclaimer">${E(DISCLAIMER)}</p>
       <div class="row-btns"><button class="btn sm" data-act="show-sim">Xaritada koʻrsatish</button><button class="btn sm" data-act="clear-sim">Xaritadan olib tashlash</button></div>
@@ -231,25 +233,45 @@
   }
 
   // ---------- Muammolar (jonli kuzatuv + oddiy tilda yechimlar) ----------
-  function liveCard(S) {
-    const M = S.model, L = S.live, now = new Date();
+  // ---------- “Hozir Samarqandda”: faqat real maʼlumot (ob-havo, tirbandlik, yoʻl hodisalari) ----------
+  const ago = ts => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'hozirgina' : m < 60 ? `${m} daqiqa oldin` : F.time(ts).slice(-5); };
+  function speedLine(t) {
+    const ratio = t.currentSpeed > 0 ? t.freeFlowSpeed / t.currentSpeed : null;
+    if (t.closed) return 'Yoʻl yopiq';
+    if (!ratio || ratio < 1.15) return `${F.num(t.currentSpeed, 0)} km/soat — odatdagidek`;
+    return `${F.num(t.currentSpeed, 0)} km/soat — odatdagidan ${F.num(ratio, 1)} baravar sekin`;
+  }
+  function nowCard(S) {
+    const M = S.model, L = S.live, W = S.weather, inc = S.incidents;
     const hasKey = !!NX.tomtom.key();
     const freshMs = 45 * 60 * 1000;
     const measured = M.streets.filter(s => s.tomtom && Date.now() - s.tomtom.ts < freshMs).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion);
-    const expected = M.namedStreets.filter(s => s.rank >= 4).map(s => ({ s, p: NX.forecast.predict(s, now.getDay(), now.getHours()) }))
-      .sort((a, b) => b.p.value - a.p.value).slice(0, 4);
-    const nextMin = L.next ? Math.max(0, Math.round((L.next - Date.now()) / 60000)) : null;
-    const line = (s, v, src) => `<li><button class="link" data-act="street" data-id="${s.id}">${E(s.name || 'Nomsiz yoʻl')}</button><span class="tag ${congCls(v)}">${trafficWord(v)} · ${F.pct(v)}</span>${B(src)}</li>`;
+    let weather = '<p class="muted small">Ob-havo yuklanmoqda…</p>';
+    if (W && W.err) weather = `<p class="muted small">${E(W.err)}</p>`;
+    else if (W && W.data) {
+      const w = W.data, [t, ic] = NX.weather.codeText(w.code);
+      weather = `<div class="wx"><span class="wx-ico" aria-hidden="true">${ic}</span><div><b>${F.num(w.temp, 0)}°C · ${E(t)}</b>
+        <small>Shamol ${F.num(w.wind, 0)} km/soat${w.precip > 0 ? ` · yogʻin ${F.num(w.precip, 1)} mm` : ''} · ${w.stale ? 'oxirgi maʼlumot ' : ''}${ago(w.ts)}</small></div>${B('meteo')}</div>
+        <p class="small">${NX.weather.roadAdvice(w).map(E).join(' ')}</p>`;
+    }
+    let traffic;
+    if (!hasKey) traffic = `<p class="small"><b>Real tirbandlik ulanmagan.</b> TomTom kaliti kiritilsa, xarita real vaqtda boʻyaladi va avariya, yoʻl taʼmiri koʻrinadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`;
+    else {
+      const incList = inc && inc.list ? inc.list : null;
+      traffic = `<p class="small">Xaritadagi ranglar — <b>hozirgi real tirbandlik</b> (TomTom).</p>
+        ${measured.length ? `<ul class="live-list">${measured.slice(0, 4).map(s => `<li><button class="link" data-act="street" data-id="${s.id}">${E(s.name || 'Nomsiz yoʻl')}</button><span class="tag ${congCls(s.tomtom.congestion)}">${E(speedLine(s.tomtom))}</span></li>`).join('')}</ul>` : ''}
+        <h4>Yoʻl hodisalari ${B('tomtom')}</h4>
+        ${inc && inc.err ? `<p class="muted small">${E(inc.err)}</p>` : !incList ? '<p class="muted small">Yuklanmoqda…</p>' : !incList.length ? '<p class="small ok-text">Hozir hududda avariya, taʼmir yoki yopiq yoʻl qayd etilmagan.</p>'
+          : `<ul class="live-list">${incList.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → ') || '')}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>`}`;
+    }
     return `<section class="card live">
-      <div class="live-h"><span class="live-dot ${L.busy ? 'busy' : ''}" aria-hidden="true"></span><b>Jonli kuzatuv</b>
-        <small>${L.busy ? E(L.busy) : `Oxirgi tahlil: ${L.last ? F.time(L.last).slice(-5) : '—'}${nextMin != null ? ` · keyingisi ${nextMin} daqiqadan keyin` : ''}`}</small></div>
-      ${measured.length ? `<h4>Hozir eng tirband koʻchalar</h4><ul class="live-list">${measured.slice(0, 5).map(s => line(s, s.tomtom.congestion, 'tomtom')).join('')}</ul>` : ''}
-      ${!measured.length ? `<h4>Shu soatda (${F.hour(now.getHours())}) tirband boʻlishi kutilayotgan koʻchalar</h4><ul class="live-list">${expected.map(x => line(x.s, x.p.value, 'bashorat')).join('')}</ul>` : ''}
-      ${hasKey ? `<p class="muted small">Har 10 daqiqada ${LIVE_BATCH} ta asosiy koʻcha navbatma-navbat TomTom bilan oʻlchanadi va muammolar qayta hisoblanadi.</p>`
-        : `<p class="small">Hozircha bu <b>bashorat</b>. Real vaqtdagi tirbandlikni koʻrish uchun bepul TomTom kalitini kiriting — sayt koʻchalarni oʻzi oʻlchab turadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`}
+      <div class="live-h"><span class="live-dot ${L.busy ? 'busy' : ''}" aria-hidden="true"></span><b>Hozir Samarqandda</b>
+        <small>${L.busy ? E(L.busy) : `Yangilandi: ${L.last ? F.time(L.last).slice(-5) : '—'} · har 5 daqiqada avtomatik`}</small></div>
+      ${weather}
+      ${traffic}
     </section>`;
   }
-  const LIVE_BATCH = 4;
+
 
   function problems(S) {
     const M = S.model;
@@ -257,7 +279,7 @@
       .sort((a, b) => b.meta.weight - a.meta.weight);
     const total = groups.reduce((t, g) => t + g.items.length, 0);
     return `
-    ${liveCard(S)}
+    ${nowCard(S)}
     <section class="card">
       <h2>Shaharda nima muammo bor?</h2>
       <p class="small">${total ? `Tahlil <b>${groups.length} xil</b> muammoni topdi (${total} joyda). Eng muhimlari tepada. Joy nomini bossangiz, xaritada koʻrsatiladi.` : 'Qoidalar boʻyicha muammo topilmadi.'}</p>
@@ -361,9 +383,9 @@
 
   function calibView(S) {
     const c = S.calib;
-    return `<div class="calib"><p>Eng mos talab: <b>${F.int(c.best.demand)} reys/soat</b> (koeffitsient ×${F.num(c.best.factor, 2)}). Kalibrlash xatosi (RMSE): <b>±${F.num(c.best.rmse, 1)} foiz punkti</b>${c.base && c.base.rmse != null ? `; kalibrlashdan oldin ±${F.num(c.base.rmse, 1)}` : ''}.</p>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">TomTom</th><th class="n">Model</th></tr></thead><tbody>${c.best.rows.map(r => `<tr><td>${E(S.model.streets[r.street].name || 'nomsiz')}</td><td class="n">${F.pct(r.measured)}</td><td class="n">${F.pct(r.model)}</td></tr>`).join('')}</tbody></table></div>
-      ${c.best.rows.length < 5 ? '<p class="lowconf">Oʻlchovlar kam — kalibrlash ishonchi past.</p>' : ''}</div>`;
+    return `<div class="calib"><p>Model real TomTom oʻlchovlariga moslandi. Hozir model va real tirbandlik orasidagi oʻrtacha farq: <b>±${F.num(c.best.rmse, 0)}%</b>${c.base && c.base.rmse != null ? ` (oldin ±${F.num(c.base.rmse, 0)}%)` : ''}.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Real</th><th class="n">Model</th></tr></thead><tbody>${c.best.rows.map(r => `<tr><td>${E(S.model.streets[r.street].name || 'nomsiz')}</td><td class="n">${F.pct(r.measured)}</td><td class="n">${F.pct(r.model)}</td></tr>`).join('')}</tbody></table></div>
+      ${c.best.rows.length < 5 ? '<p class="lowconf">Oʻlchangan koʻchalar kam — koʻproq koʻchani oʻlchang.</p>' : ''}</div>`;
   }
 
   function mainStreets(M) {
@@ -448,22 +470,16 @@
   const bboxText = () => { const b = NX.config.bbox; return `${b.s}–${b.n} shm. k., ${b.w}–${b.e} shq. u.`; };
 
   function how() {
-    const R = NX.RULES;
     return `<section class="card" id="how">
       <h3>Qanday ishlaydi</h3>
       <div class="how small">
-        <p><b>Maʼlumot.</b> OpenStreetMap maʼlumoti brauzerda Overpass API’ning 4 ta serveriga parallel soʻrov bilan olinadi (birinchi javob qabul qilinadi, xato boʻlsa qayta urinadi) va brauzer xotirasida 24 soat saqlanadi — sekin internetda va oflaynda ham ishlaydi.</p>
-        <p><b>Koʻchalar.</b> OSM yoʻllari nomi boʻyicha koʻchalarga birlashtiriladi; tez qidirish uchun 60 m li fazoviy toʻr indeksi ishlatiladi. Koʻchadagi avtobus liniyasi — marshrut nuqtalari koʻchadan ${R.routeToStreet} m ichida (kamida ${R.routeMinSamples} nuqta) yoki marshrut aʼzosi shu koʻcha yoʻli boʻlsa.</p>
-        <p><b>Muammolar.</b> (1) Koʻchasi bor, lekin markazidan ${R.coverage} m ichida bekat yoʻq ${R.cell}×${R.cell} m kataklar; (2) bir liniyadagi ketma-ket bekatlar orasi ${R.spacingMax} m dan katta; (3) ikki yirik koʻcha (3-darajali va yuqori) kesishmasida ${R.junctionSignal} m ichida svetofor yoʻq; (4) maktab/bogʻchadan ${R.schoolSafe} m ichida piyoda oʻtish yoki svetofor yoʻq; (5) asosiy koʻchada 1 km ga ${R.crossingsPerKm} tadan kam oʻtish joyi; (6) TomTom tirbandligi ${R.congestion}% va undan yuqori.</p>
-        <p><b>Tirbandlik xavfi (taxmin).</b> Koʻcha turi (2–30) + avtobus liniyalari (×5, max 25) + svetofor/km (×3, max 15) + har tomonga 1 polosa (10) + bekat/km (×2, max 15). TomTom oʻlchovi boʻlsa, xaritada oʻlchov koʻrsatiladi.</p>
-        <p><b>Bashorat.</b> Har bir TomTom oʻlchovi {koʻcha, hafta kuni, soat, joriy tezlik, erkin tezlik} sifatida saqlanadi. Bashorat — shu kun va soatdagi namunalar oʻrtachasi. Namuna 3 tadan kam boʻlsa, tipik shahar profili (choʻqqilar 07:30–09:30 va 17:00–19:30; dam olish kunlari pastroq) koʻchaning xavf indeksiga koʻra masshtablanib aralashtiriladi; koʻchaning boshqa soatlardagi oʻlchovlari profilni koʻchaga moslaydi. Ishonch oraligʻi namunalar kam boʻlsa kengayadi.</p>
-        <p><b>“Agar…?” simulyatsiyasi.</b> OSM koʻchalaridan yoʻnaltirilgan graf quriladi (bir tomonlama harakat hisobga olinadi). Sigʻim — polosaga 900 avto/soat (polosa belgilanmagan boʻlsa, koʻcha turiga koʻra standart). Erkin tezlik — tezlik chegarasi yoki standart qiymatning 80%. Hudud 500×500 m zonalarga boʻlinadi; zona “ogʻirligi” koʻchalar uzunligi (asosiy koʻchalar koʻproq) va bekatlar soniga, markazga yaqinlik esa jalb qilishga bogʻliq; gravitatsion model reyslarni taqsimlaydi. Oqim MSA usulida (10 iteratsiya) foydalanuvchi muvozanatiga keltiriladi, vaqt BPR funksiyasi bilan: t = t₀·(1 + 0,15·(V/C)⁴). Hisob Web Worker’da bajariladi.</p>
-        <p><b>Xulosa qoidalari.</b> Umumiy yoʻl vaqti ≤ 2% oshsa va yangi haddan oshgan koʻcha boʻlmasa — “Mos keladi”; ≤ 8% va 1–2 koʻcha — “Ehtiyotkorlik bilan”; aks holda yoki tarmoq uzilsa — “Tavsiya etilmaydi”. 3 va undan koʻp avtobus liniyasi yoʻnalishini oʻzgartirish kerak boʻlsa, xulosa kamida “Ehtiyotkorlik bilan”.</p>
-        <p><b>Kalibrlash.</b> TomTom oʻlchangan koʻchalarda model tezlik nisbati (t₀/t) oʻlchangan nisbatga eng yaqin boʻladigan talab koeffitsienti tanlanadi va xatosi (RMSE) koʻrsatiladi.</p>
-        <p><b>Kelajakda.</b> Modullar alohida: <code>js/data</code> (yuklovchilar), <code>js/analysis</code>, <code>js/sim</code>, <code>js/map.js</code>, <code>js/ui</code>. Avtobus GPS maʼlumoti yoki chorraha sanoqlarini yangi yuklovchi sifatida qoʻshish mumkin.</p>
-        <p class="disclaimer">${E(DISCLAIMER)}</p>
+        <p><b>Real maʼlumot.</b> Koʻchalar, bekatlar, avtobus yoʻnalishlari, svetoforlar va maktablar — OpenStreetMap xaritasidan. Hozirgi tirbandlik va yoʻl hodisalari — TomTom’dan. Ob-havo — Open-Meteo’dan. Sayt bularni har 5 daqiqada yangilab turadi.</p>
+        <p><b>Muammolar.</b> Sayt xaritani tekshirib, quyidagilarni topadi: bekatdan 400 m dan uzoq hududlar; bekatlari 900 m dan uzoq yoʻnalishlar; svetoforsiz katta chorrahalar; yonida piyoda oʻtish joyi yoʻq maktab va bogʻchalar; oʻtish joylari kam katta koʻchalar; hozir 30% dan koʻproq sekinlashgan koʻchalar.</p>
+        <p><b>“Nima boʻladi?”</b> Koʻchani bir tomonlama qilsangiz yoki yopsangiz, mashinalar boshqa yoʻllarni tanlaydi. Sayt butun koʻcha tarmogʻida shuni hisoblab, qaysi koʻchalar yuklanishini koʻrsatadi. Bu — taxmin; aniq natija uchun chorrahalarda mashinalarni sanash kerak.</p>
+        <p><b>Taxmin (bashorat).</b> Koʻcha har gal oʻlchanganda natija saqlanadi. Oʻlchovlar koʻpaygan sari “odatda qachon tirband” degan taxmin real maʼlumotga asoslanadi. Oʻlchov kam boʻlsa, sayt buni ochiq yozadi.</p>
+        <p><b>Belgilar.</b> Har bir raqam yonida qayerdan olingani yozilgan: <i>real</i> — oʻlchangan, <i>Hisob</i> — xarita asosida sanalgan, <i>Taxmin</i> — oldindan baholangan.</p>
       </div></section>`;
   }
 
-  NX.views = { loading, error, home, problems, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, nowCard, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();
