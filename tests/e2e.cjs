@@ -56,6 +56,7 @@ async function clickStreet(page, name) {
   // Asosiy ekranda Yandex probkalar ochiq — tahlil xaritasiga oʻtiladi
   await page.evaluate(() => { if (NX.state.widgetOn) document.getElementById('btnYandex').click(); });
   await page.waitForFunction(() => document.getElementById('ymap').hidden);
+  await page.waitForTimeout(700); // oldingi xarita animatsiyasi tugashi
   const pt = await page.evaluate(n => {
     const M = NX.state.model, s = M.streets.find(x => x.name === n);
     const w = M.ways[s.ways[0]], ll = w.ll[Math.floor(w.ll.length / 2) - 1], ll2 = w.ll[Math.floor(w.ll.length / 2)];
@@ -130,8 +131,16 @@ async function clickStreet(page, name) {
   const close = await page.evaluate(() => { const l = NX.state.sim.last; return { v: l.verdict.label, tt: l.result.ttChangePct, target: l.result.target && Math.round(l.result.target.scenVol) }; });
   ok('Yopish stsenariysi: koʻchada hajm 0', close.target === 0, JSON.stringify(close));
 
+  // Ajratilgan koʻchani qayta bosish — ajratish olib tashlanadi
+  await clickStreet(page, 'Dagbitskiy koʻchasi');
+  await page.waitForTimeout(300);
+  ok('Ajratilgan koʻchani qayta bosish ajratishni olib tashlaydi', await page.evaluate(() => NX.state.street === null));
+  await clickStreet(page, 'Dagbitskiy koʻchasi');
+  await page.waitForFunction(() => NX.state.street !== null);
+  await page.keyboard.press('Escape');
+  ok('Esc tugmasi ham ajratishni olib tashlaydi', await page.evaluate(() => NX.state.street === null));
   // Registon: avtobus liniyalari teskari yoʻnalish
-  await page.click('[data-act=home]');
+  if (await page.$('[data-act=home]')) await page.click('[data-act=home]');
   await clickStreet(page, 'Registon koʻchasi');
   await page.waitForFunction(() => /Registon/.test(document.querySelector('#panel h2').textContent));
   const refs = await page.$$eval('.facts .refs .ref', e => e.map(x => x.textContent));
@@ -235,6 +244,18 @@ async function clickStreet(page, name) {
   await page.mouse.click(mb.x, mb.y);
   await page.waitForFunction(n => NX.state.model.signals.length === n + 1, nSig, { timeout: 10000 });
   ok('“➕ Belgilash” bilan svetofor qoʻshiladi va xaritada koʻrinadi', (await page.$$('.pmk.fixmk')).length >= 2);
+  // Roʻyxatdagi tugma bilan tuzatish (xaritadagi belgini qidirmasdan)
+  const nL = await page.evaluate(() => NX.state.model.problems.length);
+  await page.click('.locrow [data-act=fix][data-fix=dismiss]');
+  await page.waitForFunction(n => NX.state.model.problems.length < n, nL, { timeout: 10000 });
+  ok('Roʻyxatdagi “Muammo emas” tugmasi ishlaydi', await page.evaluate(() => NX.state.tab === 'problems'));
+  // Muammolar boʻlimida koʻchani bosish — “Xarita” boʻlimiga oʻtib ketmaydi, yaqin muammo ochiladi
+  await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().setView([p.lat, p.lon], 17, { animate: false }); });
+  await page.waitForTimeout(300);
+  const jc = await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); const pt = NX.map.leaflet().latLngToContainerPoint([p.lat + 0.0002, p.lon + 0.0002]); const r = document.getElementById('map').getBoundingClientRect(); return { x: r.left + pt.x, y: r.top + pt.y, id: p.id }; });
+  await page.evaluate(() => NX.map.leaflet().fire('click', { latlng: L.latLng(NX.state.model.problems.find(x => x.type === 'junction').lat + 0.0002, NX.state.model.problems.find(x => x.type === 'junction').lon + 0.0002) }));
+  await page.waitForTimeout(900);
+  ok('Muammolar boʻlimida xarita bosilsa boʻlim oʻzgarmaydi, yaqin muammo ochiladi', await page.evaluate(() => NX.state.tab === 'problems' && !!NX.state.focusPid) && !!(await page.$('.locrow.on')));
   await page.click('.tabs [data-tab=routes]');
   ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc):not(.fixmk)')).length === 0);
   // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari

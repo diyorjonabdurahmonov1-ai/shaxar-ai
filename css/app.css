@@ -309,7 +309,7 @@ details.pgroup .pill { margin-left: auto; }
 .nx-search li.empty { padding: 10px 12px; color: var(--muted); font-size: .85rem; }
 .leaflet-interactive { cursor: pointer; }
 .pmk { background: none; border: 0; }
-.pmk span { display: grid; place-content: center; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 2.5px solid var(--c); box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 15px; line-height: 1; }
+.pmk span { display: grid; place-content: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 2.5px solid var(--c); box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 17px; line-height: 1; cursor: pointer; }
 .pmk.pulse span { animation: ping 0.8s ease-out 3; }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 var(--c); } 100% { box-shadow: 0 0 0 16px transparent; } }
 .ppop p { margin: 6px 0; }
@@ -388,5 +388,12 @@ details.pgroup .pill { margin-left: auto; }
 .map-wrap.ya-on .leaflet-control-container .leaflet-control:not(.nx-search):not(.nx-mark):not(.nx-legend) { display: none !important; }
 .map-wrap.ya-on .leaflet-top, .map-wrap.ya-on .leaflet-bottom { z-index: 700; }
 .map-wrap.ya-on .leaflet-bottom.leaflet-left { bottom: 18px; }
-.ymk span { display: grid; place-content: center; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 2.5px solid var(--c); box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 15px; line-height: 1; cursor: pointer; }
+.ymk span { display: grid; place-content: center; width: 36px; height: 36px; border-radius: 50%; background: #fff; border: 2.5px solid var(--c); box-shadow: 0 1px 4px rgba(0,0,0,.25); font-size: 15px; line-height: 1; cursor: pointer; }
 .map-wrap.ya-on .leaflet-top.leaflet-left { top: 0; left: 50px; }
+
+/* Muammolar roʻyxati: har bir joy yonida tuzatish tugmalari */
+.locrow { border: 1px solid var(--border); border-radius: 12px; padding: 6px; display: grid; gap: 6px; }
+.locrow.on { border-color: var(--c, var(--accent)); background: var(--accent-soft); }
+.locrow .loc { border: 0; background: none; padding: 4px 4px; min-height: 36px; }
+.loc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.loc-acts .btn { flex: 1 1 auto; min-height: 40px; }

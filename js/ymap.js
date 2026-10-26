@@ -19,13 +19,14 @@
     return G[name];
   }
   function drop(name) { const map = Y(); if (map && G[name]) map.geoObjects.remove(G[name]); G[name] = null; }
-  const line = (ll, o) => new window.ymaps.Polyline(ll, {}, o);
+  // Chiziqlar odatda bosishni oʻtkazib yuboradi (“silent”) — ostidagi koʻchani yoki xaritani bosish mumkin boʻlsin
+  const line = (ll, o) => new window.ymaps.Polyline(ll, {}, Object.assign({ interactivityModel: 'default#silent' }, o));
   function iconLayout() {
     if (!layoutCache) layoutCache = window.ymaps.templateLayoutFactory.createClass('<div class="pmk ymk"><span style="--c:{{ properties.color }}">{{ properties.icon }}</span></div>');
     return layoutCache;
   }
   function mark(lat, lon, icon, color, html, hint, size) {
-    const r = (size || 30) / 2;
+    const r = (size || 34) / 2;
     return new window.ymaps.Placemark([lat, lon], { icon, color, balloonContent: html, hintContent: hint }, {
       iconLayout: iconLayout(), iconShape: { type: 'Circle', coordinates: [0, 0], radius: r }, iconOffset: [-r, -r], hideIconOnBalloonOpen: false,
     });
@@ -44,7 +45,9 @@
       const c = coll('sel');
       if (id == null) return;
       const lls = [];
-      M.streets[id].ways.forEach(i => { const ll = M.ways[i].ll; lls.push(...ll); c.add(line(ll, { strokeColor: '#06b6d4', strokeWidth: 8, strokeOpacity: 0.9 })); });
+      M.streets[id].ways.forEach(i => { const ll = M.ways[i].ll; lls.push(...ll); c.add(line(ll, { strokeColor: '#06b6d4', strokeWidth: 8, strokeOpacity: 0.9, interactivityModel: 'default#geoObject', cursor: 'pointer' })); });
+      // Ajratilgan koʻchani qayta bosish — ajratishni olib tashlash
+      if (c.events) c.events.add('click', () => { if (NX.view.onSelClick) NX.view.onSelClick(); });
       if (fit !== false) fitTo(lls, 17);
     },
     showDeltas(res, pcs) {
@@ -62,7 +65,7 @@
       const c = coll('prob');
       M.problems.forEach(p => {
         const meta = NX.PROBLEM[p.type];
-        c.add(mark(p.lat, p.lon, meta.icon, meta.color, NX.map.problemPopup(p), meta.short));
+        c.add(mark(p.lat, p.lon, meta.icon, meta.color, NX.map.problemPopup(p), meta.short, 38));
       });
       if (!showProb) Y().geoObjects.remove(c);
     },

@@ -274,6 +274,43 @@
     render();
   }
 
+  // ---------- Xaritani bosish: boʻlimga qarab ----------
+  function nearestProblem(lat, lon, r) {
+    const [x, y] = NX.geo.xy(lat, lon);
+    let best = null, bd = r;
+    S.model.problems.forEach(p => { const [px, py] = NX.geo.xy(p.lat, p.lon); const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = p; } });
+    return best;
+  }
+  function nearestStreet(lat, lon) {
+    const [x, y] = NX.geo.xy(lat, lon);
+    let best = null, bd = Infinity;
+    S.model.streetsNear(x, y, 40).forEach((d, id) => { if (d < bd) { bd = d; best = id; } });
+    return best;
+  }
+  function focusProblem(p) {
+    S.focusPid = p.id;
+    NX.view.focusProblem(p);
+    document.querySelectorAll('.locrow').forEach(li => li.classList.toggle('on', !!li.querySelector(`[data-id="${p.id}"]`)));
+    const row = document.querySelector(`.locrow [data-id="${p.id}"]`);
+    if (row && !window.matchMedia('(max-width: 820px)').matches) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function mapClick(lat, lon, streetId) {
+    if (!S.model) return;
+    // Muammolar boʻlimida — eng yaqin muammo ochiladi, boshqa boʻlimga oʻtib ketmaydi
+    if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) focusProblem(p); return; }
+    const id = streetId != null ? streetId : nearestStreet(lat, lon);
+    if (id == null) return;
+    if (S.tab === 'forecast') { S.fc.street = id; NX.view.selectStreet(id, false); render(); focusPanel(); return; }
+    // Ajratilgan koʻchani qayta bosish — ajratish olib tashlanadi
+    if (S.tab === 'map' && S.street === id) { clearStreet(); return; }
+    openStreet(id);
+  }
+  function clearStreet() {
+    S.street = null;
+    NX.view.selectStreet(null);
+    if (S.tab === 'map') render();
+  }
+
   // ---------- Xaritani oʻrgatish: tuzatishlar ----------
   function rebuildModel() {
     if (!S.raw) return;
@@ -323,13 +360,7 @@
       try {
         if (!NX.yandex.key() || NX.yandex.mode() === 'widget') throw new Error('kalit yoʻq');
         await NX.yandex.show([c.lat, c.lng], L.getZoom(), {
-          onClick: (lat, lon) => {
-            if (!S.model) return;
-            const [x, y] = NX.geo.xy(lat, lon);
-            let best = null, bd = Infinity;
-            S.model.streetsNear(x, y, 40).forEach((d, id) => { if (d < bd) { bd = d; best = id; } });
-            if (best != null) openStreet(best);
-          },
+          onClick: (lat, lon) => mapClick(lat, lon),
           onState: st => { S.yandexState = st; renderLive(); },
         });
         S.yandexMain = true;
@@ -505,17 +536,21 @@
       const M = S.model;
       switch (b.dataset.act) {
         case 'retry': loadData(!!(S.model || S.load === 'error')); break;
-        case 'home': S.street = null; NX.view.selectStreet(null); render(); break;
+        case 'home': clearStreet(); break;
         case 'street': if (id != null) { openStreet(id); } break;
         case 'problem': {
           const p = M.problems.find(x => x.id === b.dataset.id);
           if (!p) break;
           ensureLeaflet();
-          NX.view.focusProblem(p);
+          focusProblem(p);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
+        case 'fix':
+          onFix({ action: b.dataset.fix, pid: b.dataset.pid });
+          if (/^pick-/.test(b.dataset.fix) && window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
         case 'incident': {
           const it = S.incidents && S.incidents.list && S.incidents.list.find(x => x.id === b.dataset.id);
           if (it) { NX.view.flyTo(it.lat, it.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -585,22 +620,25 @@
     window.addEventListener('offline', () => toast('Internet uzildi — keshdagi maʼlumot bilan ishlash davom etadi.', 'warn'));
     window.addEventListener('online', () => toast('Internet tiklandi.', 'ok'));
     window.addEventListener('resize', () => NX.map.invalidate());
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) return;
+      NX.view.cancelPick();
+      if (S.street != null) clearStreet();
+    });
   }
 
   function start() {
     document.documentElement.dataset.theme = NX.store.get('theme', 'light');
     NX.map.init('map', {
-      onStreet: id => {
-        if (!S.model) return;
-        if (S.tab === 'forecast') { S.fc.street = id; NX.view.selectStreet(id, false); render(); focusPanel(); return; }
-        openStreet(id);
-      },
+      onStreet: (id, ll) => mapClick(ll ? ll.lat : null, ll ? ll.lng : null, id),
+      onMapClick: ll => { if (S.tab === 'problems') mapClick(ll.lat, ll.lng); },
       onFix: f => { if (S.model) onFix(f); },
       onRoute: i => { S.tab = 'routes'; S.route = i; NX.view.highlightRoute(i); render(); focusPanel(); },
     });
     bind();
     $('#btnYandex').addEventListener('click', toggleWidget);
     NX.view.onFix = f => { if (S.model) onFix(f); };
+    NX.view.onSelClick = () => { if (S.tab === 'map') clearStreet(); };
     loadData(false);
   }
 

@@ -291,11 +291,14 @@
     <section class="card">
       <h2>Shaharda nima muammo bor?</h2>
       <p class="small">${total ? `Tahlil <b>${groups.length} xil</b> muammoni topdi (${total} joyda). Eng muhimlari tepada. Joy nomini bossangiz, xaritada koʻrsatiladi.` : 'Qoidalar boʻyicha muammo topilmadi.'}</p>
-      <p class="small fix-hint">🎓 <b>Xarita notoʻgʻrimi?</b> Joyni bosing va <b>“Svetofor bor”</b> yoki <b>“Bu muammo emas”</b> tugmasini tanlang — muammo yoʻqoladi. Yangi svetofor, oʻtish joyi yoki bekatni xaritadagi <b>“➕ Belgilash”</b> tugmasi bilan qoʻshing.${M.dismissedCount ? ` <span class="muted">${M.dismissedCount} ta muammo foydalanuvchilar tomonidan yopilgan.</span>` : ''}</p>
+      <p class="small fix-hint">🎓 <b>Xarita notoʻgʻrimi?</b> Har bir joy yonidagi <b>“Svetofor bor”</b> yoki <b>“Muammo emas”</b> tugmasini bosing — muammo darhol yoʻqoladi. Joy nomini bossangiz, xaritada koʻrsatiladi; xaritada muammo yonini bossangiz ham ochiladi. Yangi svetofor, oʻtish joyi yoki bekatni xaritadagi <b>“➕ Belgilash”</b> tugmasi bilan qoʻshing.${M.dismissedCount ? ` <span class="muted">${M.dismissedCount} ta muammo foydalanuvchilar tomonidan yopilgan.</span>` : ''}</p>
     </section>
     ${groups.map(g => {
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
-      const list = g.items.map(p => `<li><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button></li>`);
+      // Har bir joy yonida darhol tuzatish tugmalari — xaritadagi kichik belgini qidirish shart emas
+      const FIX = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish joyi bor'], crossings: ['pick-crossing', '🚶 Joyini belgilash'], coverage: ['pick-stop', '🚏 Bekatni belgilash'] }[g.t];
+      const list = g.items.map(p => `<li class="locrow${S.focusPid === p.id ? ' on' : ''}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button>
+        <div class="loc-acts">${FIX ? `<button class="btn sm primary" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn sm" data-act="fix" data-fix="dismiss" data-pid="${p.id}">❌ Muammo emas</button></div></li>`);
       return `<section class="card prob" style="--c:${g.meta.color}">
         <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy</small></div></div>
         <p><b>Muammo:</b> ${E(g.meta.what)}</p>

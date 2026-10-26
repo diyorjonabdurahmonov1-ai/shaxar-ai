@@ -31,6 +31,8 @@
     ['traffic', 'routes', 'stops', 'problems', 'schools'].forEach(k => (L_[k] = L.layerGroup()));
     L_.incidents = L.layerGroup().addTo(map);
     L_.fixes = L.layerGroup().addTo(map);
+    // Boʻsh joyni bosish (masalan, “Muammolar” boʻlimida eng yaqin muammoni ochish)
+    map.on('click', e => { if (!picking && h.onMapClick) h.onMapClick(e.latlng); });
     // Popup ichidagi “Svetofor bor”, “Muammo emas” kabi tugmalar
     map.on('popupopen', e => {
       const el = e.popup.getElement();
@@ -228,7 +230,7 @@
     Object.values(L_).forEach(g => g.clearLayers());
     wayLines = M.ways.map(w => {
       const pl = L.polyline(w.ll, Object.assign({ renderer, bubblingMouseEvents: false }, styleFor(w)));
-      pl.on('click', () => h.onStreet && h.onStreet(w.street));
+      pl.on('click', e => h.onStreet && h.onStreet(w.street, e.latlng));
       pl.on('mouseover', () => hover(w.street));
       pl.on('mouseout', () => hover(null));
       pl.bindTooltip(() => (M.streets[w.street].name || 'Nomsiz yoʻl') + ' — bosing', { sticky: true, direction: 'top', opacity: 0.9 });
@@ -302,7 +304,7 @@
         const r = Math.sqrt((p.cluster.cells.length * cell * cell) / Math.PI);
         L.circle([p.lat, p.lon], { renderer, radius: Math.max(150, r), color: meta.color, weight: 1, dashArray: '4 4', fillOpacity: 0.08, interactive: false }).addTo(L_.problems);
       }
-      const icon = L.divIcon({ className: 'pmk', html: `<span style="--c:${meta.color}">${meta.icon}</span>`, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] });
+      const icon = L.divIcon({ className: 'pmk', html: `<span style="--c:${meta.color}">${meta.icon}</span>`, iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -16] });
       const mk = L.marker([p.lat, p.lon], { icon, title: meta.short, riseOnHover: true }).bindPopup(popup, { maxWidth: 260, autoPanPaddingTopLeft: [10, 60] });
       mk.addTo(L_.problems);
       probMarkers.set(p.id, mk);
