@@ -50,6 +50,9 @@
         <span class="pass"><input id="keyTomtom" type="password" autocomplete="off" spellcheck="false" placeholder="Traffic Flow API kaliti"><button type="button" class="btn sm" data-toggle-pass="#keyTomtom">Koʻrsatish</button></span></label>
       <label class="field"><span>OpenAI API kaliti (ixtiyoriy)</span>
         <span class="pass"><input id="keyOpenai" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"><button type="button" class="btn sm" data-toggle-pass="#keyOpenai">Koʻrsatish</button></span></label>
+      <label class="field"><span>Xarita tuzatishlari uchun PIN-kod (sayt egasi beradi)</span>
+        <span class="pass"><input id="fixPin" type="password" autocomplete="off" inputmode="numeric" placeholder="PIN"><button type="button" class="btn sm" data-toggle-pass="#fixPin">Koʻrsatish</button></span>
+        <small class="muted" id="fixInfo"></small></label>
       <div class="row-btns">
         <button class="btn primary" type="submit">Saqlash</button>
         <button class="btn" type="button" id="btnCloseSettings">Yopish</button>
@@ -70,6 +73,7 @@
   <script src="js/core.js"></script>
   <script src="js/data/weather.js"></script>
   <script src="js/data/yandex.js"></script>
+  <script src="js/data/fixes.js"></script>
   <script src="js/analysis/forecast.js"></script>
   <script src="js/data/osm.js"></script>
   <script src="js/data/tomtom.js"></script>

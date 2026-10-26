@@ -37,7 +37,8 @@
     setStatus('loading');
     try {
       const res = await NX.osm.load({ force, onStep: t => { panel.innerHTML = V.loading(t); } });
-      const M = NX.analysis.build(res.data);
+      S.raw = res.data;
+      const M = NX.analysis.build(res.data, NX.fixes.asPoints());
       NX.analysis.applyTomTom(M, NX.tomtom.latest());
       NX.analysis.refresh(M);
       S.model = M; S.load = 'ok';
@@ -46,12 +47,15 @@
       S.fc.street = (M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value)[0] || M.streets[0]).id;
       NX.map.clearDeltas();
       NX.map.setModel(M);
+      NX.map.drawFixes(NX.fixes.list());
       setStatus(res.source, res.data.ts);
       render();
       if (res.warning) toast(res.warning, 'warn');
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
       startLive();
+      // Boshqa foydalanuvchilar saqlagan tuzatishlar (svetofor bor, muammo emas…) serverdan olinadi
+      NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); });
       $('#btnYandex').hidden = false;
       // Asosiy xarita — real tirbandlik (Yandex probkalar) doim koʻrinib turadi
       if (S.yandexOn == null) setYandex(true);
@@ -271,6 +275,43 @@
     render();
   }
 
+  // ---------- Xaritani oʻrgatish: tuzatishlar ----------
+  function rebuildModel() {
+    if (!S.raw) return;
+    const M = NX.analysis.build(S.raw, NX.fixes.asPoints());
+    NX.analysis.applyTomTom(M, NX.tomtom.latest());
+    NX.analysis.refresh(M);
+    S.model = M;
+    NX.map.setModel(M);
+    NX.map.drawFixes(NX.fixes.list());
+    if (S.street != null) NX.map.selectStreet(S.street, false);
+    render();
+  }
+  async function onFix(f) {
+    const M = S.model;
+    const p = f.pid ? M.problems.find(x => x.id === f.pid) : null;
+    let item = null;
+    if (f.action === 'remove') {
+      try { await NX.fixes.remove(f.id); toast('Belgi oʻchirildi.', 'ok'); } catch (e) { toast(e.message, 'bad'); }
+      rebuildModel(); return;
+    }
+    if (f.action === 'pick-crossing' || f.action === 'pick-stop') {
+      ensureLeaflet();
+      NX.map.pickPoint(f.action.slice(5), ll => onFix({ action: 'add', kind: f.action.slice(5), lat: ll.lat, lon: ll.lng, key: p && p.key }));
+      return;
+    }
+    if (f.action === 'add') item = { kind: f.kind, lat: f.lat, lon: f.lon, key: f.key || '' };
+    else if (p && (f.action === 'signal' || f.action === 'crossing')) item = { kind: f.action, lat: p.lat, lon: p.lon, key: p.key, note: p.title };
+    else if (p && f.action === 'dismiss') item = { kind: 'dismiss', lat: p.lat, lon: p.lon, key: p.key, note: p.title };
+    if (!item) return;
+    const before = M.problems.length;
+    const r = await NX.fixes.add(item);
+    rebuildModel();
+    const gone = before - S.model.problems.length;
+    const k = NX.fixes.KIND[item.kind];
+    toast(`${k.icon} ${k.uz === 'Muammo emas' ? 'Muammo yopildi' : k.uz + ' belgilandi'}${gone > 0 ? ` — ${gone} ta muammo yoʻqoldi` : ''}. ${r.shared ? 'Hamma uchun saqlandi.' : 'Faqat shu brauzerda saqlandi (' + r.reason + ').'}`, r.shared ? 'ok' : 'warn');
+  }
+
   // ---------- Yandex probkalar (real tirbandlik) ----------
   async function setYandex(on) {
     const btn = $('#btnYandex'), L = NX.map.leaflet();
@@ -410,6 +451,9 @@
   function openSettings(focus) {
     $('#keyTomtom').value = NX.store.get('key:tomtom', '');
     $('#keyOpenai').value = NX.store.get('key:openai', '');
+    $('#fixPin').value = NX.store.get('fixes:pin', '');
+    const fl = NX.fixes.list();
+    $('#fixInfo').textContent = `Xaritaga ${fl.length} ta tuzatish kiritilgan (${fl.filter(x => x.shared).length} tasi hamma uchun).` + (NX.fixes.status() === false ? ' Server ombori hali ulanmagan.' : '');
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
     (focus === 'tomtom' ? $('#keyTomtom') : $('#keyTomtom')).focus();
   }
@@ -428,6 +472,8 @@
       e.preventDefault();
       NX.store.set('key:tomtom', $('#keyTomtom').value.trim());
       NX.store.set('key:openai', $('#keyOpenai').value.trim());
+      NX.store.set('fixes:pin', $('#fixPin').value.trim());
+      if ($('#fixPin').value.trim()) NX.fixes.syncLocal().then(n => { if (n) { toast(`${n} ta tuzatish hamma uchun saqlandi.`, 'ok'); NX.fixes.loadShared().then(rebuildModel); } });
       closeSettings(); toast('Sozlamalar saqlandi (faqat shu brauzerda).', 'ok');
       if (S.model) { render(); refreshLiveNow(); }
     });
@@ -540,6 +586,7 @@
         if (S.tab === 'forecast') { S.fc.street = id; NX.map.selectStreet(id, false); render(); focusPanel(); return; }
         openStreet(id);
       },
+      onFix: f => { if (S.model) onFix(f); },
       onRoute: i => { S.tab = 'routes'; S.route = i; NX.map.highlightRoute(i); render(); focusPanel(); },
     });
     bind();

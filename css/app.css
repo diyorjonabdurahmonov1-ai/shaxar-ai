@@ -366,3 +366,21 @@ details.pgroup .pill { margin-left: auto; }
 :root[data-theme="dark"] .map-toggle { color: #042f2e; }
 :root[data-theme="dark"] .map-toggle.on { background: var(--surface); color: var(--text); }
 #ymap iframe { width: 100%; height: 100%; border: 0; display: block; }
+
+/* ---------- Xaritani oʻrgatish ---------- */
+.nx-mark { position: relative; }
+.nx-mark-btn { min-height: 40px; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 700; cursor: pointer; box-shadow: var(--shadow); }
+.nx-mark-list { display: none; flex-direction: column; margin-top: 4px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.nx-mark.open .nx-mark-list { display: flex; }
+.nx-mark-list button { border: 0; background: none; color: var(--text); text-align: left; padding: 10px 14px; min-height: 44px; cursor: pointer; font-size: .9rem; border-top: 1px solid var(--border); }
+.nx-mark-list button:first-child { border-top: 0; }
+.nx-mark-list button:hover { background: var(--surface-2); }
+.nx-pickbar { position: absolute; z-index: 1000; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; background: #0f172a; color: #fff; padding: 8px 8px 8px 14px; border-radius: 999px; box-shadow: var(--shadow); font-size: .9rem; white-space: nowrap; }
+.nx-pickbar button { border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; background: #fff; color: #0f172a; font-weight: 600; }
+.picking, .picking .leaflet-interactive { cursor: crosshair !important; }
+.fix-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.fix-row .btn { min-height: 36px; font-size: .82rem; }
+.osm-edit { display: inline-block; margin-top: 8px; font-size: .8rem; }
+.pmk.fixmk span { width: 26px; height: 26px; font-size: 13px; }
+.fix-hint { background: var(--accent-soft); border-radius: 10px; padding: 8px 10px; }
+.picking .leaflet-marker-icon, .picking .leaflet-popup-pane, .picking .leaflet-overlay-pane svg, .picking canvas { pointer-events: none !important; }

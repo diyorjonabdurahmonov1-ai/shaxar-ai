@@ -291,6 +291,7 @@
     <section class="card">
       <h2>Shaharda nima muammo bor?</h2>
       <p class="small">${total ? `Tahlil <b>${groups.length} xil</b> muammoni topdi (${total} joyda). Eng muhimlari tepada. Joy nomini bossangiz, xaritada koʻrsatiladi.` : 'Qoidalar boʻyicha muammo topilmadi.'}</p>
+      <p class="small fix-hint">🎓 <b>Xarita notoʻgʻrimi?</b> Joyni bosing va <b>“Svetofor bor”</b> yoki <b>“Bu muammo emas”</b> tugmasini tanlang — muammo yoʻqoladi. Yangi svetofor, oʻtish joyi yoki bekatni xaritadagi <b>“➕ Belgilash”</b> tugmasi bilan qoʻshing.${M.dismissedCount ? ` <span class="muted">${M.dismissedCount} ta muammo foydalanuvchilar tomonidan yopilgan.</span>` : ''}</p>
     </section>
     ${groups.map(g => {
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);

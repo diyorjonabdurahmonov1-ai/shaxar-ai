@@ -57,7 +57,9 @@
     return best;
   }
 
-  function build(raw) {
+  function build(raw0, extraPts) {
+    // Foydalanuvchi tuzatishlari (svetofor/oʻtish joyi/bekat) OSM nuqtalariga qoʻshiladi
+    const raw = extraPts && extraPts.length ? Object.assign({}, raw0, { pts: raw0.pts.concat(extraPts) }) : raw0;
     const bb = NX.config.bbox;
     const inArea = (lat, lon) => lat >= bb.s && lat <= bb.n && lon >= bb.w && lon <= bb.e;
     const M = { ts: raw.ts, mirror: raw.mirror, routesTs: raw.routesTs };
@@ -119,7 +121,7 @@
       let found = null;
       stopGrid.near(x, y, 25, s => { if (!found && G.d(x, y, s.x, s.y) < 25) found = s; });
       if (found) { if (!found.name && p.name) found.name = p.name; stopById.set(p.id, found); continue; }
-      const s = { id: p.id, name: p.name, lat: p.lat, lon: p.lon, x, y, inArea: inArea(p.lat, p.lon), routes: new Set(), street: -1 };
+      const s = { id: p.id, name: p.name, lat: p.lat, lon: p.lon, x, y, inArea: inArea(p.lat, p.lon), routes: new Set(), street: -1, fix: p.fix };
       P.stop.push(s); stopGrid.addPoint(x, y, s); stopById.set(p.id, s);
     }
     const seenPt = new Set();
@@ -130,7 +132,7 @@
       if (seenPt.has(uid)) continue;
       seenPt.add(uid);
       const [x, y] = G.xy(p.lat, p.lon);
-      P[k].push({ id: p.id, kind: p.k, name: p.name, lat: p.lat, lon: p.lon, x, y, sig: p.sig });
+      P[k].push({ id: p.id, kind: p.k, name: p.name, lat: p.lat, lon: p.lon, x, y, sig: p.sig, fix: p.fix });
     }
     M.stops = P.stop; M.signals = P.signal; M.crossings = P.crossing; M.schools = P.school;
     M.stopGrid = stopGrid;
@@ -366,9 +368,12 @@
       const perKm = n / (s.length / 1000);
       if (perKm < R.crossingsPerKm) add('crossings', { lat: s.center[0], lon: s.center[1], sev: perKm < 1 ? 2 : 1, title: nameOf(s), detail: `${NX.fmt.num(perKm, 1)} ta oʻtish joyi/km (${n} ta, ${NX.fmt.km(s.length)}).`, street: s.id, perKm });
     });
-    probs.forEach(p => { p.score = NX.PROBLEM[p.type].weight + p.sev * 10; });
+    probs.forEach(p => { p.score = NX.PROBLEM[p.type].weight + p.sev * 10; p.key = p.type + ':' + p.lat.toFixed(4) + ':' + p.lon.toFixed(4); });
     probs.sort((a, b) => b.score - a.score);
-    M.problems = probs;
+    // “Bu muammo emas” deb belgilanganlar chiqarib tashlanadi
+    const dis = NX.fixes ? NX.fixes.dismissed() : new Set();
+    M.dismissedCount = probs.filter(p => dis.has(p.key)).length;
+    M.problems = probs.filter(p => !dis.has(p.key));
 
     // KPI
     const allGaps = M.routes.flatMap(r => r.gaps.map(g => g.d));

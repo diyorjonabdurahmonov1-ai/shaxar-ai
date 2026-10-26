@@ -207,9 +207,35 @@ async function clickStreet(page, name) {
   ok('Muammo belgilari xaritada (faqat shu boʻlimda)', mk > 0, 'belgilar: ' + mk);
   await page.click('.loc');
   await page.waitForSelector('.leaflet-popup-content .ppop', { timeout: 5000 });
+  await page.waitForTimeout(800);
   ok('Joyni bosganda xaritada popup ochiladi', /Yechim/.test(await page.textContent('.leaflet-popup-content')));
+  // Xaritani oʻrgatish: “oʻtish joyi bor” → muammo yoʻqoladi
+  const nProb0 = await page.evaluate(() => NX.state.model.problems.length);
+  const schoolBefore = await page.evaluate(() => NX.state.model.problems.filter(p => p.type === 'school').length);
+  await page.click('.leaflet-popup-content [data-fix="crossing"]');
+  await page.waitForFunction(n => NX.state.model.problems.length < n, nProb0, { timeout: 10000 });
+  const schoolAfter = await page.evaluate(() => NX.state.model.problems.filter(p => p.type === 'school').length);
+  ok('“Oʻtish joyi bor” bosilsa maktab muammosi yoʻqoladi', schoolAfter === schoolBefore - 1, `${schoolBefore} → ${schoolAfter}`);
+  ok('Tuzatish xabari (faqat shu brauzerda)', /Faqat shu brauzerda/.test(await page.textContent('#toast')));
+  // “Bu muammo emas”
+  const nProb1 = await page.evaluate(() => NX.state.model.problems.length);
+  await page.click('.prob .loc');
+  await page.waitForSelector('.leaflet-popup-content [data-fix="dismiss"]', { timeout: 5000 });
+  await page.waitForTimeout(800); // xarita “uchish” animatsiyasi tugashi
+  await page.click('.leaflet-popup-content [data-fix="dismiss"]');
+  await page.waitForFunction(n => NX.state.model.problems.length < n, nProb1, { timeout: 10000 });
+  ok('“Bu muammo emas” bosilsa muammo roʻyxatdan chiqadi', /yopilgan/.test(await page.textContent('.fix-hint')));
+  // “➕ Belgilash” → svetofor → xaritani bosish
+  const nSig = await page.evaluate(() => NX.state.model.signals.length);
+  await page.click('.nx-mark-btn');
+  await page.click('.nx-mark-list [data-kind="signal"]');
+  await page.waitForSelector('.nx-pickbar');
+  const mb = await page.$eval('#map', el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await page.mouse.click(mb.x, mb.y);
+  await page.waitForFunction(n => NX.state.model.signals.length === n + 1, nSig, { timeout: 10000 });
+  ok('“➕ Belgilash” bilan svetofor qoʻshiladi va xaritada koʻrinadi', (await page.$$('.pmk.fixmk')).length >= 2);
   await page.click('.tabs [data-tab=routes]');
-  ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc)')).length === 0);
+  ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc):not(.fixmk)')).length === 0);
   // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari
   await page.click('#btnYandex');
   await page.waitForSelector('#ymap iframe', { timeout: 5000 });
@@ -332,6 +358,16 @@ async function clickStreet(page, name) {
     proxyReqs.push({ auth: route.request().headers()['authorization'] || null, body: JSON.parse(route.request().postData()) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nProksi javobi.' } }] }) });
   });
+  const corr = { items: [], posts: [] };
+  await ctx5.route(/cityjam-ai\.example\.workers\.dev\/corrections/, route => {
+    const req = route.request();
+    if (req.method() === 'POST') {
+      const b = JSON.parse(req.postData()); corr.posts.push(b);
+      if (b.pin !== '4321') return route.fulfill({ status: 403, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: { code: 'bad_pin', message: 'PIN-kod notoʻgʻri' } }) });
+      if (b.action === 'add') corr.items.push(Object.assign({ ts: Date.now() }, b.item));
+    }
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ items: corr.items }) });
+  });
   const p5 = await ctx5.newPage();
   const e5 = watchErrors(p5);
   await p5.goto(BASE);
@@ -341,6 +377,22 @@ async function clickStreet(page, name) {
   await p5.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
   const aiTxt5 = await p5.textContent('#aiBox .ai-text');
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
+  // PIN bilan tuzatish hamma uchun saqlanadi
+  await p5.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
+  await p5.click('.tabs [data-tab=problems]');
+  await p5.click('.prob .loc');
+  await p5.waitForSelector('.leaflet-popup-content [data-fix="dismiss"]', { timeout: 5000 });
+  await p5.waitForTimeout(800);
+  await p5.click('.leaflet-popup-content [data-fix="dismiss"]');
+  await p5.waitForFunction(() => /Hamma uchun saqlandi/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
+  ok('PIN bilan tuzatish serverga (hamma uchun) saqlanadi', corr.items.length === 1 && corr.posts[0].pin === '4321' && corr.items[0].kind === 'dismiss');
+  // Boshqa brauzer (yangi foydalanuvchi) ham shu tuzatishni koʻradi
+  const p5b = await ctx5.newPage();
+  await p5b.evaluate(() => localStorage.clear()).catch(() => {});
+  await p5b.goto(BASE);
+  await p5b.waitForFunction(k => NX.state.model && NX.fixes.list().some(x => x.key === k), corr.items[0].key, { timeout: 20000 });
+  const hidden = await p5b.evaluate(k => !NX.state.model.problems.some(p => p.key === k), corr.items[0].key);
+  ok('Boshqa foydalanuvchida ham muammo yopilgan koʻrinadi', hidden);
   ok('Konsolda xato yoʻq (proksi)', e5.length === 0, e5.join(' || '));
 
   // ---------- 6. Yandex probkalar ----------
