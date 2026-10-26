@@ -55,17 +55,16 @@
     return null;
   }
 
-  const SYSTEM = `Siz Samarqand shahri transport tahlilchisisiz. Faqat oʻzbek tilida (lotin yozuvi, oʻ/gʻ/ʼ belgilari bilan) javob bering.
+  const SYSTEM = `Sen Samarqand shahri tarixiy markazining transport yordamchisisan.
 Qoidalar:
-- Faqat foydalanuvchi bergan JSON dagi raqam va faktlardan foydalaning. Hech qanday maʼlumot, raqam yoki koʻcha nomini oʻylab topmang.
-- Maʼlumot yetishmasa, buni ochiq ayting.
-- Bashorat va hisob natijalarini oʻlchov deb atamang: ular "model bashorati" yoki "taxmin".
-- Javob tuzilishi aynan shunday boʻlsin (qalin sarlavhalar bilan):
-**Hozirgi holat**
-**Nima boʻladi** (qaysi koʻchalar va avtobus liniyalari taʼsirlanadi)
-**Xavflar**
-**Eng yaxshi yechim** (1–3 ta aniq qadam)
-- Hajmi 120–220 soʻz.`;
+- Faqat oʻzbek tilida (lotin yozuvi) yoz. Oddiy, qisqa, tushunarli yoz — ilmiy soʻz va formulalarsiz.
+- Foydalanuvchining SAVOLIGA AYNAN javob ber. Savolga aloqasi yoʻq narsani yozma.
+- Faqat berilgan JSON maʼlumotdan foydalan. Maʼlumotda yoʻq raqam, koʻcha yoki hodisani oʻylab topma.
+  Kerakli maʼlumot boʻlmasa, “Bu haqda saytda maʼlumot yoʻq” deb ayt va saytning qaysi boʻlimida koʻrish mumkinligini qisqa ayt.
+- “real” (TomTom yoki Open-Meteo oʻlchovi) va “taxmin”ni (model hisobi) farqla: taxminni oʻlchov deb atama.
+- Odatda 2–6 gap yetarli. Roʻyxat kerak boʻlsa — qisqa nuqtalar bilan.
+- Agar savol “koʻchani oʻzgartirsak nima boʻladi?” turida boʻlsa va JSON’da “simulyatsiya” berilgan boʻlsa:
+  avval bir gapda xulosa, keyin qaysi koʻchalar koʻproq yuklanadi va qaysi avtobuslarga taʼsir qiladi, oxirida 1–2 ta amaliy maslahat.`;
 
   function streetFacts(s, M) {
     return {
@@ -81,7 +80,7 @@ Qoidalar:
   function simFacts(res, M) {
     if (!res) return null;
     const r = res.result;
-    const row = x => ({ koʻcha: x.name || 'nomsiz yoʻl', hajm_oldin: Math.round(x.baseVol), hajm_keyin: Math.round(x.scenVol), vc_oldin: +x.baseVC.toFixed(2), vc_keyin: +x.scenVC.toFixed(2) });
+    const row = x => ({ koʻcha: x.name || 'nomsiz yoʻl', hajm_oldin: Math.round(x.baseVol), hajm_keyin: Math.round(x.scenVol), sigim_toʻlishi_oldin_foiz: Math.round(x.baseVC * 100), sigim_toʻlishi_keyin_foiz: Math.round(x.scenVC * 100) });
     return {
       stsenariy: res.label, talab_reys_soat: res.demand,
       umumiy_yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1),
@@ -105,11 +104,13 @@ Qoidalar:
   const proxyUrl = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim();
   const aiAvailable = () => !!(userKey() || proxyUrl());
 
-  async function callOpenAI(key, ctx, onModel) {
+  async function callOpenAI(key, ctx, onModel, history) {
     let lastErr = null;
     for (const model of NX.config.openaiModels) {
       onModel && onModel(model);
-      const body = { model, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: 'Savol: ' + ctx.savol + '\n\nMaʼlumotlar (JSON):\n' + JSON.stringify(ctx) }] };
+      // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
+      const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
+      const body = { model, messages: [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
       if (/^gpt-5/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       let r;
       try {
@@ -139,26 +140,52 @@ Qoidalar:
   }
 
   // Kalitsiz yoki AI ishlamaganda: faqat hisoblangan raqamlardan tuzilgan javob
-  function localAnswer(ctx) {
-    const s = ctx.koʻcha, sim = ctx.simulyatsiya, lines = [];
-    if (!s) {
-      const k = ctx.umumiy;
-      return `**Hozirgi holat**\nHudud boʻyicha: ${k.liniyalar} ta avtobus liniyasi, bekat qamrovi ${NX.fmt.pct(k.bekat_qamrovi_foiz)}, svetoforsiz yirik chorrahalar: ${k.svetoforsiz_chorrahalar} ta.\n\n**Nima boʻladi**\nSavolda koʻcha nomi aniqlanmadi, shuning uchun simulyatsiya ishga tushmadi. Koʻcha nomini va oʻzgarishni yozing (masalan, “… koʻchasini bir tomonlama qilsak”).\n\n**Xavflar**\n—\n\n**Eng yaxshi yechim**\n1. Xaritada koʻchani tanlab “Agar…?” vositasidan foydalaning.`;
-    }
-    lines.push('**Hozirgi holat**');
-    lines.push(`${s.nomi}: ${s.turi.toLowerCase()}, ${NX.fmt.km(s.uzunlik_m)}, ${s.harakat}. Avtobus liniyalari: ${s.avtobus_liniyalari.length ? s.avtobus_liniyalari.join(', ') : 'yoʻq'}; bekatlar: ${s.bekatlar_soni}, svetoforlar: ${s.svetoforlar}. Tirbandlik xavfi (taxmin): ${s.tirbandlik_xavfi_hisob_0_100}/100.` + (s.tomtom && s.tomtom.tirbandlik_foiz != null ? ` TomTom: ${s.tomtom.tirbandlik_foiz}% (${s.tomtom.vaqt}).` : ''));
-    lines.push('', '**Nima boʻladi**');
+  // AI ishlamaganda: saytning oʻz maʼlumotlaridan qisqa, savolga mos maʼlumot (AI deb koʻrsatilmaydi)
+  function localAnswer(q, ctx) {
+    const n = norm(q), out = [];
+    const w = ctx.ob_havo, sim = ctx.simulyatsiya, s = ctx.koʻcha;
     if (sim) {
-      lines.push(`Model bashorati (${sim.stsenariy}): umumiy yoʻl vaqti ${NX.fmt.signed(sim.umumiy_yol_vaqti_ozgarishi_foiz, 1)}%.`);
-      sim.eng_kop_taʼsirlangan_koʻchalar.slice(0, 4).forEach(r => lines.push(`- ${r.koʻcha}: ${r.hajm_oldin} → ${r.hajm_keyin} avto/soat (V/C ${r.vc_oldin} → ${r.vc_keyin})`));
-      if (sim.yonalishi_ozgarishi_kerak_liniyalar.length) lines.push(`Yoʻnalishi oʻzgarishi kerak boʻlgan liniyalar: ${sim.yonalishi_ozgarishi_kerak_liniyalar.join(', ')}.`);
-    } else lines.push('Savolda oʻzgarish turi aniqlanmadi — simulyatsiya ishga tushmadi.');
-    lines.push('', '**Xavflar**');
-    if (sim && sim.yangi_haddan_oshgan_koʻchalar.length) lines.push(`Sigʻimidan oshadigan koʻchalar: ${sim.yangi_haddan_oshgan_koʻchalar.join(', ')}.`);
-    if (sim) sim.sabablar.forEach(r => lines.push('- ' + r)); else lines.push('—');
-    lines.push('', '**Eng yaxshi yechim**');
-    lines.push(sim ? `Xulosa: ${sim.xulosa}. 1. Chorrahalarda transport sanogʻini oʻtkazib modelni kalibrlang. 2. Oʻzgarishni avval sinov rejimida joriy qiling.` : '1. Xaritada koʻchani tanlab “Agar…?” vositasida stsenariy tanlang.');
-    return lines.join('\n');
+      out.push(`**${sim.xulosa}** — ${sim.stsenariy}.`);
+      out.push(`Yoʻlda yuradigan umumiy vaqt: ${NX.fmt.signed(sim.umumiy_yol_vaqti_ozgarishi_foiz, 1)}% (taxmin).`);
+      const up = sim.eng_kop_taʼsirlangan_koʻchalar.filter(r => r.hajm_keyin > r.hajm_oldin).slice(0, 3).map(r => r.koʻcha);
+      if (up.length) out.push(`Koʻproq yuklanadi: ${up.join(', ')}.`);
+      if (sim.yonalishi_ozgarishi_kerak_liniyalar.length) out.push(`Avtobuslar: ${sim.yonalishi_ozgarishi_kerak_liniyalar.join(', ')} yoʻnalishini oʻzgartiradi.`);
+      return out.join('\n');
+    }
+    if (/ob ?havo|harorat|yomg|qor|shamol|issiq|sovuq/.test(n) && w) return `Hozir ${w.harorat_c}°C, ${w.holat}. ${w.yolga_tasiri}`;
+    if (/hodisa|avariya|tamir|yopiq/.test(n)) {
+      const h = ctx.yol_hodisalari;
+      if (!h) return 'Yoʻl hodisalari haqida maʼlumot yoʻq (TomTom ulanmagan).';
+      return h.length ? h.slice(0, 5).map(x => `- ${x.turi}: ${x.joy || 'hudud ichida'}${x.kechikish_daqiqa ? `, +${x.kechikish_daqiqa} daqiqa` : ''}`).join('\n') : 'Hozir hududda avariya, taʼmir yoki yopiq yoʻl qayd etilmagan.';
+    }
+    if (s) {
+      const t = s.tomtom && s.tomtom.tirbandlik_foiz != null ? `Hozir: ${s.tomtom.joriy_tezlik_kmh} km/soat (odatda ${s.tomtom.erkin_tezlik_kmh}).` : 'Hozirgi tirbandligi oʻlchanmagan.';
+      return `${s.nomi}: ${s.harakat}, ${NX.fmt.km(s.uzunlik_m)}. Avtobuslar: ${s.avtobus_liniyalari.length ? s.avtobus_liniyalari.join(', ') : 'yoʻq'}. ${t}`;
+    }
+    if (/tirband|tiqilin|probka/.test(n)) {
+      const t = ctx.hozirgi_tirbandlik;
+      return t && t.length ? t.slice(0, 5).map(x => `- ${x.koʻcha}: ${x.tezlik_kmh} km/soat (odatda ${x.odatdagi_kmh})`).join('\n') : 'Hozircha oʻlchangan koʻcha yoʻq. Xaritadagi ranglar — real tirbandlik; koʻchani bossangiz, uning tezligi oʻlchanadi.';
+    }
+    return 'Bu savolga AI’siz javob bera olmayman. Koʻcha nomi bilan “yopsak nima boʻladi?”, “bir tomonlama qilsak?” kabi savol bering yoki koʻchani xaritada bosing.';
+  }
+
+  // AI ga beriladigan umumiy kontekst: hozirgi real holat + xarita tahlili (ixcham)
+  function cityFacts(M, S) {
+    const W = S && S.weather && S.weather.data, inc = S && S.incidents;
+    const fresh = M.streets.filter(s => s.tomtom && Date.now() - s.tomtom.ts < 3600e3).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion);
+    const groups = {};
+    M.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p.title); });
+    const lines = new Map();
+    M.routes.forEach(r => { if (!lines.has(r.label)) lines.set(r.label, { raqam: r.label, turi: r.modeUz, qayerdan: r.from, qayerga: r.to, koʻchalar: r.streets.map(i => M.streets[i].name).filter(Boolean).slice(0, 6) }); });
+    return {
+      vaqt: new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }),
+      ob_havo: W ? { harorat_c: Math.round(W.temp), holat: NX.weather.codeText(W.code)[0], shamol_kmh: Math.round(W.wind), yogin_mm: W.precip, yolga_tasiri: NX.weather.roadAdvice(W).join(' '), manba: 'Open-Meteo (real)' } : null,
+      yol_hodisalari: inc && inc.list ? inc.list.slice(0, 8).map(x => ({ turi: x.name, joy: [x.from, x.to].filter(Boolean).join(' → '), kechikish_daqiqa: x.delay ? Math.round(x.delay / 60) : null, manba: 'TomTom (real)' })) : null,
+      hozirgi_tirbandlik: fresh.slice(0, 10).map(s => ({ koʻcha: s.name || 'nomsiz', tezlik_kmh: Math.round(s.tomtom.currentSpeed), odatdagi_kmh: Math.round(s.tomtom.freeFlowSpeed), tirbandlik_foiz: Math.round(s.tomtom.congestion), manba: 'TomTom (real)' })),
+      muammolar: Object.keys(groups).map(t => ({ turi: NX.PROBLEM[t].short, soni: groups[t].length, misollar: groups[t].slice(0, 3), yechim: NX.PROBLEM[t].fix })),
+      avtobus_liniyalari: [...lines.values()].slice(0, 25),
+      umumiy: { liniyalar_soni: M.kpi.lines, bekat_400m_qamrovi_foiz: M.kpi.coverage != null ? Math.round(M.kpi.coverage) : null, svetoforsiz_katta_chorrahalar: M.kpi.unsignalised, maktab_bogcha: M.kpi.schools },
+    };
   }
 
   async function ask(q, M, opts) {
@@ -168,23 +195,24 @@ Qoidalar:
     const street = found.length ? found[0].s : opts.defaultStreet || null;
     let sim = null;
     if (street && scen) sim = await opts.simulate(street, scen);
-    const ctx = {
-      savol: q, hudud: 'Samarqand tarixiy markazi (39.640–39.670 N, 66.950–67.000 E)',
+    const ctx = Object.assign({
+      savol: q, hudud: 'Samarqand tarixiy markazi',
       koʻcha: street ? streetFacts(street, M) : null,
       ikkinchi_koʻcha: found[1] ? streetFacts(found[1].s, M) : null,
-      bashorat: street ? forecastFacts(street) : null,
+      odatdagi_tirbandlik_taxmini: street ? forecastFacts(street) : null,
       simulyatsiya: simFacts(sim, M),
-      umumiy: { liniyalar: M.kpi.lines, bekat_qamrovi_foiz: M.kpi.coverage != null ? Math.round(M.kpi.coverage) : null, svetoforsiz_chorrahalar: M.kpi.unsignalised, transport_indeksi: M.index.value, tomtom_olchangan_koʻchalar: M.kpi.measured },
-      manbalar: 'OpenStreetMap (koʻchalar, bekatlar), TomTom (agar oʻlchangan boʻlsa), Hisob/Bashorat (model)',
-    };
+    }, cityFacts(M, opts.state));
+    // Proksi limiti (30 000 belgi) dan oshmasligi uchun kam muhim qismlar qisqartiriladi
+    if (JSON.stringify(ctx).length > 20000) ctx.avtobus_liniyalari = ctx.avtobus_liniyalari.map(l => ({ raqam: l.raqam, qayerdan: l.qayerdan, qayerga: l.qayerga }));
+    if (JSON.stringify(ctx).length > 20000) ctx.muammolar = ctx.muammolar.map(m => ({ turi: m.turi, soni: m.soni }));
     const key = userKey();
     const meta = { street, scen, sim, found };
-    if (!aiAvailable()) return Object.assign({ text: localAnswer(ctx), src: 'hisob', note: 'OpenAI kaliti kiritilmagan — javob hisoblangan raqamlardan avtomatik tuzildi.' }, meta);
+    if (!aiAvailable()) return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: 'AI ulanmagan.' }, meta);
     try {
-      const r = await callOpenAI(key, ctx, opts.onModel);
+      const r = await callOpenAI(key, ctx, opts.onModel, opts.history || []);
       return Object.assign({ text: r.text, src: 'ai', model: r.model }, meta);
     } catch (e) {
-      return Object.assign({ text: localAnswer(ctx), src: 'hisob', error: e.message }, meta);
+      return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: e.message }, meta);
     }
   }
 

@@ -165,6 +165,7 @@ async function clickStreet(page, name) {
   await page.click('#aiBox form button');
   await page.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
   const ctxAns = await page.evaluate(() => ({ street: NX.state.ai.answer.street && NX.state.ai.answer.street.name, type: NX.state.sim.last.type }));
+  ok('AI yoʻq: “AI ishlamadi” deb aniq yoziladi', /AI ishlamadi/.test(await page.textContent('#aiBox .ai-src')));
   ok('Bashorat boʻlimida koʻcha nomisiz savol', !!ctxAns.street && ctxAns.type === 'close', JSON.stringify(ctxAns));
   ok('Bashorat boʻlimida “nima qilmoqchisiz” tugmalari', (await page.$$('#whatif [data-act=sim]')).length === 6);
   await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; document.querySelectorAll('details').forEach(d => (d.open = true)); });
@@ -233,7 +234,17 @@ async function clickStreet(page, name) {
   const userMsg = body.messages[1].content;
   ok('AI: koʻcha aniqlanadi va simulyatsiya JSON yuboriladi', /Dagbitskiy/.test(userMsg) && /simulyatsiya/.test(userMsg) && /umumiy_yol_vaqti/.test(userMsg), 'model: ' + body.model);
   ok('AI: model ketma-ketligi (404 → keyingisi)', ctx.openaiBodies.some(b => b.model === 'gpt-5.4-mini') && body.model === 'gpt-5.5');
-  ok('AI javobi koʻrsatiladi', /Hozirgi holat/.test(aiTxt));
+  ok('AI javobi koʻrsatiladi va “AI javobi” deb belgilanadi', /Hozirgi holat/.test(aiTxt) && /AI javobi/.test(await page.textContent('#aiBox .ai-src')));
+  // Umumiy savol (koʻcha va stsenariysiz): AI ga real holat beriladi
+  await page.fill('#aiBox textarea[name=q]', 'Hozir qaysi koʻchalar tirband va ob-havo qanday?');
+  const nBefore = ctx.openaiBodies.length;
+  await page.click('#aiBox form button');
+  await page.waitForFunction(n => window.NX.state.ai.answer && !window.NX.state.ai.busy, nBefore, { timeout: 60000 });
+  const gen = ctx.openaiBodies[ctx.openaiBodies.length - 1];
+  const genMsg = gen.messages[gen.messages.length - 1].content;
+  ok('Umumiy savolda AI ga ob-havo, tirbandlik, hodisalar, avtobuslar beriladi', /ob_havo/.test(genMsg) && /hozirgi_tirbandlik/.test(genMsg) && /avtobus_liniyalari/.test(genMsg) && /muammolar/.test(genMsg), 'xabarlar: ' + gen.messages.length);
+  ok('Oldingi savol-javob eslab qolinadi', gen.messages.length === 4 && gen.messages[1].role === 'user');
+  ok('Soʻrov hajmi proksi limitidan kichik (30 000)', JSON.stringify(gen).length < 30000, String(JSON.stringify(gen).length));
   ok('Konsolda xato yoʻq (desktop)', errs.length === 0, errs.join(' || '));
   await page.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/desktop.png' : '/tmp/desktop.png' });
 

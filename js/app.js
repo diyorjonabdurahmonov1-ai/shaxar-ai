@@ -310,9 +310,11 @@
           NX.map.selectStreet(street.id);
           return runWhatIf(street.id, TYPE[scen.type](scen.dir));
         },
-        onModel: m => { S.ai.busy = `AI javob yozmoqda (${m})…`; renderAI(); },
+        onModel: () => { S.ai.busy = 'AI javob yozmoqda…'; renderAI(); },
+        state: S, history: S.ai.history || [],
       });
-      S.ai.answer = res;
+      S.ai.answer = Object.assign({ q }, res);
+      if (res.src === 'ai') S.ai.history = (S.ai.history || []).concat([{ role: 'user', content: q }, { role: 'assistant', content: res.text }]).slice(-2);
     } catch (e) {
       S.ai.answer = { text: '**Xato**\n' + e.message, src: 'hisob' };
     }

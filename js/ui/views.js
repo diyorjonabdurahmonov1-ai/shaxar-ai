@@ -91,10 +91,14 @@
     if (a.busy) out = `<div class="ai-out"><div class="spinner sm"></div> ${E(a.busy)}</div>`;
     else if (a.answer) {
       const r = a.answer;
+      const head = r.src === 'ai'
+        ? `<div class="ai-src ok">✅ <b>AI javobi</b><small>saytdagi real maʼlumotlar asosida</small></div>`
+        : `<div class="ai-src warn">⚠️ <b>AI ishlamadi</b><small>${E(r.error || '')} Quyida — saytning oʻz maʼlumotlari.</small></div>`;
       out = `<div class="ai-out">
-        <div class="ai-meta">${B(r.src)}${r.street ? ` <span class="muted small">Koʻcha: <b>${E(r.street.name)}</b></span>` : ''}</div>
-        ${r.error ? `<p class="alert">${E(r.error)}</p>` : ''}
-        <div class="ai-text">${NX.ai.render(r.text)}</div></div>`;
+        ${r.q ? `<p class="ai-q">“${E(r.q)}”</p>` : ''}
+        ${head}
+        <div class="ai-text">${NX.ai.render(r.text)}</div>
+        ${r.sim ? `<p class="muted small">Natija xaritada ham koʻrsatildi.</p>` : ''}</div>`;
     }
     const examples = exampleQuestions(S.model, s);
     return `<section class="card" id="aiBox">

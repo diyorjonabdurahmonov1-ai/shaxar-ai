@@ -349,3 +349,7 @@ details.pgroup .pill { margin-left: auto; }
 .status-line span { width: 100%; font-size: .9rem; }
 .pmk.inc span { background: #fff1f2; }
 @media (max-width: 820px) { .leaflet-bottom.leaflet-left .nx-legend { margin-bottom: 26px; } }
+.ai-q { font-style: italic; color: var(--muted); margin: 0 0 6px; }
+.ai-src { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 8px 10px; border-radius: 10px; font-size: .9rem; }
+.ai-src small { width: 100%; color: var(--muted); }
+.ai-src.ok { background: var(--green-soft); } .ai-src.warn { background: var(--amber-soft); }
