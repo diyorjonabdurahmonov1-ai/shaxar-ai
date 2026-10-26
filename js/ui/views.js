@@ -168,7 +168,7 @@
     ${streetSummary(S, s)}
     ${actions(S, s)}
     ${aiBox(S, s)}
-    ${forecastCard(s)}
+    ${reportCard(S, s)}
     ${streetDetails(S, s)}`;
   }
 
@@ -262,7 +262,9 @@
     let traffic;
     const ya = true, yst = S.yandexState;
     const yandexLine = ya ? `<p class="small"><b>Real tirbandlik va yoʻl hodisalari — Yandex xaritasida.</b> ${S.yandexOn ? 'Hozir xaritada koʻrsatilmoqda.' : 'Koʻrish uchun pastdagi tugmani bosing.'}${yst && yst.level != null ? ` Shahar boʻyicha: <b>${yst.level} ball</b> (10 balldan).` : ''} ${B('yandex')}</p>${S.yandexOn ? '' : '<button class="btn sm" data-act="yandex">🚦 Probkalarni koʻrish</button>'}` : '';
-    if (ya) traffic = yandexLine + (inc && inc.list && inc.list.length ? `<h4>Yoʻl hodisalari ${B('tomtom')}</h4><ul class="live-list">${inc.list.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → '))}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>` : '');
+    const rec = NX.reports.recent(60);
+    const jams = `<h4>Hozir xabar qilingan tirbandliklar ${B('crowd')}</h4>${rec.length ? `<ul class="live-list">${rec.slice(0, 6).map(g => `<li><button class="link" data-act="jam" data-lat="${g.lat}" data-lon="${g.lon}">${NX.reports.LEVEL[g.level].icon} ${E(g.name || 'Nomsiz joy')}</button><small class="muted">${g.n} ta xabar · ${ago(g.ts)}</small></li>`).join('')}</ul>` : '<p class="muted small">Soʻnggi 1 soatda xabar yoʻq. Tirbandlikni koʻrsangiz — koʻchani bosib xabar bering.</p>'}`;
+    if (ya) traffic = yandexLine + jams + (inc && inc.list && inc.list.length ? `<h4>Yoʻl hodisalari ${B('tomtom')}</h4><ul class="live-list">${inc.list.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → '))}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>` : '');
     else if (!hasKey) traffic = `<p class="small"><b>Real tirbandlik ulanmagan.</b> TomTom kaliti kiritilsa, xarita real vaqtda boʻyaladi va avariya, yoʻl taʼmiri koʻrinadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`;
     else {
       const incList = inc && inc.list ? inc.list : null;
@@ -351,47 +353,52 @@
   }
 
   // ---------- Bashorat ----------
-  function forecast(S) {
-    const M = S.model, s = M.streets[S.fc.street];
-    const st = NX.forecast.stats();
-    const day = NX.forecast.dayCurve(s, S.fc.d);
+  // ---------- Real statistika: odamlarning “hozir tirbandlik” xabarlari ----------
+  const hh = h => String(h).padStart(2, '0') + ':00';
+  function reportCard(S, s) {
+    const R = NX.reports, mineRecent = R.recent(60).find(g => g.street === s.key);
+    const st = R.byStreet(30).find(g => g.street === s.key);
+    const btn = l => `<button class="btn rep rep-${l}" data-act="report" data-level="${l}" data-id="${s.id}" ${S.reporting ? 'disabled' : ''}>${R.LEVEL[l].icon} ${R.LEVEL[l].uz}</button>`;
+    return `<section class="card" id="reportCard">
+      <h3>🚗 Hozir bu yerda tirbandlik bormi? ${B('crowd')}</h3>
+      <p class="muted small">Oʻzingiz koʻrib turgan boʻlsangiz, bosing — boshqalar ham koʻradi va real statistika yigʻiladi.</p>
+      <div class="rep-btns">${btn(1)}${btn(2)}${btn(3)}</div>
+      ${mineRecent ? `<p class="small rep-now"><b>${mineRecent.n} kishi</b> soʻnggi 1 soatda bu yerda “${R.LEVEL[mineRecent.level].uz.toLowerCase()}” deb xabar berdi (${ago(mineRecent.ts)}).</p>` : ''}
+      ${st ? `<p class="small">Soʻnggi 30 kunda <b>${st.n} marta</b> tirbandlik xabar qilingan (${st.dayCount} kunda), koʻpincha <b>${hh(st.peak)}</b> atrofida.</p>${NX.chart.hourBars(R.hours(s.key, 30))}`
+        : '<p class="muted small">Bu koʻcha boʻyicha hali xabar yoʻq.</p>'}
+    </section>`;
+  }
+
+  function stats(S) {
+    const M = S.model, R = NX.reports, top = R.byStreet(30), tot = R.total(30);
+    const s = M.streets[S.fc.street];
     const options = M.namedStreets.slice().sort((a, b) => a.name.localeCompare(b.name, 'uz')).map(x => `<option value="${x.id}" ${x.id === s.id ? 'selected' : ''}>${E(x.name)}</option>`).join('');
-    const main = mainStreets(M);
     return `
     <section class="card">
-      <h2>Bashorat</h2>
-      <p class="small"><b>1.</b> Koʻchani tanlang (yoki xaritada bosing). <b>2.</b> Uning kun davomidagi holatini koʻring. <b>3.</b> Pastda nima qilmoqchi ekaningizni tanlang.</p>
-      <label class="field"><span>Koʻcha</span><select data-input="fc-street">${options}</select></label>
+      <h2>Tirbandlik statistikasi ${B('crowd')}</h2>
+      <p class="small">Bu yerda faqat <b>real kuzatuv</b>: odamlar “hozir tirbandlik” deb yuborgan xabarlar. Taxmin yoʻq.</p>
+      ${tot ? `<p class="small">Soʻnggi 30 kunda: <b>${tot} ta xabar</b>, ${top.length} ta koʻcha boʻyicha.</p>` : `<p class="alert">Hali xabar yoʻq. Koʻchani bosing va <b>“🟥 Tirband”</b> tugmasini bosing — statistika shu yerda paydo boʻladi. Qancha koʻp odam xabar bersa, statistika shuncha aniq boʻladi.</p>`}
     </section>
-    ${forecastCard(s, `${E(s.name)}: keyingi 24 soat`)}
+    ${top.length ? `<section class="card">
+      <h3>Eng koʻp tirband boʻladigan koʻchalar (30 kun)</h3>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Koʻcha</th><th class="n">Xabar</th><th class="n">Koʻpincha</th></tr></thead><tbody>
+      ${top.slice(0, 15).map((g, i) => { const st = M.streetByKey.get(g.street); return `<tr><td>${i + 1}</td><td>${st ? `<button class="link" data-act="street" data-id="${st.id}">${E(st.name || g.name)}</button>` : E(g.name || '—')}</td><td class="n"><b>${g.n}</b></td><td class="n">${hh(g.peak)}</td></tr>`; }).join('')}
+      </tbody></table></div>
+    </section>
+    <section class="card">
+      <h3>Butun shahar: qaysi soatda koʻproq tirbandlik</h3>
+      ${NX.chart.hourBars(R.hours(null, 30))}
+    </section>` : ''}
+    <section class="card">
+      <h3>Koʻcha boʻyicha</h3>
+      <label class="field"><span>Koʻcha</span><select data-input="fc-street">${options}</select></label>
+      ${(() => { const g = top.find(x => x.street === s.key); return g ? `<p class="small"><b>${g.n} marta</b> xabar qilingan, koʻpincha <b>${hh(g.peak)}</b> atrofida.</p>${NX.chart.hourBars(R.hours(s.key, 30))}` : '<p class="muted small">Bu koʻcha boʻyicha hali xabar yoʻq.</p>'; })()}
+    </section>
     ${actions(S, s)}
-    ${aiBox(S, s)}
-    <details class="card more-card">
-      <summary>Xaritani boshqa kun va soat uchun koʻrish</summary>
-      <div class="row2">
-        <label class="field"><span>Kun</span><select data-input="fc-day">${NX.days.map((d, i) => `<option value="${i}" ${i === S.fc.d ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
-        <label class="field"><span>Soat: <b data-out="fc-hour">${F.hour(S.fc.h)}</b></span><input type="range" min="0" max="23" step="1" value="${S.fc.h}" data-input="fc-hour" aria-label="Soat"></label>
-      </div>
-      <p class="muted small">Xaritadagi koʻchalar tanlangan vaqt uchun bashorat boʻyicha boʻyaladi.</p>
-      <h4>${E(s.name)} — ${NX.days[S.fc.d]}, soatbay</h4>
-      ${NX.chart.forecastChart(day, { now: S.fc.h })}
-    </details>
-    <details class="card more-card">
-      <summary>Mutaxassislar uchun: TomTom oʻlchovlari va kalibrlash</summary>
-      <h4>Oʻlchovlar tarixi ${B('tomtom')}</h4>
-      <p class="small">Namunalar: <b>${st.samples}</b> · koʻchalar: <b>${st.streets}</b>${st.last ? ` · oxirgisi: ${F.time(st.last)}` : ''}</p>
-      <button class="btn" data-act="measure-main" ${S.batch ? 'disabled' : ''}>Asosiy ${main.length} ta koʻchani oʻlchash</button>
-      ${S.batch ? `<p class="small">${E(S.batch)}</p>` : ''}
-      ${S.batchErr ? `<p class="alert">${E(S.batchErr)}</p>` : ''}
-      <div class="row-btns"><button class="btn sm" data-act="hist-export">Eksport (JSON)</button><label class="btn sm file">Import<input type="file" accept="application/json,.json" data-input="hist-import" hidden></label></div>
-      <h4>Modelni kalibrlash ${B('hisob')}</h4>
-      <p class="muted small">Oʻlchangan koʻchalarda model tezligi TomTom’ga eng yaqin boʻladigan harakat darajasi tanlanadi.</p>
-      ${demandSlider(S)}
-      <button class="btn" data-act="calibrate" ${S.sim.busy || M.kpi.measured === 0 ? 'disabled' : ''}>${M.kpi.measured ? `Kalibrlash (${M.kpi.measured} ta oʻlchov)` : 'Avval TomTom bilan oʻlchang'}</button>
-      ${S.calibBusy ? progress(S.calibBusy) : ''}
-      ${S.calib ? calibView(S) : ''}
-    </details>`;
+    ${aiBox(S, s)}`;
   }
+
+  const forecast = stats;
 
   function calibView(S) {
     const c = S.calib;
@@ -452,9 +459,8 @@
         </tbody></table></div>
     </section>
     <section class="card">
-      <h3>Eng tirband koʻchalar</h3>
-      ${measured.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Tirbandlik</th><th class="n">Tezlik</th><th>Vaqt</th></tr></thead><tbody>${measured.map(s => `<tr><td><button class="link" data-act="street" data-id="${s.id}">${streetName(s)}</button></td><td class="n"><span class="tag ${congCls(s.tomtom.congestion)}">${F.pct(s.tomtom.congestion)}</span></td><td class="n">${F.num(s.tomtom.currentSpeed, 0)}/${F.num(s.tomtom.freeFlowSpeed, 0)}</td><td class="small">${F.time(s.tomtom.ts)}</td></tr>`).join('')}</tbody></table></div><p class="src-line">${B('tomtom')}</p>` : '<p class="muted small">TomTom oʻlchovlari yoʻq. Quyida qoidaga asoslangan tirbandlik <b>xavfi</b> (oʻlchov emas) koʻrsatilgan.</p>'}
-      ${!measured.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Xavf</th><th>Liniyalar</th></tr></thead><tbody>${risky.map(s => `<tr><td><button class="link" data-act="street" data-id="${s.id}">${streetName(s)}</button></td><td class="n">${s.risk.value}</td><td class="small">${E(s.busRefs.join(', ') || '—')}</td></tr>`).join('')}</tbody></table></div><p class="src-line">${B('hisob')}</p>` : ''}
+      <h3>Eng tirband koʻchalar ${B('crowd')}</h3>
+      ${(() => { const top = NX.reports.byStreet(30); return top.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Xabarlar (30 kun)</th><th class="n">Koʻpincha</th></tr></thead><tbody>${top.slice(0, 10).map(g => { const st = M.streetByKey.get(g.street); return `<tr><td>${st ? `<button class="link" data-act="street" data-id="${st.id}">${E(st.name || g.name)}</button>` : E(g.name)}</td><td class="n">${g.n}</td><td class="n">${hh(g.peak)}</td></tr>`; }).join('')}</tbody></table></div>` : '<p class="muted small">Hali odamlardan tirbandlik xabari kelmagan. Statistika xabarlar asosida yigʻiladi.</p>'; })()}
     </section>
     <section class="card">
       <h3>Tavsiyalar (ustuvorlik boʻyicha)</h3>
@@ -493,5 +499,5 @@
       </div></section>`;
   }
 
-  NX.views = { loading, error, home, problems, nowCard, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, nowCard, stats, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

@@ -24,11 +24,20 @@
       </svg><p class="ch-cap">Pastda — soat, chapda — tirbandlik. Yuqoriroq — tirbandroq.</p>`;
   }
 
+  // 24 soatlik ustunli grafik (xabarlar soni)
+  function hourBars(h) {
+    const W = 360, H = 120, L = 8, R = 8, T = 10, B = 20, max = Math.max(1, ...h), bw = (W - L - R) / 24;
+    const peak = h.indexOf(Math.max(...h));
+    const bars = h.map((v, i) => { const bh = ((H - T - B) * v) / max; return `<rect x="${(L + i * bw + 1).toFixed(1)}" y="${(H - B - bh).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" class="${i === peak && v ? 'hb peak' : 'hb'}"><title>${String(i).padStart(2, '0')}:00 — ${v} ta xabar</title></rect>`; }).join('');
+    const xl = h.map((v, i) => (i % 3 === 0 ? `<text x="${L + i * bw + bw / 2}" y="${H - 5}" class="ch-ax" text-anchor="middle">${String(i).padStart(2, '0')}</text>` : '')).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Soatlar boʻyicha xabarlar">${bars}${xl}</svg><p class="ch-cap">Har bir ustun — shu soatdagi tirbandlik xabarlari soni. Toʻq rang — eng koʻp.</p>`;
+  }
+
   // Oddiy gorizontal ustunlar
   function bars(rows, opts = {}) {
     const max = Math.max(1, ...rows.map(r => Math.abs(r.v)));
     return `<div class="bars">${rows.map(r => `<div class="bar-row"><span class="bar-k">${NX.esc(r.k)}</span><span class="bar-t"><i style="width:${(100 * Math.abs(r.v)) / max}%;background:${r.c || 'var(--accent)'}"></i></span><span class="bar-v">${r.t != null ? r.t : NX.fmt.num(r.v, opts.d || 0)}</span></div>`).join('')}</div>`;
   }
 
-  NX.chart = { forecastChart, bars };
+  NX.chart = { forecastChart, bars, hourBars };
 })();

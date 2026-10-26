@@ -181,6 +181,9 @@ Qoidalar:
       vaqt: new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }),
       ob_havo: W ? { harorat_c: Math.round(W.temp), holat: NX.weather.codeText(W.code)[0], shamol_kmh: Math.round(W.wind), yogin_mm: W.precip, yolga_tasiri: NX.weather.roadAdvice(W).join(' '), manba: 'Open-Meteo (real)' } : null,
       yol_hodisalari: inc && inc.list ? inc.list.slice(0, 8).map(x => ({ turi: x.name, joy: [x.from, x.to].filter(Boolean).join(' → '), kechikish_daqiqa: x.delay ? Math.round(x.delay / 60) : null, manba: 'TomTom (real)' })) : null,
+      hozir_xabar_qilingan_tirbandliklar: NX.reports.recent(60).slice(0, 8).map(g => ({ joy: g.name || 'nomsiz', daraja: NX.reports.LEVEL[g.level].uz, xabarlar: g.n, daqiqa_oldin: Math.round((Date.now() - g.ts) / 60000), manba: 'odamlar xabari (real)' })),
+      eng_tirband_koʻchalar_30_kun: NX.reports.byStreet(30).slice(0, 10).map(g => ({ koʻcha: g.name, xabarlar: g.n, koʻpincha_soat: g.peak + ':00', manba: 'odamlar xabari (real)' })),
+      real_vaqt_xaritasi: 'Yandex probkalar (rang bilan; raqamli maʼlumot yoʻq)',
       hozirgi_tirbandlik: fresh.slice(0, 10).map(s => ({ koʻcha: s.name || 'nomsiz', tezlik_kmh: Math.round(s.tomtom.currentSpeed), odatdagi_kmh: Math.round(s.tomtom.freeFlowSpeed), tirbandlik_foiz: Math.round(s.tomtom.congestion), manba: 'TomTom (real)' })),
       muammolar: Object.keys(groups).map(t => ({ turi: NX.PROBLEM[t].short, soni: groups[t].length, misollar: groups[t].slice(0, 3), yechim: NX.PROBLEM[t].fix })),
       avtobus_liniyalari: [...lines.values()].slice(0, 25),
@@ -199,7 +202,7 @@ Qoidalar:
       savol: q, hudud: 'Samarqand tarixiy markazi',
       koʻcha: street ? streetFacts(street, M) : null,
       ikkinchi_koʻcha: found[1] ? streetFacts(found[1].s, M) : null,
-      odatdagi_tirbandlik_taxmini: street ? forecastFacts(street) : null,
+      bu_koʻcha_xabarlari: street ? (() => { const g = NX.reports.byStreet(30).find(x => x.street === street.key); return g ? { soʻnggi_30_kun: g.n, koʻpincha_soat: g.peak + ':00', manba: 'odamlar xabari (real)' } : 'xabar yoʻq'; })() : null,
       simulyatsiya: simFacts(sim, M),
     }, cityFacts(M, opts.state));
     // Proksi limiti (30 000 belgi) dan oshmasligi uchun kam muhim qismlar qisqartiriladi

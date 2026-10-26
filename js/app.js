@@ -47,7 +47,7 @@
       S.fc.street = (M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value)[0] || M.streets[0]).id;
       NX.view.clearDeltas();
       NX.view.setModel(M);
-      NX.view.drawFixes(NX.fixes.list());
+      NX.view.drawFixes(NX.fixes.list()); NX.view.drawReports(NX.reports.recent(60));
       setStatus(res.source, res.data.ts);
       render();
       if (res.warning) toast(res.warning, 'warn');
@@ -81,7 +81,8 @@
   function render() {
     document.querySelectorAll('.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
     if (!S.model) return;
-    NX.view.setColorMode(S.tab === 'forecast' ? { mode: 'forecast', d: S.fc.d, h: S.fc.h } : { mode: 'now' });
+    // Taxminiy bashorat ranglari chizilmaydi — xaritada faqat real tirbandlik (Yandex) va odamlar xabarlari
+    NX.view.setColorMode({ mode: 'now' });
     const M = S.model;
     let html;
     NX.view.showProblems(S.tab === 'problems');
@@ -274,6 +275,18 @@
     render();
   }
 
+  // ---------- “Hozir bu yerda tirbandlik” xabari ----------
+  async function sendReport(id, level) {
+    const s = S.model.streets[id];
+    S.reporting = true; render();
+    try {
+      await NX.reports.send(s, level, s.center[0], s.center[1]);
+      NX.view.drawReports(NX.reports.recent(60));
+      toast('Rahmat! Xabaringiz qabul qilindi — boshqalar ham koʻradi.', 'ok');
+    } catch (e) { toast(e.message, 'bad'); }
+    S.reporting = false; render();
+  }
+
   // ---------- Xaritani bosish: boʻlimga qarab ----------
   function nearestProblem(lat, lon, r) {
     const [x, y] = NX.geo.xy(lat, lon);
@@ -319,7 +332,7 @@
     NX.analysis.refresh(M);
     S.model = M;
     NX.view.setModel(M);
-    NX.view.drawFixes(NX.fixes.list());
+    NX.view.drawFixes(NX.fixes.list()); NX.view.drawReports(NX.reports.recent(60));
     if (S.street != null) NX.view.selectStreet(S.street, false);
     render();
   }
@@ -411,6 +424,7 @@
     // TomTom plitalari Samarqandda deyarli boʻsh — real tirbandlik Yandex orqali koʻrsatiladi
     NX.view.setRealTraffic(null);
     const jobs = [
+      NX.reports.load().then(() => NX.view.drawReports(NX.reports.recent(60))),
       NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
     ];
     if (NX.tomtom.key()) jobs.push(NX.tomtom.incidents().then(list => { S.incidents = { list, ts: Date.now() }; NX.view.setIncidents(list); }).catch(e => { S.incidents = { err: e.message }; }));
@@ -547,6 +561,11 @@
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
+        case 'report': sendReport(id, +b.dataset.level); break;
+        case 'jam':
+          NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 17);
+          if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
         case 'fix':
           onFix({ action: b.dataset.fix, pid: b.dataset.pid });
           if (/^pick-/.test(b.dataset.fix) && window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });

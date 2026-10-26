@@ -6,7 +6,8 @@
   const NX = window.NX;
   const COL = { green: '#16a34a', amber: '#f59e0b', red: '#dc2626' };
   let M = null, colorMode = { mode: 'now' }, showProb = false, pieces = null;
-  const G = { sel: null, delta: null, prob: null, fixes: null, route: null, fc: null };
+  const G = { sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
+  let lastReports = [];
   const Y = () => NX.yandex && NX.yandex.getMap && NX.yandex.getMap();
   let layoutCache = null;
 
@@ -90,6 +91,15 @@
         c.add(mark(x.lat, x.lon, k.icon, '#16a34a', NX.map.fixPopup(x), k.uz, 26));
       });
     },
+    drawReports(list) {
+      lastReports = list || [];
+      if (!Y()) return;
+      const c = coll('rep');
+      lastReports.forEach(g => {
+        const lv = NX.reports.LEVEL[g.level];
+        c.add(mark(g.lat, g.lon, '🚗' + (g.n > 1 ? g.n : ''), lv.color, NX.map.reportPopup(g), lv.uz + ' · ' + g.n + ' ta xabar', 42));
+      });
+    },
     highlightRoute(i) {
       if (!Y() || !M) return;
       if (i == null) { drop('route'); return; }
@@ -139,7 +149,7 @@
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
   ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'drawProblems', 'showProblems',
-    'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
+    'focusProblem', 'updateLegend', 'drawFixes', 'drawReports', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;
       if (ONLY_ACTIVE[fn] && yOn()) return Ymap[fn].apply(Ymap, args);
@@ -149,5 +159,5 @@
     };
   });
   NX.view.hasDeltas = () => NX.map.hasDeltas();
-  NX.view.syncYandex = (model, fixes) => { Ymap.setModel(model); Ymap.drawFixes(fixes); };
+  NX.view.syncYandex = (model, fixes) => { Ymap.setModel(model); Ymap.drawFixes(fixes); Ymap.drawReports(NX.reports ? NX.reports.recent(60) : []); };
 })();

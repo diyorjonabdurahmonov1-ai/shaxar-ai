@@ -397,3 +397,16 @@ details.pgroup .pill { margin-left: auto; }
 .locrow .loc { border: 0; background: none; padding: 4px 4px; min-height: 36px; }
 .loc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .loc-acts .btn { flex: 1 1 auto; min-height: 40px; }
+
+/* ---------- Tirbandlik xabarlari ---------- */
+.rep-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.rep-btns .btn { min-height: 48px; font-size: .88rem; padding: 6px; }
+.rep-2 { border-color: #dc2626; } .rep-3 { border-color: #7f1d1d; } .rep-1 { border-color: #f59e0b; }
+.rep-now { background: var(--red-soft); border-radius: 10px; padding: 8px 10px; }
+.hb { fill: #fca5a5; } .hb.peak { fill: #dc2626; }
+.jam { background: none; border: 0; }
+.jam span, .ymk span { position: relative; }
+.jam span { display: grid; place-content: center; width: 40px; height: 40px; border-radius: 50%; background: var(--c); color: #fff; font-size: 18px; box-shadow: 0 0 0 0 var(--c); animation: jam 1.6s infinite; border: 3px solid #fff; }
+.jam b, .ymk b { position: absolute; right: -6px; top: -6px; background: #111827; color: #fff; border-radius: 99px; font-size: 11px; padding: 1px 5px; }
+@keyframes jam { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 100% { box-shadow: 0 0 0 16px rgba(220,38,38,0); } }
+.nx-legend i.jam-sw { width: auto; height: auto; background: none; font-style: normal; } .nx-legend i { height: 6px !important; width: 22px !important; }

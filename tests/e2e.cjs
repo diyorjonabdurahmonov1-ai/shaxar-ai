@@ -150,30 +150,12 @@ async function clickStreet(page, name) {
   const rl = await page.evaluate(() => NX.state.sim.last.verdict.busLines);
   ok('Bir tomonlamada qaysi liniyalar yoʻnalishini oʻzgartiradi', rl.length === 1 && rl[0] === '3', rl.join(','));
 
-  // Bashorat
+  // Statistika (real: odamlar xabari)
   await page.click('.tabs [data-tab=forecast]');
-  await page.waitForSelector('.chart', { timeout: 5000 });
-  const charts = await page.$$eval('#panel svg.chart', s => s.length);
-  const low = await page.$('.lowconf');
-  ok('Bashorat grafiklari chiziladi', charts === 2, 'grafiklar: ' + charts);
-  ok('“maʼlumot kam → ishonch past” yorligʻi', !!low);
-  await page.evaluate(() => document.querySelectorAll('details').forEach(d => (d.open = true)));
-  const legend = await page.textContent('.nx-legend');
-  ok('Xarita bashorat rejimida', /Taxmin:/.test(legend), legend.slice(0, 40));
-  await page.fill('input[data-input=fc-hour]', '8');
-  await page.dispatchEvent('input[data-input=fc-hour]', 'input');
-  const legend2 = await page.textContent('.nx-legend');
-  ok('Soat surilgichi xaritani yangilaydi', /08:00/.test(legend2));
-  // Bashorat raqamlari: 3 ta namunadan keyin oʻrtacha
-  const fc = await page.evaluate(() => {
-    const s = NX.state.model.streets.find(x => x.name === 'Toshkent koʻchasi');
-    const d = new Date(2026, 9, 19, 8); // Dushanba 08:00
-    for (let i = 0; i < 3; i++) NX.forecast.addSample(s.key, 20, 40, d);
-    const p = NX.forecast.predict(s, 1, 8), q = NX.forecast.predict(s, 1, 3);
-    return { v: p.value, low: p.low, n: p.n, night: q.value, nightLow: q.low };
-  });
-  ok('Bashorat: ≥3 namuna → oʻrtacha (50%), ishonch yetarli', Math.abs(fc.v - 50) < 0.01 && !fc.low && fc.n === 3, JSON.stringify(fc));
-  ok('Bashorat: tunda namuna yoʻq → profil, ishonch past', fc.nightLow && fc.night < fc.v);
+  await page.waitForSelector('#panel h2', { timeout: 5000 });
+  const st0 = await page.textContent('#panel');
+  ok('Statistika: taxmin yoʻq, xabar boʻlmasa aniq yoziladi', /Hali xabar yoʻq/.test(st0) && !/Taxmin/.test(await page.textContent('.nx-legend')));
+  ok('Statistika boʻlimida taxminiy grafik chizilmaydi', (await page.$$('#panel svg.chart')).length === 0);
 
   // AI: koʻcha nomisiz savol — panelda tanlangan koʻcha ishlatiladi (kalitsiz → Hisob javobi)
   await page.fill('#aiBox textarea[name=q]', 'yopsak nima boʻladi?');
@@ -181,15 +163,9 @@ async function clickStreet(page, name) {
   await page.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
   const ctxAns = await page.evaluate(() => ({ street: NX.state.ai.answer.street && NX.state.ai.answer.street.name, type: NX.state.sim.last.type }));
   ok('AI yoʻq: “AI ishlamadi” deb aniq yoziladi', /AI ishlamadi/.test(await page.textContent('#aiBox .ai-src')));
-  ok('Bashorat boʻlimida koʻcha nomisiz savol', !!ctxAns.street && ctxAns.type === 'close', JSON.stringify(ctxAns));
-  ok('Bashorat boʻlimida “nima qilmoqchisiz” tugmalari', (await page.$$('#whatif [data-act=sim]')).length === 6);
+  ok('Statistika boʻlimida koʻcha nomisiz savol', !!ctxAns.street && ctxAns.type === 'close', JSON.stringify(ctxAns));
+  ok('Statistika boʻlimida “nima qilmoqchisiz” tugmalari', (await page.$$('#whatif [data-act=sim]')).length === 6);
   await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; document.querySelectorAll('details').forEach(d => (d.open = true)); });
-
-  // Kalibrlash
-  await page.click('[data-act=calibrate]');
-  await page.waitForSelector('.calib', { timeout: 90000 });
-  const cal = await page.textContent('.calib');
-  ok('Kalibrlash natijasi oddiy tilda', /oʻrtacha farq/.test(cal), cal.trim().slice(0, 120));
 
   // Yoʻnalishlar
   await page.click('.tabs [data-tab=routes]');
@@ -390,6 +366,12 @@ async function clickStreet(page, name) {
     }
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ items: corr.items }) });
   });
+  const repStore = { items: [] };
+  await ctx5.route(/cityjam-ai\.example\.workers\.dev\/reports/, route => {
+    const req = route.request();
+    if (req.method() === 'POST') { const b = JSON.parse(req.postData()); const item = Object.assign({ id: 'r' + repStore.items.length, ts: Date.now() }, b); repStore.items.push(item); return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ item }) }); }
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ items: repStore.items }) });
+  });
   const p5 = await ctx5.newPage();
   const e5 = watchErrors(p5);
   await p5.goto(BASE);
@@ -399,6 +381,20 @@ async function clickStreet(page, name) {
   await p5.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
   const aiTxt5 = await p5.textContent('#aiBox .ai-text');
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
+  // “Hozir tirbandlik” xabari → xaritada belgi, statistika, boshqa foydalanuvchida ham
+  await p5.click('.tabs [data-tab=map]');
+  await p5.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); document.querySelector('.tabs [data-tab=map]').click(); });
+  await p5.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); NX.view.selectStreet(s.id); NX.state.street = s.id; });
+  await p5.evaluate(() => document.querySelector('.tabs [data-tab=map]').click());
+  await p5.waitForSelector('#reportCard [data-level="2"]', { timeout: 10000 });
+  await p5.click('#reportCard [data-level="2"]');
+  await p5.waitForFunction(() => /Xabaringiz qabul qilindi/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
+  ok('“🟥 Tirband” xabari yuboriladi', repStore.items.length === 1 && repStore.items[0].level === 2 && repStore.items[0].street === 'n:registon koʻchasi');
+  ok('Xabar xaritada belgi bilan chiqadi', (await p5.$$('.jam')).length === 1);
+  ok('Koʻcha panelida xabarlar soni', /1 kishi/.test(await p5.textContent('#reportCard')));
+  await p5.click('.tabs [data-tab=forecast]');
+  ok('Statistikada eng tirband koʻcha — xabar qilingan koʻcha', /Registon/.test(await p5.textContent('#panel .tbl')) && (await p5.$$('#panel svg.chart')).length >= 1);
+
   // PIN bilan tuzatish hamma uchun saqlanadi
   await p5.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
   await p5.click('.tabs [data-tab=problems]');
@@ -415,6 +411,8 @@ async function clickStreet(page, name) {
   await p5b.waitForFunction(k => NX.state.model && NX.fixes.list().some(x => x.key === k), corr.items[0].key, { timeout: 20000 });
   const hidden = await p5b.evaluate(k => !NX.state.model.problems.some(p => p.key === k), corr.items[0].key);
   ok('Boshqa foydalanuvchida ham muammo yopilgan koʻrinadi', hidden);
+  await p5b.waitForFunction(() => document.querySelectorAll('.jam').length === 1, null, { timeout: 10000 });
+  ok('Boshqa foydalanuvchi ham tirbandlik xabarini xaritada koʻradi', /Registon/.test(await p5b.textContent('.live')));
   ok('Konsolda xato yoʻq (proksi)', e5.length === 0, e5.join(' || '));
 
   // ---------- 6. Yandex probkalar ----------
