@@ -3,5 +3,5 @@
    Muhim: developer.tomtom.com → kalit sozlamalarida faqat sayt domenini (masalan, *.github.io) ruxsat eting —
    shunda kalitni boshqa saytlar ishlata olmaydi. Foydalanuvchi “Sozlamalar”da oʻz kalitini kiritsa, u ustun turadi. */
 window.CITYJAM_KEYS = {
-  tomtom: '',
+  tomtom: 'JeJCBCRbOhEGl3Bp7KSdSTdz3ZeL1qdn',
 };

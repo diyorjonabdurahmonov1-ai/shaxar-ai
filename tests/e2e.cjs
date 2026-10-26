@@ -12,6 +12,8 @@ const ok = (name, cond, extra) => { results.push([cond ? 'OK  ' : 'FAIL', name, 
 
 async function setupRoutes(ctx, opts = {}) {
   ctx.overpassCalls = 0; ctx.openaiBodies = [];
+  // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
+  await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   await ctx.route(/overpass|maps\.mail\.ru/, async route => {
     ctx.overpassCalls++;
     if (opts.overpassDown) return route.abort('failed');
