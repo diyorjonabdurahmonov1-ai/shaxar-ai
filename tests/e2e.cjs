@@ -299,6 +299,26 @@ async function clickStreet(page, name) {
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-problem-map.png' });
   ok('Konsolda xato yoʻq (telefon)', e4.length === 0, e4.join(' || '));
 
+  // ---------- 5. AI proksi: brauzerda kalit yoʻq, savol Worker orqali ----------
+  const ctx5 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await setupRoutes(ctx5);
+  await ctx5.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '', aiProxy: 'https://cityjam-ai.example.workers.dev/' };" }));
+  const proxyReqs = [];
+  await ctx5.route(/cityjam-ai\.example\.workers\.dev/, route => {
+    proxyReqs.push({ auth: route.request().headers()['authorization'] || null, body: JSON.parse(route.request().postData()) });
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nProksi javobi.' } }] }) });
+  });
+  const p5 = await ctx5.newPage();
+  const e5 = watchErrors(p5);
+  await p5.goto(BASE);
+  await p5.waitForSelector('#aiBox textarea', { timeout: 20000 });
+  await p5.fill('#aiBox textarea', 'Registon koʻchasini yopsak nima boʻladi?');
+  await p5.click('#aiBox form button');
+  await p5.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
+  const aiTxt5 = await p5.textContent('#aiBox .ai-text');
+  ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
+  ok('Konsolda xato yoʻq (proksi)', e5.length === 0, e5.join(' || '));
+
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));
   console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`);

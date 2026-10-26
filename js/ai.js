@@ -100,6 +100,11 @@ Qoidalar:
     return { keyingi_24_soat_eng_yuqori: { soat: peak.label, tirbandlik_foiz: Math.round(peak.value) }, ishonch: peak.low ? 'past (TomTom tarixi kam)' : 'yetarli', tomtom_namunalar: peak.total };
   }
 
+  // Foydalanuvchining oʻz kaliti boʻlsa — toʻgʻridan-toʻgʻri OpenAI; boʻlmasa — sayt egasining yashirin proksisi
+  const userKey = () => (NX.store.get('key:openai', '') || '').trim();
+  const proxyUrl = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim();
+  const aiAvailable = () => !!(userKey() || proxyUrl());
+
   async function callOpenAI(key, ctx, onModel) {
     let lastErr = null;
     for (const model of NX.config.openaiModels) {
@@ -108,7 +113,9 @@ Qoidalar:
       if (/^gpt-5/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       let r;
       try {
-        r = await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 60000);
+        r = key
+          ? await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 60000)
+          : await NX.fetchJSON(proxyUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 60000);
       } catch (e) { throw new Error(e.timeout ? 'OpenAI javob bermadi (vaqt tugadi). Qayta urinib koʻring.' : 'OpenAI serveriga ulanib boʻlmadi. Internet aloqasini tekshiring.'); }
       const err = r.data && r.data.error;
       if (r.ok && r.data && r.data.choices && r.data.choices[0]) {
@@ -118,6 +125,9 @@ Qoidalar:
         continue;
       }
       const code = err && (err.code || err.type);
+      if (code === 'proxy_rate_limit') throw new Error('Bir soatda juda koʻp savol berildi. Birozdan keyin qayta urinib koʻring.');
+      if (code === 'forbidden_origin' || code === 'no_server_key') throw new Error('AI xizmati hozircha sozlanmagan.');
+      if (r.status === 401 && !key) throw new Error('AI xizmati hozircha ishlamayapti (server kaliti notoʻgʻri).');
       if (r.status === 401) throw new Error('OpenAI kaliti notoʻgʻri yoki bekor qilingan. Sozlamalarda kalitni tekshiring.');
       if (code === 'insufficient_quota') throw new Error('OpenAI hisobingizda kredit qolmagan (insufficient_quota). Balansni toʻldiring.');
       if (r.status === 429) throw new Error('OpenAI soʻrovlar limiti oshdi. Birozdan keyin qayta urinib koʻring.');
@@ -167,9 +177,9 @@ Qoidalar:
       umumiy: { liniyalar: M.kpi.lines, bekat_qamrovi_foiz: M.kpi.coverage != null ? Math.round(M.kpi.coverage) : null, svetoforsiz_chorrahalar: M.kpi.unsignalised, transport_indeksi: M.index.value, tomtom_olchangan_koʻchalar: M.kpi.measured },
       manbalar: 'OpenStreetMap (koʻchalar, bekatlar), TomTom (agar oʻlchangan boʻlsa), Hisob/Bashorat (model)',
     };
-    const key = (NX.store.get('key:openai', '') || '').trim();
+    const key = userKey();
     const meta = { street, scen, sim, found };
-    if (!key) return Object.assign({ text: localAnswer(ctx), src: 'hisob', note: 'OpenAI kaliti kiritilmagan — javob hisoblangan raqamlardan avtomatik tuzildi.' }, meta);
+    if (!aiAvailable()) return Object.assign({ text: localAnswer(ctx), src: 'hisob', note: 'OpenAI kaliti kiritilmagan — javob hisoblangan raqamlardan avtomatik tuzildi.' }, meta);
     try {
       const r = await callOpenAI(key, ctx, opts.onModel);
       return Object.assign({ text: r.text, src: 'ai', model: r.model }, meta);
@@ -183,5 +193,5 @@ Qoidalar:
     return NX.esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
   }
 
-  NX.ai = { ask, detectStreets, detectScenario, render, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, _core: core };
 })();

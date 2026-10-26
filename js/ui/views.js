@@ -86,7 +86,7 @@
   // AI / erkin savol qutisi. s berilsa — shu koʻcha kontekstida
   function aiBox(S, s) {
     const a = S.ai;
-    const hasKey = !!(NX.store.get('key:openai', '') || '').trim();
+    const hasKey = NX.ai.available();
     let out = '';
     if (a.busy) out = `<div class="ai-out"><div class="spinner sm"></div> ${E(a.busy)}</div>`;
     else if (a.answer) {
