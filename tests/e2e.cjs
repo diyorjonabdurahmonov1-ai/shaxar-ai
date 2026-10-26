@@ -53,6 +53,9 @@ function watchErrors(page) {
 }
 
 async function clickStreet(page, name) {
+  // Asosiy ekranda Yandex probkalar ochiq — tahlil xaritasiga oʻtiladi
+  await page.evaluate(() => { if (NX.state.yandexOn) document.getElementById('btnYandex').click(); });
+  await page.waitForFunction(() => document.getElementById('ymap').hidden);
   const pt = await page.evaluate(n => {
     const M = NX.state.model, s = M.streets.find(x => x.name === n);
     const w = M.ways[s.ways[0]], ll = w.ll[Math.floor(w.ll.length / 2) - 1], ll2 = w.ll[Math.floor(w.ll.length / 2)];
@@ -76,6 +79,8 @@ async function clickStreet(page, name) {
   const errs = watchErrors(page);
   await page.goto(BASE);
   await page.waitForSelector('.index-card', { timeout: 20000 });
+  await page.waitForSelector('#ymap iframe', { timeout: 10000 });
+  ok('Sayt ochilganda Yandex probkalar avtomatik koʻrinadi', !(await page.evaluate(() => document.getElementById('ymap').hidden)));
   const kpis = await page.$$eval('.kpi .kpi-v', els => els.map(e => e.textContent));
   ok('Maʼlumot yuklandi va KPI koʻrsatildi', kpis.length === 4, kpis.join(' | '));
   const info = await page.evaluate(() => ({ streets: NX.state.model.namedStreets.length, routes: NX.state.model.routes.length, lines: NX.state.model.kpi.lines, problems: NX.state.model.problems.length, idx: NX.state.model.index.value, status: document.getElementById('dataStatus').textContent }));
@@ -377,6 +382,16 @@ async function clickStreet(page, name) {
   await p6.waitForFunction(() => !document.getElementById('ymap').hidden);
   ok('Tugma bilan Yandex probkalarga oʻtish', /Tahlil xaritasi/.test(await p6.textContent('#btnYandex')));
   ok('Konsolda xato yoʻq (Yandex)', e6.length === 0, e6.join(' || '));
+
+  // ---------- 7. Yandex kaliti ishlamasa → kalitsiz vidjet ----------
+  const ctx7 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await setupRoutes(ctx7);
+  await ctx7.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { yandex: 'LIMIT-TUGAGAN' };" }));
+  await ctx7.route(/api-maps\.yandex\.ru/, route => route.abort('failed'));
+  const p7 = await ctx7.newPage();
+  await p7.goto(BASE);
+  await p7.waitForSelector('#ymap iframe', { timeout: 30000 });
+  ok('Yandex kaliti ishlamasa kalitsiz probkalar vidjeti ochiladi', /map-widget/.test(await p7.getAttribute('#ymap iframe', 'src')));
 
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));

@@ -33,12 +33,14 @@
     return { level: st.get('level'), localtime: st.get('localtime'), ts: Date.now() };
   }
 
-  async function show(center, zoom, handlers) {
+  let forceWidget = false;
+  async function show(center, zoom, handlers, opt) {
     h = handlers || {};
     active = true;
+    if (opt && opt.widget) forceWidget = true;
     const el = document.getElementById('ymap');
     el.hidden = false;
-    if (!key()) {
+    if (!key() || forceWidget) {
       el.innerHTML = `<iframe src="${widgetUrl(center, zoom)}" title="Yandex probkalar" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`;
       if (h.onState) h.onState(null);
       return;
@@ -46,6 +48,7 @@
     const ymaps = await load();
     if (!active) return;
     if (!ymap) {
+      el.innerHTML = '';
       ymap = new ymaps.Map('ymap', { center, zoom, controls: ['zoomControl'] }, { suppressMapOpenBlock: true });
       provider = new ymaps.traffic.provider.Actual({}, { infoLayerShown: true });
       provider.setMap(ymap);
@@ -73,5 +76,5 @@
     hl.forEach(p => ymap.geoObjects.add(p));
   }
 
-  NX.yandex = { key, show, hide, highlight, state, isActive: () => active, mode: () => (key() ? 'api' : 'widget') };
+  NX.yandex = { key, show, hide, highlight, state, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
 })();

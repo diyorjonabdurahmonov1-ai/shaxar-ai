@@ -53,7 +53,8 @@
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
       startLive();
       $('#btnYandex').hidden = false;
-      if (NX.yandex.key() && S.yandexOn == null) setYandex(true);
+      // Asosiy xarita — real tirbandlik (Yandex probkalar) doim koʻrinib turadi
+      if (S.yandexOn == null) setYandex(true);
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -292,8 +293,10 @@
         });
         if (S.street != null) highlightOnYandex(S.street);
       } catch (e) {
-        toast(e.message, 'bad');
-        S.yandexOn = true; setYandex(false);
+        // Kalit ishlamasa yoki kunlik limit tugasa — kalitsiz Yandex vidjeti (probkalar baribir koʻrinadi)
+        console.warn('Yandex JS API:', e.message);
+        try { await NX.yandex.show([c.lat, c.lng], L.getZoom(), {}, { widget: true }); }
+        catch (e2) { toast('Yandex xaritasi ochilmadi.', 'bad'); S.yandexOn = true; setYandex(false); }
       }
     } else {
       const v = NX.yandex.hide();

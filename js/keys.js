@@ -5,7 +5,7 @@
 /* aiProxy — AI proksi manzili (worker/ai-proxy.js, Cloudflare Worker). Bu sir emas: OpenAI kaliti Worker ichida yashirin turadi. */
 /* yandex — Yandex JavaScript API kaliti (developer.tech.yandex.ru). Kalit sozlamasida “HTTP Referer” ga sayt domenini yozing. */
 window.CITYJAM_KEYS = {
-  yandex: '',
+  yandex: 'cac5c421-e0f9-4d7e-875c-f112c310a77c',
   aiProxy: 'https://cityjam-ai.diyorjonabdurahmonov1.workers.dev',
   tomtom: 'JeJCBCRbOhEGl3Bp7KSdSTdz3ZeL1qdn',
 };
