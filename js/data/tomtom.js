@@ -10,7 +10,7 @@
   function errText(r) {
     if (r.status === 403 || r.status === 401) return 'TomTom kaliti notoʻgʻri yoki Traffic API uchun ruxsat berilmagan.';
     if (r.status === 429) return 'TomTom soʻrovlar limiti tugadi. Birozdan keyin urinib koʻring.';
-    if (r.status === 400) return 'Bu nuqtada TomTom yoʻl maʼlumoti topilmadi.';
+    if (r.status === 400) return 'TomTom’da bu koʻcha boʻyicha maʼlumot yoʻq (Samarqandda TomTom qamrovi kam).';
     return 'TomTom xatosi: HTTP ' + r.status;
   }
 

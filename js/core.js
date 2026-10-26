@@ -176,7 +176,7 @@
 
   const SRC = {
     osm: ['OpenStreetMap', 'b-osm'], tomtom: ['TomTom · real', 'b-tt'], hisob: ['Hisob', 'b-calc'],
-    bashorat: ['Taxmin', 'b-pred'], ai: ['AI', 'b-ai'], meteo: ['Open-Meteo · real', 'b-osm'],
+    bashorat: ['Taxmin', 'b-pred'], ai: ['AI', 'b-ai'], meteo: ['Open-Meteo · real', 'b-osm'], yandex: ['Yandex · real', 'b-tt'],
   };
   NX.badge = k => `<span class="badge ${SRC[k][1]}" title="Manba: ${SRC[k][0]}">${SRC[k][0]}</span>`;
 

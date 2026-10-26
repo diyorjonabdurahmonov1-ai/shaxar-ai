@@ -13,7 +13,7 @@
     ai: { q: '', busy: null, answer: null },
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
-    calib: null, calibBusy: null, load: null,
+    calib: null, calibBusy: null, load: null, yandexOn: null, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
   };
@@ -52,6 +52,8 @@
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
       startLive();
+      $('#btnYandex').hidden = !NX.yandex.key();
+      if (NX.yandex.key() && S.yandexOn == null) setYandex(true);
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -110,6 +112,7 @@
   const renderAI = () => swap('#aiBox', V.aiBox(S, ctxStreet()));
 
   function setTab(t) {
+    if (t !== 'map') ensureLeaflet();
     // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.map.clearDeltas(false);
     S.tab = t;
@@ -123,9 +126,11 @@
     else panel.scrollTop = 0;
   }
 
-  function openStreet(id) {
+  function openStreet(id, opt) {
     S.tab = 'map'; S.street = id; S.measureErr = null;
-    NX.map.selectStreet(id);
+    if (!(opt && opt.keepYandex)) ensureLeaflet();
+    NX.map.selectStreet(id, !S.yandexOn);
+    highlightOnYandex(id);
     render(); focusPanel();
     // Kalit boʻlsa — koʻcha ochilganda real holati avtomatik oʻlchanadi (10 daqiqadan eski boʻlsa)
     const s = S.model.streets[id];
@@ -199,6 +204,7 @@
       const iters = 10;
       const r = await NX.sim.run({ demand: S.demand, scenario: sc, iters }, (p, l) => { S.sim.progress = { p, label: l }; renderSimOut(); });
       S.sim.last = { street: streetId, type, label, demand: S.demand, result: r, verdict: verdict(r, sc, s, type, dirSign || 1), iters };
+      ensureLeaflet();
       NX.map.showDeltas(r, S.simInfo.pieces);
       NX.map.selectStreet(streetId, false);
     } catch (e) {
@@ -264,6 +270,44 @@
     render();
   }
 
+  // ---------- Yandex probkalar (real tirbandlik) ----------
+  async function setYandex(on) {
+    const btn = $('#btnYandex'), L = NX.map.leaflet();
+    if (on === S.yandexOn) return;
+    S.yandexOn = on;
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '🗺 Tahlil xaritasi' : '🚦 Yandex probkalar';
+    if (on) {
+      const c = L.getCenter();
+      try {
+        await NX.yandex.show([c.lat, c.lng], L.getZoom(), {
+          onClick: (lat, lon) => {
+            if (!S.model) return;
+            const [x, y] = NX.geo.xy(lat, lon);
+            let best = null, bd = Infinity;
+            S.model.streetsNear(x, y, 40).forEach((d, id) => { if (d < bd) { bd = d; best = id; } });
+            if (best != null) openStreet(best, { keepYandex: true });
+          },
+          onState: st => { S.yandexState = st; renderLive(); },
+        });
+        if (S.street != null) highlightOnYandex(S.street);
+      } catch (e) {
+        toast(e.message, 'bad');
+        S.yandexOn = true; setYandex(false);
+      }
+    } else {
+      const v = NX.yandex.hide();
+      if (v) L.setView(v.center, v.zoom, { animate: false });
+      NX.map.invalidate();
+    }
+    renderLive();
+  }
+  const ensureLeaflet = () => { if (S.yandexOn) setYandex(false); };
+  function highlightOnYandex(id) {
+    if (!S.yandexOn) return;
+    NX.yandex.highlight(id == null ? null : S.model.streets[id].ways.map(i => S.model.ways[i].ll));
+  }
+
   // ---------- Jonli kuzatuv: har 5 daqiqada real maʼlumot (ob-havo, tirbandlik, yoʻl hodisalari) ----------
   let liveTimer = null;
   function startLive() {
@@ -280,7 +324,7 @@
     const M = S.model;
     S.live.busy = 'Yangilanmoqda…'; renderLive();
     // TomTom kvotasini tejash: butun shahar uchun bitta plita qatlami + bitta hodisalar soʻrovi
-    NX.map.setRealTraffic(NX.tomtom.flowTileUrl());
+    NX.map.setRealTraffic(NX.yandex.key() ? null : NX.tomtom.flowTileUrl());
     const jobs = [
       NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
     ];
@@ -402,11 +446,12 @@
       const M = S.model;
       switch (b.dataset.act) {
         case 'retry': loadData(!!(S.model || S.load === 'error')); break;
-        case 'home': S.street = null; NX.map.selectStreet(null); render(); break;
+        case 'home': S.street = null; NX.map.selectStreet(null); highlightOnYandex(null); render(); break;
         case 'street': if (id != null) { openStreet(id); } break;
         case 'problem': {
           const p = M.problems.find(x => x.id === b.dataset.id);
           if (!p) break;
+          ensureLeaflet();
           NX.map.focusProblem(p);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
           break;
@@ -418,6 +463,7 @@
           break;
         }
         case 'settings': openSettings('tomtom'); break;
+        case 'yandex': setYandex(true); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
         case 'route':
           if (id == null) break;
           S.tab = 'routes'; S.route = S.route === id ? null : id;
@@ -493,6 +539,7 @@
       onRoute: i => { S.tab = 'routes'; S.route = i; NX.map.highlightRoute(i); render(); focusPanel(); },
     });
     bind();
+    $('#btnYandex').addEventListener('click', () => setYandex(!S.yandexOn));
     loadData(false);
   }
 

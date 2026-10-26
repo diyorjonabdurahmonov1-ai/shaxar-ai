@@ -330,6 +330,46 @@ async function clickStreet(page, name) {
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
   ok('Konsolda xato yoʻq (proksi)', e5.length === 0, e5.join(' || '));
 
+  // ---------- 6. Yandex probkalar ----------
+  const ctx6 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await setupRoutes(ctx6);
+  await ctx6.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: 'TT', yandex: 'YA-TEST' };" }));
+  let yaUrl = null;
+  await ctx6.route(/api-maps\.yandex\.ru/, route => {
+    yaUrl = route.request().url();
+    route.fulfill({ status: 200, contentType: 'text/javascript', body: `
+      window.__yaClick = null;
+      window.ymaps = {
+        ready: cb => setTimeout(cb, 10),
+        Map: function (id, o) { const self = this; this.c = o.center; this.z = o.zoom; this.geoObjects = { n: 0, add() { this.n++; }, remove() { this.n--; } };
+          this.events = { add(ev, fn) { if (ev === 'click') window.__yaClick = fn; } };
+          this.setCenter = (c, z) => { self.c = c; self.z = z; }; this.getCenter = () => self.c; this.getZoom = () => self.z; this.container = { fitToViewport() {} };
+          document.getElementById(id).dataset.ymap = '1'; window.__ymap = this; },
+        traffic: { provider: { Actual: function () { this.setMap = () => {}; this.state = { get: k => (k === 'level' ? 4 : null), events: { add() {} } }; } } },
+        Polyline: function (ll) { this.ll = ll; },
+      };` });
+  });
+  const p6 = await ctx6.newPage();
+  const e6 = watchErrors(p6);
+  await p6.goto(BASE);
+  await p6.waitForFunction(() => document.getElementById('ymap').dataset.ymap === '1' && !document.getElementById('ymap').hidden, null, { timeout: 20000 });
+  ok('Yandex kaliti boʻlsa probkalar avtomatik ochiladi', /apikey=YA-TEST/.test(yaUrl));
+  await p6.waitForFunction(() => /4 ball/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
+  ok('“Hozir” kartasida Yandex tirbandlik balli', true);
+  ok('Yandex rejimida TomTom plitalari oʻchiq', !(await p6.evaluate(() => NX.map.hasRealTiles())));
+  // Yandex xaritasida koʻchani bosish → panel ochiladi, Yandex’da qoladi
+  await p6.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); const w = NX.state.model.ways[s.ways[0]]; const p = w.ll[1]; window.__yaClick({ get: () => [p[0], p[1]] }); });
+  await p6.waitForFunction(() => /Registon/.test((document.querySelector('#panel h2') || {}).textContent || ''), null, { timeout: 10000 });
+  ok('Yandex xaritasida koʻcha bosilsa panel ochiladi', !(await p6.evaluate(() => document.getElementById('ymap').hidden)) && (await p6.evaluate(() => window.__ymap.geoObjects.n)) > 0);
+  // Simulyatsiya → tahlil xaritasiga avtomatik qaytadi
+  await p6.click('[data-act=sim][data-type="close"]');
+  await p6.waitForSelector('.verdict', { timeout: 60000 });
+  ok('Simulyatsiyada tahlil xaritasiga qaytadi', await p6.evaluate(() => document.getElementById('ymap').hidden));
+  await p6.click('#btnYandex');
+  await p6.waitForFunction(() => !document.getElementById('ymap').hidden);
+  ok('Tugma bilan Yandex probkalarga oʻtish', /Tahlil xaritasi/.test(await p6.textContent('#btnYandex')));
+  ok('Konsolda xato yoʻq (Yandex)', e6.length === 0, e6.join(' || '));
+
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));
   console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`);
