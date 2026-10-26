@@ -6,16 +6,14 @@ Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transportini **tahlil
 
 ## Imkoniyatlar
 
+Loyiha **hokimiyat va shahar xizmatlari** uchun: shahar transportini boshqarish vositasi.
+
 | Boʻlim | Nima qiladi |
 |---|---|
-| **Xarita** | Tirbandlik ranglari, avtobus yoʻnalishlari, bekatlar, muammolar va maktablar qatlamlari. Istalgan koʻchani bosib, uning toʻliq maʼlumotini, TomTom oʻlchovini, xavf indeksini, 24 soatlik bashoratini koʻrish va “Agar…?” simulyatsiyasini ishga tushirish mumkin. |
-| **Muammolar** | Jonli kuzatuv: har 10 daqiqada qayta tahlil (TomTom kaliti bilan asosiy koʻchalar navbatma-navbat oʻlchanadi, kalitsiz — joriy soat bashorati). Har bir muammo turi oddiy tilda: muammo nima, nima qilish kerak, taxminiy narx; joyni bosganda xaritada koʻrsatiladi. |
-| **Avtobuslar** | Avtobus yoʻnalishlarini qidirish. Har bir yoʻnalish uchun bekatlar, bekatlar oraligʻi va oʻtadigan koʻchalar koʻrsatiladi, yoʻnalish xaritada ajratib koʻrsatiladi. |
-| **Bashorat** | Soatbay tirbandlik bashorati va uning ishonch oraligʻi. Xaritani kun va soat boʻyicha bashoratga koʻra boʻyash mumkin. TomTom tarixini import/eksport qilish va modelni kalibrlash ham shu yerda. |
-| **Hisobot** | Koʻrsatkichlar, eng tirband koʻchalar, ustuvorlik boʻyicha tavsiyalar (taxminiy narxlari soʻmda), maʼlumot manbalari, “Qanday ishlaydi” boʻlimi va JSON eksport. |
-| **AI tahlilchi** | Oʻzbekcha savoldan koʻcha nomi va stsenariyni aniqlaydi, simulyatsiyani ishga tushiradi va natijani OpenAI’ga faqat haqiqiy raqamlar bilan yuboradi. Kalit kiritilmagan boʻlsa, javob hisoblangan raqamlardan avtomatik tuziladi. |
-
-Har bir raqam yonida manba belgisi turadi: **OpenStreetMap**, **TomTom**, **Hisob** (qoidaga asoslangan hisob), **Bashorat** (model natijasi) yoki **AI**.
+| **Xarita** | Yandex real tirbandligi (probkalar). Koʻchani bosganda: qisqa maʼlumot, shu koʻchadagi muammolar va **“Nima qilsak?”** — bir tomonlama qilish, yopish, avtobus yoʻlagi, svetofor, talab oshishi oqibatlari butun tarmoq boʻyicha hisoblanadi. |
+| **Muammolar** | Avtomatik topilgan muammolar (svetoforsiz chorrahalar, maktab oldida oʻtish yoʻqligi, bekatdan uzoq hududlar…), yechimi va taxminiy narxi. Xato boʻlsa — “Muammo emas” / “Svetofor bor” (PIN bilan hamma uchun saqlanadi). |
+| **Hisobot** | Koʻrsatkichlar, tavsiyalar (soʻmda, taxminiy), JSON eksport. |
+| **AI savol** | Oʻzbekcha savolga sayt maʼlumotlari asosida qisqa javob (OpenAI, Cloudflare Worker orqali, kalit yashirin). |
 
 ## Ishga tushirish
 

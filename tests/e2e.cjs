@@ -79,11 +79,16 @@ async function clickStreet(page, name) {
   const page = await ctx.newPage();
   const errs = watchErrors(page);
   await page.goto(BASE);
-  await page.waitForSelector('.index-card', { timeout: 20000 });
+  await page.waitForSelector('#panel .live', { timeout: 20000 });
   ok('Yandex kaliti yoʻq: zaxira xarita va “Yandex probkalar” tugmasi', await page.isVisible('#btnYandex') && (await page.evaluate(() => document.getElementById('ymap').hidden)));
-  const kpis = await page.$$eval('.kpi .kpi-v', els => els.map(e => e.textContent));
-  ok('Maʼlumot yuklandi va KPI koʻrsatildi', kpis.length === 4, kpis.join(' | '));
-  const info = await page.evaluate(() => ({ streets: NX.state.model.namedStreets.length, routes: NX.state.model.routes.length, lines: NX.state.model.kpi.lines, problems: NX.state.model.problems.length, idx: NX.state.model.index.value, status: document.getElementById('dataStatus').textContent }));
+  const homeTxt = await page.textContent('#panel');
+  ok('Bosh panel qisqa: holat, asosiy muammolar, yoʻriqnoma', /Tirbandlik/.test(homeTxt) && /Asosiy muammolar/.test(homeTxt) && /Nima qilsak/.test(homeTxt) && !(await page.$('.kpi')) && !(await page.$('.index-card')));
+  const tabs = await page.$$eval('.tabs [data-tab]', e => e.map(x => x.textContent));
+  ok('Faqat 3 ta boʻlim: Xarita, Muammolar, Hisobot', tabs.join(',') === 'Xarita,Muammolar,Hisobot', tabs.join(','));
+  ok('Keraksiz funksiyalar yoʻq (Belgilash, tirbandlik xabari)', !(await page.$('.nx-mark')) && !(await page.$('#reportCard')));
+  await page.waitForFunction(() => /17°C/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
+  ok('Ob-havo va yoʻlga taʼsiri qisqa', /Yoʻl hoʻl/.test(await page.textContent('.live')));
+  const info = await page.evaluate(() => ({ streets: NX.state.model.namedStreets.length, routes: NX.state.model.routes.length, lines: NX.state.model.kpi.lines, problems: NX.state.model.problems.length }));
   ok('Model: koʻchalar, yoʻnalishlar, muammolar', info.streets > 10 && info.routes === 4 && info.lines === 3 && info.problems > 0, JSON.stringify(info));
   ok('Overpass oynalariga parallel soʻrov', ctx.overpassCalls >= 2, 'soʻrovlar: ' + ctx.overpassCalls);
 
@@ -92,26 +97,7 @@ async function clickStreet(page, name) {
   await page.waitForSelector('#panel h2', { timeout: 5000 });
   const h2 = await page.textContent('#panel h2');
   ok('Koʻcha bosilganda panel ochiladi', /Dagbitskiy/.test(h2), h2);
-  const facts = await page.textContent('.facts');
-  ok('Koʻcha faktlari (polosa, liniyalar…)', /Polosalar/.test(facts) && /Svetoforlar/.test(facts));
-
-  // Ob-havo (real manba) bosh sahifada
-  ok('Ob-havo koʻrsatiladi', true);
-  // TomTom: kalitsiz → kalit kiritish tugmasi
-  ok('Kalitsiz koʻchada TomTom haqida xato chiqmaydi, Yandex koʻrsatiladi', /Yandex xaritasida/.test(await page.textContent('.status-line')) && !/TomTom/.test(await page.textContent('#panel section.card')));
-  await page.click('#btnSettings');
-  await page.waitForSelector('#settingsDlg[open]', { timeout: 5000 });
-  ok('Sozlamalarda ixtiyoriy TomTom kaliti', true);
-  await page.fill('#keyTomtom', 'TESTKEY');
-  await page.click('#settingsForm button[type=submit]');
-  await page.waitForSelector('[data-act=measure]');
-  await page.click('[data-act=measure]');
-  await page.waitForSelector('.status-line b', { timeout: 10000 });
-  await page.waitForFunction(() => /km\/soat/.test(document.querySelector('.status-line').textContent), null, { timeout: 10000 });
-  const meas = await page.textContent('.status-line');
-  ok('TomTom oʻlchovi oddiy tilda', /22 km\/soat/.test(meas) && /baravar sekin/.test(meas), meas.replace(/\s+/g, ' ').trim());
-  const hist = await page.evaluate(() => NX.forecast.stats().samples);
-  ok('Oʻlchov tarixga yoziladi', hist >= 1, 'namunalar: ' + hist);
+  ok('Koʻcha panelida “Nima qilsak?” va qisqa maʼlumot', /Nima qilsak/.test(await page.textContent('#whatif')) && /Polosalar/.test(await page.textContent('.facts')));
 
   // What-if: bir tomonlama
   const t0 = Date.now();
@@ -119,16 +105,15 @@ async function clickStreet(page, name) {
   await page.waitForSelector('.verdict', { timeout: 60000 });
   const verdict = await page.textContent('.verdict b');
   const rows = await page.$$eval('.sim .tbl tbody tr', r => r.length);
-  const sim = await page.evaluate(() => { const l = NX.state.sim.last; return { tt: l.result.ttChangePct, deltas: l.result.deltas.length / 2, target: l.result.target && [Math.round(l.result.target.baseVol), Math.round(l.result.target.scenVol)], lines: l.verdict.busLines, info: NX.state.simInfo }; });
-  ok('Simulyatsiya natija qaytaradi (bir tomonlama)', ['Mos keladi', 'Ehtiyotkorlik bilan', 'Tavsiya etilmaydi'].includes(verdict) && rows > 0, `${verdict}; ${rows} qator; ΔTT=${sim.tt.toFixed(2)}%; target=${sim.target}; ${Date.now() - t0} ms; worker=${sim.info.worker}; tugun=${sim.info.nodes}, zona=${sim.info.zones}`);
+  const sim = await page.evaluate(() => { const l = NX.state.sim.last; return { tt: l.result.ttChangePct, deltas: l.result.deltas.length / 2, target: l.result.target && [Math.round(l.result.target.baseVol), Math.round(l.result.target.scenVol)], info: NX.state.simInfo }; });
+  ok('Simulyatsiya natija qaytaradi (bir tomonlama)', ['Mos keladi', 'Ehtiyotkorlik bilan', 'Tavsiya etilmaydi'].includes(verdict) && rows > 0, `${verdict}; ${rows} qator; ΔTT=${sim.tt.toFixed(2)}%; target=${sim.target}; ${Date.now() - t0} ms; worker=${sim.info.worker}`);
   ok('Xaritada oʻzgarishlar chiziladi', sim.deltas > 0, 'boʻlaklar: ' + sim.deltas);
-  const disc = await page.textContent('.sim .disclaimer');
-  ok('Ogohlantirish matni bor', /taxminiy hisob/.test(disc));
+  ok('Ogohlantirish matni bor', /taxminiy hisob/.test(await page.textContent('.sim .disclaimer')));
 
-  // Yopish stsenariysi: avtobus liniyalari
+  // Yopish stsenariysi
   await page.click('[data-act=sim][data-type="close"]');
   await page.waitForFunction(() => NX.state.sim.last && NX.state.sim.last.type === 'close' && !NX.state.sim.busy, null, { timeout: 60000 });
-  const close = await page.evaluate(() => { const l = NX.state.sim.last; return { v: l.verdict.label, tt: l.result.ttChangePct, target: l.result.target && Math.round(l.result.target.scenVol) }; });
+  const close = await page.evaluate(() => { const l = NX.state.sim.last; return { v: l.verdict.label, target: l.result.target && Math.round(l.result.target.scenVol) }; });
   ok('Yopish stsenariysi: koʻchada hajm 0', close.target === 0, JSON.stringify(close));
 
   // Ajratilgan koʻchani qayta bosish — ajratish olib tashlanadi
@@ -140,52 +125,32 @@ async function clickStreet(page, name) {
   await page.keyboard.press('Escape');
   ok('Esc tugmasi ham ajratishni olib tashlaydi', await page.evaluate(() => NX.state.street === null));
   // Registon: avtobus liniyalari teskari yoʻnalish
-  if (await page.$('[data-act=home]')) await page.click('[data-act=home]');
   await clickStreet(page, 'Registon koʻchasi');
   await page.waitForFunction(() => /Registon/.test(document.querySelector('#panel h2').textContent));
   const refs = await page.$$eval('.facts .refs .ref', e => e.map(x => x.textContent));
   ok('Registon koʻchasida liniyalar', refs.includes('3') && refs.includes('45'), refs.join(','));
   await page.click('[data-act=sim][data-type="oneway-A"]');
-  await page.waitForFunction(() => NX.state.sim.last && NX.state.sim.last.street !== undefined && !NX.state.sim.busy && /Registon/.test(NX.state.sim.last.label), null, { timeout: 60000 });
+  await page.waitForFunction(() => NX.state.sim.last && !NX.state.sim.busy && /Registon/.test(NX.state.sim.last.label), null, { timeout: 60000 });
   const rl = await page.evaluate(() => NX.state.sim.last.verdict.busLines);
   ok('Bir tomonlamada qaysi liniyalar yoʻnalishini oʻzgartiradi', rl.length === 1 && rl[0] === '3', rl.join(','));
+  // Avtobus liniyasini bosish — shu xaritada ajratiladi, boʻlim oʻzgarmaydi
+  await page.evaluate(() => document.querySelectorAll('details').forEach(d => (d.open = true)));
+  await page.click('.facts .refs .ref');
+  ok('Avtobus liniyasi shu xaritada koʻrsatiladi', await page.evaluate(() => NX.state.tab === 'map' && NX.state.route != null) && /bekat/.test(await page.textContent('#toast')));
 
-  // Statistika (real: odamlar xabari)
-  await page.click('.tabs [data-tab=forecast]');
-  await page.waitForSelector('#panel h2', { timeout: 5000 });
-  const st0 = await page.textContent('#panel');
-  ok('Statistika: taxmin yoʻq, xabar boʻlmasa aniq yoziladi', /Hali xabar yoʻq/.test(st0) && !/Taxmin/.test(await page.textContent('.nx-legend')));
-  ok('Statistika boʻlimida taxminiy grafik chizilmaydi', (await page.$$('#panel svg.chart')).length === 0);
-
-  // AI: koʻcha nomisiz savol — panelda tanlangan koʻcha ishlatiladi (kalitsiz → Hisob javobi)
-  await page.fill('#aiBox textarea[name=q]', 'yopsak nima boʻladi?');
+  // AI (kalitsiz): savoldan koʻcha va stsenariy aniqlanadi
+  await page.click('[data-act=home]');
+  await page.fill('#aiBox textarea[name=q]', 'Registon koʻchasini yopsak nima boʻladi?');
   await page.click('#aiBox form button');
   await page.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
-  const ctxAns = await page.evaluate(() => ({ street: NX.state.ai.answer.street && NX.state.ai.answer.street.name, type: NX.state.sim.last.type }));
-  ok('AI yoʻq: “AI ishlamadi” deb aniq yoziladi', /AI ishlamadi/.test(await page.textContent('#aiBox .ai-src')));
-  ok('Statistika boʻlimida koʻcha nomisiz savol', !!ctxAns.street && ctxAns.type === 'close', JSON.stringify(ctxAns));
-  ok('Statistika boʻlimida “nima qilmoqchisiz” tugmalari', (await page.$$('#whatif [data-act=sim]')).length === 6);
-  await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; document.querySelectorAll('details').forEach(d => (d.open = true)); });
-
-  // Yoʻnalishlar
-  await page.click('.tabs [data-tab=routes]');
-  await page.fill('input[data-input=route-q]', 'Universitet');
-  const nR = await page.$$eval('.rlist > li', l => l.length);
-  ok('Yoʻnalish qidiruvi', nR === 1, 'topildi: ' + nR);
-  await page.click('.rlist .rhead');
-  const rb = await page.textContent('.rbody');
-  ok('Yoʻnalish tafsilotlari (oraliq, koʻchalar)', /oʻrtacha oraligʻi/.test(rb) && /Toshkent/.test(rb));
+  ok('AI yoʻq: “AI ishlamadi” deb aniq yoziladi va hisob natijasi beriladi', /AI ishlamadi/.test(await page.textContent('#aiBox .ai-src')) && await page.evaluate(() => NX.state.sim.last.type === 'close'));
+  await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; });
 
   // Muammolar boʻlimi
   await page.click('.tabs [data-tab=problems]');
   await page.waitForSelector('.prob', { timeout: 5000 });
   const probCards = await page.$$eval('.prob', e => e.map(x => x.querySelector('.prob-h b').textContent));
-  const fixTxt = await page.textContent('.prob .fix');
-  ok('Muammolar: turlar boʻyicha oddiy tushuntirish va yechim', probCards.length >= 3 && /Nima qilish kerak/.test(fixTxt), probCards.join(', '));
-  const live = await page.textContent('.live');
-  ok('“Hozir Samarqandda”: ob-havo, real tirbandlik, yoʻl hodisasi', /17°C/.test(live) && /Yomgʻir/.test(live) && /Yoʻl taʼmiri/.test(live) && /\+4 daq/.test(live), live.replace(/\s+/g, ' ').slice(0, 160));
-  ok('Boʻsh TomTom plitalari oʻchiq', !(await page.evaluate(() => NX.map.hasRealTiles())));
-  ok('“Yandex probkalar” tugmasi koʻrinadi (kalitsiz)', await page.isVisible('#btnYandex'));
+  ok('Muammolar: tur, joylar soni, yechim, narx', probCards.length >= 3 && /Yechim/.test(await page.textContent('.prob .fix')) && /soʻm/.test(await page.textContent('.prob .prob-h')), probCards.join(', '));
   const sci = await page.evaluate(() => { const t = document.body.innerText; return ['V/C', 'RMSE', 'iteratsiya', 'MSA', 'BPR', 'gravitats'].filter(w => t.includes(w)); });
   ok('Ilmiy atamalar koʻrinmaydi', sci.length === 0, sci.join(','));
   const mk = await page.$$eval('.pmk:not(.inc)', e => e.length);
@@ -194,45 +159,22 @@ async function clickStreet(page, name) {
   await page.waitForSelector('.leaflet-popup-content .ppop', { timeout: 5000 });
   await page.waitForTimeout(800);
   ok('Joyni bosganda xaritada popup ochiladi', /Yechim/.test(await page.textContent('.leaflet-popup-content')));
-  // Xaritani oʻrgatish: “oʻtish joyi bor” → muammo yoʻqoladi
   const nProb0 = await page.evaluate(() => NX.state.model.problems.length);
   const schoolBefore = await page.evaluate(() => NX.state.model.problems.filter(p => p.type === 'school').length);
   await page.click('.leaflet-popup-content [data-fix="crossing"]');
   await page.waitForFunction(n => NX.state.model.problems.length < n, nProb0, { timeout: 10000 });
   const schoolAfter = await page.evaluate(() => NX.state.model.problems.filter(p => p.type === 'school').length);
   ok('“Oʻtish joyi bor” bosilsa maktab muammosi yoʻqoladi', schoolAfter === schoolBefore - 1, `${schoolBefore} → ${schoolAfter}`);
-  ok('Tuzatish xabari (faqat shu brauzerda)', /Faqat shu brauzerda/.test(await page.textContent('#toast')));
-  // “Bu muammo emas”
-  const nProb1 = await page.evaluate(() => NX.state.model.problems.length);
-  await page.click('.prob .loc');
-  await page.waitForSelector('.leaflet-popup-content [data-fix="dismiss"]', { timeout: 5000 });
-  await page.waitForTimeout(800); // xarita “uchish” animatsiyasi tugashi
-  await page.click('.leaflet-popup-content [data-fix="dismiss"]');
-  await page.waitForFunction(n => NX.state.model.problems.length < n, nProb1, { timeout: 10000 });
-  ok('“Bu muammo emas” bosilsa muammo roʻyxatdan chiqadi', /yopilgan/.test(await page.textContent('.fix-hint')));
-  // “➕ Belgilash” → svetofor → xaritani bosish
-  const nSig = await page.evaluate(() => NX.state.model.signals.length);
-  await page.click('.nx-mark-btn');
-  await page.click('.nx-mark-list [data-kind="signal"]');
-  await page.waitForSelector('.nx-pickbar');
-  await page.waitForTimeout(900); // oldingi xarita animatsiyasi tugashi
-  const mb = await page.$eval('#map', el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
-  await page.mouse.click(mb.x, mb.y);
-  await page.waitForFunction(n => NX.state.model.signals.length === n + 1, nSig, { timeout: 10000 });
-  ok('“➕ Belgilash” bilan svetofor qoʻshiladi va xaritada koʻrinadi', (await page.$$('.pmk.fixmk')).length >= 2);
-  // Roʻyxatdagi tugma bilan tuzatish (xaritadagi belgini qidirmasdan)
   const nL = await page.evaluate(() => NX.state.model.problems.length);
   await page.click('.locrow [data-act=fix][data-fix=dismiss]');
   await page.waitForFunction(n => NX.state.model.problems.length < n, nL, { timeout: 10000 });
   ok('Roʻyxatdagi “Muammo emas” tugmasi ishlaydi', await page.evaluate(() => NX.state.tab === 'problems'));
-  // Muammolar boʻlimida koʻchani bosish — “Xarita” boʻlimiga oʻtib ketmaydi, yaqin muammo ochiladi
   await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().setView([p.lat, p.lon], 17, { animate: false }); });
   await page.waitForTimeout(300);
-  const jc = await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); const pt = NX.map.leaflet().latLngToContainerPoint([p.lat + 0.0002, p.lon + 0.0002]); const r = document.getElementById('map').getBoundingClientRect(); return { x: r.left + pt.x, y: r.top + pt.y, id: p.id }; });
-  await page.evaluate(() => NX.map.leaflet().fire('click', { latlng: L.latLng(NX.state.model.problems.find(x => x.type === 'junction').lat + 0.0002, NX.state.model.problems.find(x => x.type === 'junction').lon + 0.0002) }));
+  await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().fire('click', { latlng: L.latLng(p.lat + 0.0002, p.lon + 0.0002) }); });
   await page.waitForTimeout(900);
   ok('Muammolar boʻlimida xarita bosilsa boʻlim oʻzgarmaydi, yaqin muammo ochiladi', await page.evaluate(() => NX.state.tab === 'problems' && !!NX.state.focusPid) && !!(await page.$('.locrow.on')));
-  await page.click('.tabs [data-tab=routes]');
+  await page.click('.tabs [data-tab=report]');
   ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc):not(.fixmk)')).length === 0);
   // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari
   await page.click('#btnYandex');
@@ -243,6 +185,7 @@ async function clickStreet(page, name) {
   ok('Tahlil xaritasiga qaytish', await page.evaluate(() => document.getElementById('ymap').hidden));
 
   // Xarita ustidagi qidiruv
+  await page.click('.tabs [data-tab=map]');
   await page.fill('.nx-search input', 'regist');
   await page.click('.nx-search li button');
   await page.waitForFunction(() => /Registon/.test((document.querySelector('#panel h2') || {}).textContent || ''));
@@ -292,7 +235,7 @@ async function clickStreet(page, name) {
   const p2 = await ctx2.newPage();
   const e2 = watchErrors(p2);
   await p2.goto(BASE);
-  await p2.waitForSelector('.index-card', { timeout: 20000 });
+  await p2.waitForSelector('#panel .live', { timeout: 20000 });
   ok('Keshdan darhol ochiladi (Overpass soʻrovisiz)', ctx2.overpassCalls === 0);
   await p2.click('#btnRefresh');
   await p2.waitForFunction(() => /Eski kesh/.test(document.getElementById('dataStatus').textContent), null, { timeout: 30000 });
@@ -314,13 +257,13 @@ async function clickStreet(page, name) {
   const p4 = await ctx4.newPage();
   const e4 = watchErrors(p4);
   await p4.goto(BASE);
-  await p4.waitForSelector('.index-card', { timeout: 20000 });
+  await p4.waitForSelector('#panel .live', { timeout: 20000 });
   const sw = await p4.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   ok('Telefonda gorizontal aylantirish yoʻq', sw[0] <= sw[1], sw.join(' / '));
   const warn = await p4.textContent('#toast');
   ok('Yoʻnalishlar yuklanmasa ogohlantirish', /yoʻnalishlari yuklanmadi/.test(warn), warn);
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile.png', fullPage: false });
-  for (const t of ['routes', 'forecast', 'report']) {
+  for (const t of ['problems', 'report']) {
     await p4.click(`.tabs [data-tab=${t}]`);
     await p4.waitForTimeout(200);
     const w = await p4.evaluate(() => document.documentElement.scrollWidth);
@@ -336,9 +279,6 @@ async function clickStreet(page, name) {
   await p4.waitForSelector('.verdict', { timeout: 60000 });
   await p4.waitForTimeout(600);
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-sim.png', fullPage: true });
-  await p4.click('.tabs [data-tab=forecast]');
-  await p4.waitForTimeout(300);
-  await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-forecast.png', fullPage: true });
   await p4.click('.tabs [data-tab=problems]');
   await p4.waitForTimeout(400);
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-problems.png', fullPage: true });
@@ -381,20 +321,6 @@ async function clickStreet(page, name) {
   await p5.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
   const aiTxt5 = await p5.textContent('#aiBox .ai-text');
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
-  // “Hozir tirbandlik” xabari → xaritada belgi, statistika, boshqa foydalanuvchida ham
-  await p5.click('.tabs [data-tab=map]');
-  await p5.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); document.querySelector('.tabs [data-tab=map]').click(); });
-  await p5.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); NX.view.selectStreet(s.id); NX.state.street = s.id; });
-  await p5.evaluate(() => document.querySelector('.tabs [data-tab=map]').click());
-  await p5.waitForSelector('#reportCard [data-level="2"]', { timeout: 10000 });
-  await p5.click('#reportCard [data-level="2"]');
-  await p5.waitForFunction(() => /Xabaringiz qabul qilindi/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
-  ok('“🟥 Tirband” xabari yuboriladi', repStore.items.length === 1 && repStore.items[0].level === 2 && repStore.items[0].street === 'n:registon koʻchasi');
-  ok('Xabar xaritada belgi bilan chiqadi', (await p5.$$('.jam')).length === 1);
-  ok('Koʻcha panelida xabarlar soni', /1 kishi/.test(await p5.textContent('#reportCard')));
-  await p5.click('.tabs [data-tab=forecast]');
-  ok('Statistikada eng tirband koʻcha — xabar qilingan koʻcha', /Registon/.test(await p5.textContent('#panel .tbl')) && (await p5.$$('#panel svg.chart')).length >= 1);
-
   // PIN bilan tuzatish hamma uchun saqlanadi
   await p5.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
   await p5.click('.tabs [data-tab=problems]');
@@ -411,8 +337,6 @@ async function clickStreet(page, name) {
   await p5b.waitForFunction(k => NX.state.model && NX.fixes.list().some(x => x.key === k), corr.items[0].key, { timeout: 20000 });
   const hidden = await p5b.evaluate(k => !NX.state.model.problems.some(p => p.key === k), corr.items[0].key);
   ok('Boshqa foydalanuvchida ham muammo yopilgan koʻrinadi', hidden);
-  await p5b.waitForFunction(() => document.querySelectorAll('.jam').length === 1, null, { timeout: 10000 });
-  ok('Boshqa foydalanuvchi ham tirbandlik xabarini xaritada koʻradi', /Registon/.test(await p5b.textContent('.live')));
   ok('Konsolda xato yoʻq (proksi)', e5.length === 0, e5.join(' || '));
 
   // ---------- 6. Yandex probkalar ----------
@@ -446,7 +370,7 @@ async function clickStreet(page, name) {
   await p6.goto(BASE);
   await p6.waitForFunction(() => document.getElementById('ymap').dataset.ymap === '1' && !document.getElementById('ymap').hidden, null, { timeout: 20000 });
   ok('Yandex kaliti boʻlsa probkalar avtomatik ochiladi', /apikey=YA-TEST/.test(yaUrl));
-  ok('Bitta xarita: Yandex ustida qidiruv, “Belgilash”, legend; almashtirish tugmasi yoʻq', (await p6.isVisible('.nx-mark')) && /Yandex, real vaqt/.test(await p6.textContent('.nx-legend')) && (await p6.isVisible('.nx-search input')) && !(await p6.isVisible('#btnYandex')) && !(await p6.isVisible('.leaflet-control-layers, .nx-layers')));
+  ok('Bitta xarita: Yandex ustida qidiruv va legend; almashtirish tugmasi yoʻq', /Yandex, real vaqt/.test(await p6.textContent('.nx-legend')) && (await p6.isVisible('.nx-search input')) && !(await p6.isVisible('#btnYandex')) && !(await p6.isVisible('.leaflet-control-layers, .nx-layers')));
   await p6.waitForFunction(() => /4 ball/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('“Hozir” kartasida Yandex tirbandlik balli', true);
   ok('Yandex rejimida TomTom plitalari oʻchiq', !(await p6.evaluate(() => NX.map.hasRealTiles())));
@@ -469,14 +393,6 @@ async function clickStreet(page, name) {
   await p6.evaluate(() => { const p = NX.state.model.problems[0]; const b = document.createElement('button'); b.dataset.fix = 'dismiss'; b.dataset.pid = p.id; document.getElementById('ymap').appendChild(b); b.click(); });
   await p6.waitForFunction(n => NX.state.model.problems.length < n, n6, { timeout: 10000 });
   ok('Yandex balloonidagi “Bu muammo emas” ishlaydi', true);
-  // “➕ Belgilash” Yandex’da: joyni bosish → svetofor
-  const s6 = await p6.evaluate(() => NX.state.model.signals.length);
-  await p6.click('.nx-mark-btn');
-  await p6.click('.nx-mark-list [data-kind="signal"]');
-  await p6.waitForSelector('.ypick');
-  await p6.evaluate(() => window.__yaClick({ get: () => [39.655, 66.97] }));
-  await p6.waitForFunction(n => NX.state.model.signals.length === n + 1, s6, { timeout: 10000 });
-  ok('“➕ Belgilash” Yandex xaritasida ishlaydi', true);
   ok('Konsolda xato yoʻq (Yandex)', e6.length === 0, e6.join(' || '));
 
   // ---------- 7. Yandex kaliti ishlamasa → kalitsiz vidjet ----------

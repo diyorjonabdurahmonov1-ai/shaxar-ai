@@ -35,34 +35,18 @@
 
   // ---------- Umumiy koʻrinish (Xarita) ----------
   function home(S) {
-    const M = S.model, k = M.kpi, ix = M.index;
+    const M = S.model;
     const groups = Object.keys(NX.PROBLEM).map(t => ({ t, items: M.problems.filter(p => p.type === t) })).filter(g => g.items.length)
       .sort((a, b) => NX.PROBLEM[b.t].weight - NX.PROBLEM[a.t].weight);
-    const ixWord = ix.value == null ? '' : ix.value >= 70 ? 'yaxshi' : ix.value >= 45 ? 'oʻrtacha' : 'past';
     return `
     ${nowCard(S)}
-    <section class="card hint-card">
-      <p class="small"><b>Koʻchani bosing</b> yoki xaritadagi qidiruvga nomini yozing — uning hozirgi holatini koʻrasiz va “nima boʻladi?” deb sinab koʻrasiz.</p>
+    <section class="card">
+      <h3>Asosiy muammolar</h3>
+      ${groups.length ? `<ul class="top-probs">${groups.slice(0, 4).map(g => `<li><span>${NX.PROBLEM[g.t].icon} ${E(NX.PROBLEM[g.t].short)}</span><b>${g.items.length}</b></li>`).join('')}</ul>
+        <button class="btn primary wide" data-act="tab" data-tab="problems">Muammolar va yechimlar →</button>` : '<p class="muted">Muammo topilmadi.</p>'}
     </section>
-    <section class="card index-card">
-      <div class="ring" style="--v:${ix.value || 0}"><b>${ix.value != null ? ix.value : '—'}</b><small>/100</small></div>
-      <div><h2>Transport holati: ${ixWord} ${B('hisob')}</h2>
-      <p class="small">Bekatlar yetarliligi, chorrahalar, maktablar xavfsizligi asosida hisoblangan umumiy baho.</p>
-      <details class="more"><summary>Baho nimadan tuzilgan?</summary>${NX.chart.bars(ix.parts.map(p => ({ k: p.k, v: p.v, t: F.num(p.v, 0) })))}</details></div>
-    </section>
-    <section class="kpis">
-      ${kpi('Avtobus liniyalari', F.int(k.lines), '', 'osm')}
-      ${kpi('Bekat 400 m ichida', F.pct(k.coverage), 'koʻchalar ulushi', 'hisob')}
-      ${kpi('Svetoforsiz chorrahalar', F.int(k.unsignalised), `${k.majorJunctions} tadan`, 'hisob')}
-      ${kpi('Bekatlar orasi', F.km(k.avgSpacing), 'oʻrtacha', 'hisob')}
-    </section>
-    <section class="card prob-link">
-      <div><b>${M.problems.length ? `${groups.length} xil muammo topildi` : 'Muammo topilmadi'}</b>
-      <p class="small muted">${groups.slice(0, 3).map(g => NX.PROBLEM[g.t].icon + ' ' + E(NX.PROBLEM[g.t].short)).join(' · ')}</p></div>
-      <button class="btn primary" data-act="tab" data-tab="problems">Koʻrish va yechimlar</button>
-    </section>
-    ${aiBox(S, null)}
-    <p class="center"><button class="btn" data-act="how">Qanday ishlaydi?</button></p>`;
+    <p class="hint-line">👆 Koʻchani bosing → <b>“Nima qilsak?”</b> → oqibatini koʻring.</p>
+    ${aiBox(S, null)}`;
   }
 
   const kpi = (t, v, sub, src) => `<div class="kpi"><span class="kpi-t">${t}</span><b class="kpi-v">${v}</b>${sub ? `<span class="kpi-s">${E(sub)}</span>` : ''}${B(src)}</div>`;
@@ -163,12 +147,17 @@
   }
 
   function street(S, s) {
+    const M = S.model, [sx, sy] = [s.center[0], s.center[1]];
+    // Shu koʻchaga tegishli muammolar
+    const mine = M.problems.filter(p => p.street === s.id || (p.streets && p.streets.includes(s.id)) || (p.type === 'school' && s.schools.some(o => Math.abs(o.lat - p.lat) < 1e-6 && Math.abs(o.lon - p.lon) < 1e-6)));
     return `
     <button class="back" data-act="home">← Orqaga</button>
-    ${streetSummary(S, s)}
+    <section class="card">
+      <h2>${streetName(s)}</h2>
+      <p class="muted">${E(NX.HW[s.hw].uz)} · ${F.km(s.length)} · ${s.oneway === 'yes' ? 'bir tomonlama' : 'ikki tomonlama'}${s.busRefs.length ? ` · ${s.busRefs.length} avtobus liniyasi` : ''}</p>
+      ${mine.length ? `<h4>Muammolar</h4><ul class="street-probs">${[...new Set(mine.map(p => p.type))].map(t => { const ps = mine.filter(p => p.type === t); return `<li><button class="link" data-act="problem" data-id="${ps[0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)}${ps.length > 1 ? ` — ${ps.length} ta joy` : ''}</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`; }).join('')}</ul>` : '<p class="small ok-text">Bu koʻchada muammo topilmadi.</p>'}
+    </section>
     ${actions(S, s)}
-    ${aiBox(S, s)}
-    ${reportCard(S, s)}
     ${streetDetails(S, s)}`;
   }
 
@@ -186,8 +175,8 @@
     const ow = s.oneway === 'yes';
     const res = S.sim.last && S.sim.last.street === s.id ? simResult(S, S.sim.last) : '';
     return `<section class="card" id="whatif">
-      <h3>Bu koʻchaga nima qilmoqchisiz? ${B('bashorat')}</h3>
-      <p class="muted small">Variantni bosing — dastur boshqa koʻchalarga taʼsirini hisoblaydi.</p>
+      <h3>Nima qilsak? ${B('bashorat')}</h3>
+      <p class="muted small">Variantni bosing — oqibati hisoblanadi.</p>
       <div class="act-grid">
         ${btn('oneway-A', '→', ow ? `Faqat ${d.A}ga yurish` : 'Bir tomonlama qilish', `faqat ${d.A} tomonga`)}
         ${btn('oneway-B', '←', ow ? `Faqat ${d.B}ga yurish` : 'Bir tomonlama (teskari)', `faqat ${d.B} tomonga`)}
@@ -238,79 +227,45 @@
   }
 
   // ---------- Muammolar (jonli kuzatuv + oddiy tilda yechimlar) ----------
-  // ---------- “Hozir Samarqandda”: faqat real maʼlumot (ob-havo, tirbandlik, yoʻl hodisalari) ----------
+  // ---------- “Hozir”: qisqa holat (real: Yandex tirbandlik, ob-havo) ----------
   const ago = ts => { const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'hozirgina' : m < 60 ? `${m} daqiqa oldin` : F.time(ts).slice(-5); };
-  function speedLine(t) {
-    const ratio = t.currentSpeed > 0 ? t.freeFlowSpeed / t.currentSpeed : null;
-    if (t.closed) return 'Yoʻl yopiq';
-    if (!ratio || ratio < 1.15) return `${F.num(t.currentSpeed, 0)} km/soat — odatdagidek`;
-    return `${F.num(t.currentSpeed, 0)} km/soat — odatdagidan ${F.num(ratio, 1)} baravar sekin`;
-  }
   function nowCard(S) {
-    const M = S.model, L = S.live, W = S.weather, inc = S.incidents;
-    const hasKey = !!NX.tomtom.key();
-    const freshMs = 45 * 60 * 1000;
-    const measured = M.streets.filter(s => s.tomtom && Date.now() - s.tomtom.ts < freshMs).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion);
-    let weather = '<p class="muted small">Ob-havo yuklanmoqda…</p>';
-    if (W && W.err) weather = `<p class="muted small">${E(W.err)}</p>`;
-    else if (W && W.data) {
-      const w = W.data, [t, ic] = NX.weather.codeText(w.code);
-      weather = `<div class="wx"><span class="wx-ico" aria-hidden="true">${ic}</span><div><b>${F.num(w.temp, 0)}°C · ${E(t)}</b>
-        <small>Shamol ${F.num(w.wind, 0)} km/soat${w.precip > 0 ? ` · yogʻin ${F.num(w.precip, 1)} mm` : ''} · ${w.stale ? 'oxirgi maʼlumot ' : ''}${ago(w.ts)}</small></div>${B('meteo')}</div>
-        <p class="small">${NX.weather.roadAdvice(w).map(E).join(' ')}</p>`;
-    }
-    let traffic;
-    const ya = true, yst = S.yandexState;
-    const yandexLine = ya ? `<p class="small"><b>Real tirbandlik va yoʻl hodisalari — Yandex xaritasida.</b> ${S.yandexOn ? 'Hozir xaritada koʻrsatilmoqda.' : 'Koʻrish uchun pastdagi tugmani bosing.'}${yst && yst.level != null ? ` Shahar boʻyicha: <b>${yst.level} ball</b> (10 balldan).` : ''} ${B('yandex')}</p>${S.yandexOn ? '' : '<button class="btn sm" data-act="yandex">🚦 Probkalarni koʻrish</button>'}` : '';
-    const rec = NX.reports.recent(60);
-    const jams = `<h4>Hozir xabar qilingan tirbandliklar ${B('crowd')}</h4>${rec.length ? `<ul class="live-list">${rec.slice(0, 6).map(g => `<li><button class="link" data-act="jam" data-lat="${g.lat}" data-lon="${g.lon}">${NX.reports.LEVEL[g.level].icon} ${E(g.name || 'Nomsiz joy')}</button><small class="muted">${g.n} ta xabar · ${ago(g.ts)}</small></li>`).join('')}</ul>` : '<p class="muted small">Soʻnggi 1 soatda xabar yoʻq. Tirbandlikni koʻrsangiz — koʻchani bosib xabar bering.</p>'}`;
-    if (ya) traffic = yandexLine + jams + (inc && inc.list && inc.list.length ? `<h4>Yoʻl hodisalari ${B('tomtom')}</h4><ul class="live-list">${inc.list.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → '))}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>` : '');
-    else if (!hasKey) traffic = `<p class="small"><b>Real tirbandlik ulanmagan.</b> TomTom kaliti kiritilsa, xarita real vaqtda boʻyaladi va avariya, yoʻl taʼmiri koʻrinadi.</p><button class="btn sm" data-act="settings">TomTom kalitini kiritish</button>`;
-    else {
-      const incList = inc && inc.list ? inc.list : null;
-      traffic = `<p class="small">Xaritadagi ranglar — <b>hozirgi real tirbandlik</b> (TomTom). <span class="muted">Samarqandda TomTom qamrovi kam — koʻp koʻchalar rangsiz boʻlishi mumkin.</span></p>
-        ${measured.length ? `<ul class="live-list">${measured.slice(0, 4).map(s => `<li><button class="link" data-act="street" data-id="${s.id}">${E(s.name || 'Nomsiz yoʻl')}</button><span class="tag ${congCls(s.tomtom.congestion)}">${E(speedLine(s.tomtom))}</span></li>`).join('')}</ul>` : ''}
-        <h4>Yoʻl hodisalari ${B('tomtom')}</h4>
-        ${inc && inc.err ? `<p class="muted small">${E(inc.err)}</p>` : !incList ? '<p class="muted small">Yuklanmoqda…</p>' : !incList.length ? '<p class="small ok-text">Hozir hududda avariya, taʼmir yoki yopiq yoʻl qayd etilmagan.</p>'
-          : `<ul class="live-list">${incList.slice(0, 6).map(it => `<li><button class="link" data-act="incident" data-id="${it.id}">${it.icon} ${E(it.name)}</button><small class="muted">${E([it.from, it.to].filter(Boolean).join(' → ') || '')}${it.delay ? ` · +${Math.max(1, Math.round(it.delay / 60))} daq` : ''}</small></li>`).join('')}</ul>`}`;
-    }
+    const M = S.model, W = S.weather && S.weather.data, yst = S.yandexState;
+    const lvl = yst && yst.level != null ? yst.level : null;
+    const lvlTxt = lvl == null ? 'xaritada' : `${lvl} ball`;
+    const wx = W ? `${NX.weather.codeText(W.code)[1]} ${F.num(W.temp, 0)}°C` : '—';
+    const adv = W ? NX.weather.roadAdvice(W).filter(a => !/xalal bermaydi/.test(a)) : [];
     return `<section class="card live">
-      <div class="live-h"><span class="live-dot ${L.busy ? 'busy' : ''}" aria-hidden="true"></span><b>Hozir Samarqandda</b>
-        <small>${L.busy ? E(L.busy) : `Yangilandi: ${L.last ? F.time(L.last).slice(-5) : '—'} · har 5 daqiqada avtomatik`}</small></div>
-      ${weather}
-      ${traffic}
+      <div class="now-row">
+        <div><small>Tirbandlik</small><b>${lvlTxt}</b></div>
+        <div><small>Ob-havo</small><b>${wx}</b></div>
+        <div><small>Muammolar</small><b>${M.problems.length}</b></div>
+      </div>
+      ${adv.length ? `<p class="small warn-line">⚠️ ${E(adv[0])}</p>` : ''}
     </section>`;
   }
-
 
   function problems(S) {
     const M = S.model;
     const groups = Object.keys(NX.PROBLEM).map(t => ({ t, meta: NX.PROBLEM[t], items: M.problems.filter(p => p.type === t) })).filter(g => g.items.length)
       .sort((a, b) => b.meta.weight - a.meta.weight);
-    const total = groups.reduce((t, g) => t + g.items.length, 0);
     return `
-    ${nowCard(S)}
     <section class="card">
-      <h2>Shaharda nima muammo bor?</h2>
-      <p class="small">${total ? `Tahlil <b>${groups.length} xil</b> muammoni topdi (${total} joyda). Eng muhimlari tepada. Joy nomini bossangiz, xaritada koʻrsatiladi.` : 'Qoidalar boʻyicha muammo topilmadi.'}</p>
-      <p class="small fix-hint">🎓 <b>Xarita notoʻgʻrimi?</b> Har bir joy yonidagi <b>“Svetofor bor”</b> yoki <b>“Muammo emas”</b> tugmasini bosing — muammo darhol yoʻqoladi. Joy nomini bossangiz, xaritada koʻrsatiladi; xaritada muammo yonini bossangiz ham ochiladi. Yangi svetofor, oʻtish joyi yoki bekatni xaritadagi <b>“➕ Belgilash”</b> tugmasi bilan qoʻshing.${M.dismissedCount ? ` <span class="muted">${M.dismissedCount} ta muammo foydalanuvchilar tomonidan yopilgan.</span>` : ''}</p>
+      <h2>Muammolar va yechimlar</h2>
+      <p class="small muted">Joy nomini bosing — xaritada koʻrsatiladi. Xarita xato boʻlsa — “Muammo emas”.</p>
     </section>
     ${groups.map(g => {
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
-      // Har bir joy yonida darhol tuzatish tugmalari — xaritadagi kichik belgini qidirish shart emas
-      const FIX = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish joyi bor'], crossings: ['pick-crossing', '🚶 Joyini belgilash'], coverage: ['pick-stop', '🚏 Bekatni belgilash'] }[g.t];
+      const FIX = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish bor'] }[g.t];
       const list = g.items.map(p => `<li class="locrow${S.focusPid === p.id ? ' on' : ''}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button>
-        <div class="loc-acts">${FIX ? `<button class="btn sm primary" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn sm" data-act="fix" data-fix="dismiss" data-pid="${p.id}">❌ Muammo emas</button></div></li>`);
+        <div class="loc-acts">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div></li>`);
       return `<section class="card prob" style="--c:${g.meta.color}">
-        <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy</small></div></div>
-        <p><b>Muammo:</b> ${E(g.meta.what)}</p>
-        <p class="fix"><b>Nima qilish kerak:</b> ${E(g.meta.fix)}</p>
-        <p class="muted small">Taxminiy narx: ${F.uzs(qty * g.meta.cost)} (${F.int(qty)} ${E(g.meta.unit)}) <span class="tag">taxminiy</span> ${B('hisob')}</p>
-        <ul class="locs">${list.slice(0, 4).join('')}</ul>
-        ${list.length > 4 ? `<details class="more"><summary>Yana ${list.length - 4} ta joy</summary><ul class="locs">${list.slice(4, 60).join('')}</ul></details>` : ''}
+        <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy · ~${F.uzs(qty * g.meta.cost)}</small></div></div>
+        <p class="fix"><b>Yechim:</b> ${E(g.meta.fix)}</p>
+        <ul class="locs">${list.slice(0, 3).join('')}</ul>
+        ${list.length > 3 ? `<details class="more"><summary>Yana ${list.length - 3} ta joy</summary><ul class="locs">${list.slice(3, 60).join('')}</ul></details>` : ''}
       </section>`;
-    }).join('')}
-    <p class="muted small center">Manba: ${B('osm')} ${B('hisob')} — narxlar umumiy baholar, aniq qiymat smeta bilan belgilanadi.</p>`;
+    }).join('') || '<section class="card"><p>Muammo topilmadi.</p></section>'}`;
   }
 
   // ---------- Yoʻnalishlar ----------
@@ -353,52 +308,6 @@
   }
 
   // ---------- Bashorat ----------
-  // ---------- Real statistika: odamlarning “hozir tirbandlik” xabarlari ----------
-  const hh = h => String(h).padStart(2, '0') + ':00';
-  function reportCard(S, s) {
-    const R = NX.reports, mineRecent = R.recent(60).find(g => g.street === s.key);
-    const st = R.byStreet(30).find(g => g.street === s.key);
-    const btn = l => `<button class="btn rep rep-${l}" data-act="report" data-level="${l}" data-id="${s.id}" ${S.reporting ? 'disabled' : ''}>${R.LEVEL[l].icon} ${R.LEVEL[l].uz}</button>`;
-    return `<section class="card" id="reportCard">
-      <h3>🚗 Hozir bu yerda tirbandlik bormi? ${B('crowd')}</h3>
-      <p class="muted small">Oʻzingiz koʻrib turgan boʻlsangiz, bosing — boshqalar ham koʻradi va real statistika yigʻiladi.</p>
-      <div class="rep-btns">${btn(1)}${btn(2)}${btn(3)}</div>
-      ${mineRecent ? `<p class="small rep-now"><b>${mineRecent.n} kishi</b> soʻnggi 1 soatda bu yerda “${R.LEVEL[mineRecent.level].uz.toLowerCase()}” deb xabar berdi (${ago(mineRecent.ts)}).</p>` : ''}
-      ${st ? `<p class="small">Soʻnggi 30 kunda <b>${st.n} marta</b> tirbandlik xabar qilingan (${st.dayCount} kunda), koʻpincha <b>${hh(st.peak)}</b> atrofida.</p>${NX.chart.hourBars(R.hours(s.key, 30))}`
-        : '<p class="muted small">Bu koʻcha boʻyicha hali xabar yoʻq.</p>'}
-    </section>`;
-  }
-
-  function stats(S) {
-    const M = S.model, R = NX.reports, top = R.byStreet(30), tot = R.total(30);
-    const s = M.streets[S.fc.street];
-    const options = M.namedStreets.slice().sort((a, b) => a.name.localeCompare(b.name, 'uz')).map(x => `<option value="${x.id}" ${x.id === s.id ? 'selected' : ''}>${E(x.name)}</option>`).join('');
-    return `
-    <section class="card">
-      <h2>Tirbandlik statistikasi ${B('crowd')}</h2>
-      <p class="small">Bu yerda faqat <b>real kuzatuv</b>: odamlar “hozir tirbandlik” deb yuborgan xabarlar. Taxmin yoʻq.</p>
-      ${tot ? `<p class="small">Soʻnggi 30 kunda: <b>${tot} ta xabar</b>, ${top.length} ta koʻcha boʻyicha.</p>` : `<p class="alert">Hali xabar yoʻq. Koʻchani bosing va <b>“🟥 Tirband”</b> tugmasini bosing — statistika shu yerda paydo boʻladi. Qancha koʻp odam xabar bersa, statistika shuncha aniq boʻladi.</p>`}
-    </section>
-    ${top.length ? `<section class="card">
-      <h3>Eng koʻp tirband boʻladigan koʻchalar (30 kun)</h3>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Koʻcha</th><th class="n">Xabar</th><th class="n">Koʻpincha</th></tr></thead><tbody>
-      ${top.slice(0, 15).map((g, i) => { const st = M.streetByKey.get(g.street); return `<tr><td>${i + 1}</td><td>${st ? `<button class="link" data-act="street" data-id="${st.id}">${E(st.name || g.name)}</button>` : E(g.name || '—')}</td><td class="n"><b>${g.n}</b></td><td class="n">${hh(g.peak)}</td></tr>`; }).join('')}
-      </tbody></table></div>
-    </section>
-    <section class="card">
-      <h3>Butun shahar: qaysi soatda koʻproq tirbandlik</h3>
-      ${NX.chart.hourBars(R.hours(null, 30))}
-    </section>` : ''}
-    <section class="card">
-      <h3>Koʻcha boʻyicha</h3>
-      <label class="field"><span>Koʻcha</span><select data-input="fc-street">${options}</select></label>
-      ${(() => { const g = top.find(x => x.street === s.key); return g ? `<p class="small"><b>${g.n} marta</b> xabar qilingan, koʻpincha <b>${hh(g.peak)}</b> atrofida.</p>${NX.chart.hourBars(R.hours(s.key, 30))}` : '<p class="muted small">Bu koʻcha boʻyicha hali xabar yoʻq.</p>'; })()}
-    </section>
-    ${actions(S, s)}
-    ${aiBox(S, s)}`;
-  }
-
-  const forecast = stats;
 
   function calibView(S) {
     const c = S.calib;
@@ -459,10 +368,6 @@
         </tbody></table></div>
     </section>
     <section class="card">
-      <h3>Eng tirband koʻchalar ${B('crowd')}</h3>
-      ${(() => { const top = NX.reports.byStreet(30); return top.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Koʻcha</th><th class="n">Xabarlar (30 kun)</th><th class="n">Koʻpincha</th></tr></thead><tbody>${top.slice(0, 10).map(g => { const st = M.streetByKey.get(g.street); return `<tr><td>${st ? `<button class="link" data-act="street" data-id="${st.id}">${E(st.name || g.name)}</button>` : E(g.name)}</td><td class="n">${g.n}</td><td class="n">${hh(g.peak)}</td></tr>`; }).join('')}</tbody></table></div>` : '<p class="muted small">Hali odamlardan tirbandlik xabari kelmagan. Statistika xabarlar asosida yigʻiladi.</p>'; })()}
-    </section>
-    <section class="card">
       <h3>Tavsiyalar (ustuvorlik boʻyicha)</h3>
       ${recs.length ? `<ol class="recs">${recs.map(r => `<li><b>${E(r.t)}</b><p class="small">${E(r.why)}</p>
         <p class="small">Miqdor: ${F.int(r.qty)} × ${E(r.unit)} · <b>${F.uzs(r.total)}</b> <span class="tag">taxminiy</span> ${B('hisob')}</p>
@@ -490,14 +395,13 @@
   function how() {
     return `<section class="card" id="how">
       <h3>Qanday ishlaydi</h3>
-      <div class="how small">
-        <p><b>Real maʼlumot.</b> Koʻchalar, bekatlar, avtobus yoʻnalishlari, svetoforlar va maktablar — OpenStreetMap xaritasidan. Hozirgi tirbandlik va yoʻl hodisalari — TomTom’dan. Ob-havo — Open-Meteo’dan. Sayt bularni har 5 daqiqada yangilab turadi.</p>
-        <p><b>Muammolar.</b> Sayt xaritani tekshirib, quyidagilarni topadi: bekatdan 400 m dan uzoq hududlar; bekatlari 900 m dan uzoq yoʻnalishlar; svetoforsiz katta chorrahalar; yonida piyoda oʻtish joyi yoʻq maktab va bogʻchalar; oʻtish joylari kam katta koʻchalar; hozir 30% dan koʻproq sekinlashgan koʻchalar.</p>
-        <p><b>“Nima boʻladi?”</b> Koʻchani bir tomonlama qilsangiz yoki yopsangiz, mashinalar boshqa yoʻllarni tanlaydi. Sayt butun koʻcha tarmogʻida shuni hisoblab, qaysi koʻchalar yuklanishini koʻrsatadi. Bu — taxmin; aniq natija uchun chorrahalarda mashinalarni sanash kerak.</p>
-        <p><b>Taxmin (bashorat).</b> Koʻcha har gal oʻlchanganda natija saqlanadi. Oʻlchovlar koʻpaygan sari “odatda qachon tirband” degan taxmin real maʼlumotga asoslanadi. Oʻlchov kam boʻlsa, sayt buni ochiq yozadi.</p>
-        <p><b>Belgilar.</b> Har bir raqam yonida qayerdan olingani yozilgan: <i>real</i> — oʻlchangan, <i>Hisob</i> — xarita asosida sanalgan, <i>Taxmin</i> — oldindan baholangan.</p>
-      </div></section>`;
+      <ul class="small how-list">
+        <li><b>Tirbandlik</b> — Yandex xaritasi, real vaqtda.</li>
+        <li><b>Koʻchalar, bekatlar, svetoforlar</b> — OpenStreetMap xaritasidan; xato boʻlsa “Muammo emas” bilan tuzatiladi.</li>
+        <li><b>Muammolar</b> — xarita boʻyicha avtomatik topiladi: svetoforsiz katta chorrahalar, maktab oldida oʻtish yoʻqligi, bekatdan uzoq hududlar va h.k.</li>
+        <li><b>“Nima qilsak?”</b> — butun koʻcha tarmogʻida mashinalar qayta taqsimlanishi hisoblanadi. Bu taxmin; aniq natija uchun chorrahalarda sanoq kerak.</li>
+      </ul></section>`;
   }
 
-  NX.views = { loading, error, home, problems, nowCard, stats, street, aiBox, actions, routes, routeList, forecast, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, nowCard, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

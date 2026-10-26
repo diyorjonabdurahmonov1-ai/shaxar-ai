@@ -47,7 +47,7 @@
       S.fc.street = (M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value)[0] || M.streets[0]).id;
       NX.view.clearDeltas();
       NX.view.setModel(M);
-      NX.view.drawFixes(NX.fixes.list()); NX.view.drawReports(NX.reports.recent(60));
+      NX.view.drawFixes(NX.fixes.list());
       setStatus(res.source, res.data.ts);
       render();
       if (res.warning) toast(res.warning, 'warn');
@@ -89,7 +89,6 @@
     if (S.tab === 'map') html = S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') html = V.problems(S);
     else if (S.tab === 'routes') html = V.routes(S);
-    else if (S.tab === 'forecast') html = V.forecast(S);
     else html = V.report(S);
     // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
     const open = new Set([...panel.querySelectorAll('details[open] > summary')].map(x => x.textContent));
@@ -275,18 +274,6 @@
     render();
   }
 
-  // ---------- “Hozir bu yerda tirbandlik” xabari ----------
-  async function sendReport(id, level) {
-    const s = S.model.streets[id];
-    S.reporting = true; render();
-    try {
-      await NX.reports.send(s, level, s.center[0], s.center[1]);
-      NX.view.drawReports(NX.reports.recent(60));
-      toast('Rahmat! Xabaringiz qabul qilindi — boshqalar ham koʻradi.', 'ok');
-    } catch (e) { toast(e.message, 'bad'); }
-    S.reporting = false; render();
-  }
-
   // ---------- Xaritani bosish: boʻlimga qarab ----------
   function nearestProblem(lat, lon, r) {
     const [x, y] = NX.geo.xy(lat, lon);
@@ -332,7 +319,7 @@
     NX.analysis.refresh(M);
     S.model = M;
     NX.view.setModel(M);
-    NX.view.drawFixes(NX.fixes.list()); NX.view.drawReports(NX.reports.recent(60));
+    NX.view.drawFixes(NX.fixes.list());
     if (S.street != null) NX.view.selectStreet(S.street, false);
     render();
   }
@@ -424,7 +411,6 @@
     // TomTom plitalari Samarqandda deyarli boʻsh — real tirbandlik Yandex orqali koʻrsatiladi
     NX.view.setRealTraffic(null);
     const jobs = [
-      NX.reports.load().then(() => NX.view.drawReports(NX.reports.recent(60))),
       NX.weather.load().then(d => { S.weather = { data: d }; }).catch(e => { S.weather = { err: e.message }; }),
     ];
     if (NX.tomtom.key()) jobs.push(NX.tomtom.incidents().then(list => { S.incidents = { list, ts: Date.now() }; NX.view.setIncidents(list); }).catch(e => { S.incidents = { err: e.message }; }));
@@ -561,11 +547,6 @@
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
-        case 'report': sendReport(id, +b.dataset.level); break;
-        case 'jam':
-          NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 17);
-          if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
-          break;
         case 'fix':
           onFix({ action: b.dataset.fix, pid: b.dataset.pid });
           if (/^pick-/.test(b.dataset.fix) && window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -577,11 +558,15 @@
         }
         case 'settings': openSettings('tomtom'); break;
         case 'yandex': if (!S.yandexMain) toggleWidget(); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
-        case 'route':
+        case 'route': {
+          // Avtobus yoʻnalishi shu xaritada ajratiladi (alohida boʻlimga oʻtmaydi)
           if (id == null) break;
-          S.tab = 'routes'; S.route = S.route === id ? null : id;
-          NX.view.highlightRoute(S.route); render();
+          S.route = S.route === id ? null : id;
+          NX.view.highlightRoute(S.route);
+          const r = S.model.routes[id];
+          if (S.route != null) toast(`${r.modeUz} ${r.label}${r.from && r.to ? `: ${r.from} → ${r.to}` : ''} · ${r.stops.length} bekat`, 'ok');
           break;
+        }
         case 'sim': if (id != null && !S.sim.busy) runWhatIf(id, b.dataset.type); break;
         case 'measure': measure(id); break;
         case 'measure-main': measureMain(); break;
@@ -652,7 +637,7 @@
       onStreet: (id, ll) => mapClick(ll ? ll.lat : null, ll ? ll.lng : null, id),
       onMapClick: ll => { if (S.tab === 'problems') mapClick(ll.lat, ll.lng); },
       onFix: f => { if (S.model) onFix(f); },
-      onRoute: i => { S.tab = 'routes'; S.route = i; NX.view.highlightRoute(i); render(); focusPanel(); },
+      onRoute: i => { S.route = i; NX.view.highlightRoute(i); },
     });
     bind();
     $('#btnYandex').addEventListener('click', toggleWidget);

@@ -410,3 +410,25 @@ details.pgroup .pill { margin-left: auto; }
 .jam b, .ymk b { position: absolute; right: -6px; top: -6px; background: #111827; color: #fff; border-radius: 99px; font-size: 11px; padding: 1px 5px; }
 @keyframes jam { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 100% { box-shadow: 0 0 0 16px rgba(220,38,38,0); } }
 .nx-legend i.jam-sw { width: auto; height: auto; background: none; font-style: normal; } .nx-legend i { height: 6px !important; width: 22px !important; }
+
+/* ---------- Hokimiyat uchun ixcham panel ---------- */
+.now-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.now-row div { display: flex; flex-direction: column; gap: 2px; background: var(--surface-2); border-radius: 10px; padding: 8px 10px; }
+.now-row small { color: var(--muted); font-size: .74rem; }
+.now-row b { font-size: 1.15rem; white-space: nowrap; }
+.warn-line { margin: 8px 0 0; color: var(--amber); font-weight: 600; }
+.top-probs { list-style: none; padding: 0; margin: 4px 0 12px; display: grid; gap: 6px; }
+.top-probs li { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--surface-2); border-radius: 10px; }
+.top-probs b { font-size: 1.05rem; }
+.btn.wide { width: 100%; }
+.hint-line { text-align: center; color: var(--muted); font-size: .9rem; margin: 4px 0 12px; }
+.street-probs { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 8px; }
+.street-probs li { display: flex; flex-direction: column; gap: 2px; }
+.street-probs small { color: var(--muted); font-size: .8rem; }
+.btn.xs { min-height: 34px; padding: 4px 10px; font-size: .8rem; font-weight: 600; }
+.loc-acts .btn.xs { flex: 0 0 auto; }
+.how-list { padding-left: 18px; } .how-list li { margin: 6px 0; }
+@media (max-width: 820px) {
+  .map-toggle { left: auto; right: 58px; transform: none; bottom: 26px; padding: 8px 12px; min-height: 40px; font-size: .85rem; }
+  .map-wrap:not(.ya-on) .nx-legend { max-width: 150px; }
+}

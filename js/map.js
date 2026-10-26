@@ -31,7 +31,6 @@
     ['traffic', 'routes', 'stops', 'problems', 'schools'].forEach(k => (L_[k] = L.layerGroup()));
     L_.incidents = L.layerGroup().addTo(map);
     L_.fixes = L.layerGroup().addTo(map);
-    L_.reports = L.layerGroup().addTo(map);
     // Boʻsh joyni bosish (masalan, “Muammolar” boʻlimida eng yaqin muammoni ochish)
     map.on('click', e => { if (!picking && h.onMapClick) h.onMapClick(e.latlng); });
     // Popup ichidagi “Svetofor bor”, “Muammo emas” kabi tugmalar
@@ -50,7 +49,6 @@
     L_.hover = L.layerGroup().addTo(map);
     L_.hl = L.layerGroup().addTo(map);
     addSearch();
-    addMarkControl();
     addLayerControl();
     addLegend();
     // Hudud chegarasi
@@ -335,20 +333,6 @@
     });
   }
 
-  // Soʻnggi 1 soatdagi “tirbandlik bor” xabarlari (odamlardan, real)
-  function reportPopup(g) {
-    const lv = NX.reports.LEVEL[g.level], m = Math.max(1, Math.round((Date.now() - g.ts) / 60000));
-    return `<div class="ppop"><b>${lv.icon} ${NX.esc(lv.uz)}</b><div>${NX.esc(g.name || 'Nomsiz joy')}</div><p><b>${g.n} kishi</b> xabar berdi · eng soʻnggisi ${m} daqiqa oldin</p>${NX.badge('crowd')}</div>`;
-  }
-  function drawReports(list) {
-    L_.reports.clearLayers();
-    (list || []).forEach(g => {
-      const lv = NX.reports.LEVEL[g.level];
-      const icon = L.divIcon({ className: 'jam', html: `<span style="--c:${lv.color}">🚗${g.n > 1 ? `<b>${g.n}</b>` : ''}</span>`, iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -18] });
-      L.marker([g.lat, g.lon], { icon, zIndexOffset: 800, title: lv.uz }).bindPopup(reportPopup(g)).addTo(L_.reports);
-    });
-  }
-
   function showProblems(on) { forcedProblems = on; applyVis('problems'); }
 
   function focusProblem(p) {
@@ -412,7 +396,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, drawReports, reportPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,
