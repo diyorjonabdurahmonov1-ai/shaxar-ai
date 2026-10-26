@@ -4,6 +4,6 @@
    shunda kalitni boshqa saytlar ishlata olmaydi. Foydalanuvchi “Sozlamalar”da oʻz kalitini kiritsa, u ustun turadi. */
 /* aiProxy — AI proksi manzili (worker/ai-proxy.js, Cloudflare Worker). Bu sir emas: OpenAI kaliti Worker ichida yashirin turadi. */
 window.CITYJAM_KEYS = {
-  aiProxy: '',
+  aiProxy: 'https://cityjam-ai.diyorjonabdurahmonov1.workers.dev',
   tomtom: 'JeJCBCRbOhEGl3Bp7KSdSTdz3ZeL1qdn',
 };
