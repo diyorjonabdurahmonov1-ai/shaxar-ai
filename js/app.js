@@ -13,6 +13,7 @@
     ai: { q: '', busy: null, answer: null },
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
+    chat: { msgs: [], busy: null }, chatStreet: null,
     calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
@@ -88,6 +89,7 @@
     NX.view.showProblems(S.tab === 'problems');
     if (S.tab === 'map') html = S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') html = V.problems(S);
+    else if (S.tab === 'ai') html = V.aiChat(S);
     else if (S.tab === 'routes') html = V.routes(S);
     else html = V.report(S);
     // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
@@ -296,6 +298,15 @@
   }
   function mapClick(lat, lon, streetId) {
     if (!S.model) return;
+    // AI boʻlimida — bosilgan koʻcha suhbatga biriktiriladi
+    if (S.tab === 'ai') {
+      const id = streetId != null ? streetId : nearestStreet(lat, lon);
+      if (id == null) return;
+      S.chatStreet = S.chatStreet === id ? null : id;
+      NX.view.selectStreet(S.chatStreet, false);
+      renderChat();
+      return;
+    }
     // Muammolar boʻlimida — eng yaqin muammo ochiladi, boshqa boʻlimga oʻtib ketmaydi
     if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) focusProblem(p); return; }
     const id = streetId != null ? streetId : nearestStreet(lat, lon);
@@ -424,6 +435,52 @@
   // Kalit oʻzgarganda darhol yangilash
   function refreshLiveNow() { S.live.next = 0; liveTick(); }
 
+  // ---------- AI yordamchi (chat) ----------
+  function renderChat() {
+    if (S.tab !== 'ai') return;
+    swap('#chat', V.aiChat(S));
+    const chat = $('#chat');
+    if (!chat) return;
+    if (window.matchMedia('(max-width: 820px)').matches) { const f = chat.querySelector('.chat-form'); if (f) f.scrollIntoView({ block: 'nearest' }); }
+    else panel.scrollTop = panel.scrollHeight;
+  }
+  function simSummary(last) {
+    if (!last) return null;
+    const r = last.result, row = x => ({ s: x.s, name: x.name, dv: x.dv });
+    return {
+      verdict: last.verdict.label, level: last.verdict.level, tt: r.ttChangePct,
+      up: r.affected.filter(x => x.dv > 0).slice(0, 4).map(row), down: r.affected.filter(x => x.dv < 0).slice(0, 3).map(row),
+      lines: last.verdict.busLines,
+    };
+  }
+  async function chatSend(q) {
+    q = (q || '').trim();
+    if (!q || S.chat.busy || !S.model) return;
+    const prev = S.chat.msgs.slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
+    S.chat.msgs.push({ role: 'user', text: q });
+    S.chat.busy = 'Oʻylayapman…';
+    renderChat();
+    const TYPE = { oneway: d => 'oneway-' + (d || 'A'), close: () => 'close', buslane: () => 'buslane', signal: () => 'signal', demand: () => 'demand' };
+    try {
+      const res = await NX.ai.ask(q, S.model, {
+        defaultStreet: S.chatStreet != null ? S.model.streets[S.chatStreet] : null,
+        simulate: async (street, scen) => {
+          S.chat.busy = `“${street.name}” boʻyicha hisoblanmoqda — natija xaritada chiziladi…`; renderChat();
+          S.chatStreet = street.id;
+          return runWhatIf(street.id, TYPE[scen.type](scen.dir));
+        },
+        onModel: () => { S.chat.busy = 'AI javob yozmoqda…'; renderChat(); },
+        state: S, history: prev,
+      });
+      if (res.street && S.chatStreet == null) S.chatStreet = res.street.id;
+      S.chat.msgs.push({ role: 'ai', text: res.text, src: res.src, error: res.error, sim: res.sim ? simSummary(res.sim) : null });
+    } catch (e) {
+      S.chat.msgs.push({ role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' });
+    }
+    S.chat.busy = null;
+    renderChat();
+  }
+
   // ---------- AI ----------
   async function askAI(q) {
     q = (q || '').trim();
@@ -547,6 +604,14 @@
           break;
         }
         case 'tab': setTab(b.dataset.tab); break;
+        case 'chat-ask': chatSend(b.dataset.q); break;
+        case 'chat-clear': S.chatStreet = null; NX.view.selectStreet(null); renderChat(); break;
+        case 'chat-reset': S.chat.msgs = []; renderChat(); break;
+        case 'chat-street-open': S.chatStreet = id; setTab('ai'); NX.view.selectStreet(id, false); break;
+        case 'chat-street':
+          NX.view.selectStreet(id, true);
+          if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
         case 'fix':
           onFix({ action: b.dataset.fix, pid: b.dataset.pid });
           if (/^pick-/.test(b.dataset.fix) && window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -584,9 +649,13 @@
       const f = e.target;
       e.preventDefault();
       if (f.dataset.form === 'ai') askAI(f.q.value);
+      else if (f.dataset.form === 'chat') chatSend(f.q.value);
     });
     panel.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q') { e.preventDefault(); askAI(e.target.value); }
+      if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q') {
+        e.preventDefault();
+        if (e.target.closest('#chat')) chatSend(e.target.value); else askAI(e.target.value);
+      }
     });
 
     panel.addEventListener('input', e => {

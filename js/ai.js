@@ -63,8 +63,11 @@ Qoidalar:
   Kerakli maʼlumot boʻlmasa, “Bu haqda saytda maʼlumot yoʻq” deb ayt va saytning qaysi boʻlimida koʻrish mumkinligini qisqa ayt.
 - “real” (TomTom yoki Open-Meteo oʻlchovi) va “taxmin”ni (model hisobi) farqla: taxminni oʻlchov deb atama.
 - Odatda 2–6 gap yetarli. Roʻyxat kerak boʻlsa — qisqa nuqtalar bilan.
+- Sen hokimiyat va shahar xizmatlari xodimlari bilan gaplashyapsan: aniq, amaliy, qaror qabul qilishga yordam beradigan javob ber.
 - Agar savol “koʻchani oʻzgartirsak nima boʻladi?” turida boʻlsa va JSON’da “simulyatsiya” berilgan boʻlsa:
-  avval bir gapda xulosa, keyin qaysi koʻchalar koʻproq yuklanadi va qaysi avtobuslarga taʼsir qiladi, oxirida 1–2 ta amaliy maslahat.`;
+  avval bir gapda xulosa, keyin qaysi koʻchalar koʻproq yuklanadi (ular xaritada qizil koʻrsatilgan) va qaysi avtobuslarga taʼsir qiladi, keyin 1–2 ta amaliy maslahat.
+- Agar savol “bu koʻchani nima qilish kerak?” turida boʻlsa — koʻchaning “muammolar” roʻyxati va yechimlariga tayan, ustuvorlik tartibida ayt.
+- Mos boʻlsa, javob oxirida “Kelajakda:” deb bitta gap yoz: transport oqimi oshsa (masalan, turistik mavsumda) qaysi joy birinchi boʻlib tirband boʻlishi mumkin — faqat “sigim_toʻlishi” raqamlariga tayanib.`;
 
   function streetFacts(s, M) {
     return {
@@ -73,6 +76,7 @@ Qoidalar:
       polosalar_osm: s.lanes || null, polosa_bir_tomonga_hisob: s.lanesPerDir, tezlik_chegarasi_kmh: s.maxspeed || null,
       avtobus_liniyalari: s.busRefs, bekatlar_soni: s.stops.length, svetoforlar: s.signals.length, piyoda_otishlar: s.crossings.length,
       yaqin_maktab_bogcha: s.schools.length, tirbandlik_xavfi_hisob_0_100: s.risk.value,
+      muammolar: M.problems.filter(p => p.street === s.id || (p.streets && p.streets.includes(s.id))).slice(0, 6).map(p => ({ turi: NX.PROBLEM[p.type].short, joy: p.title, yechim: NX.PROBLEM[p.type].fix })),
       tomtom: s.tomtom ? { joriy_tezlik_kmh: Math.round(s.tomtom.currentSpeed), erkin_tezlik_kmh: Math.round(s.tomtom.freeFlowSpeed), tirbandlik_foiz: Math.round(s.tomtom.congestion), vaqt: NX.fmt.time(s.tomtom.ts) } : 'oʻlchanmagan',
     };
   }

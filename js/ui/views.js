@@ -46,7 +46,7 @@
         <button class="btn primary wide" data-act="tab" data-tab="problems">Muammolar va yechimlar →</button>` : '<p class="muted">Muammo topilmadi.</p>'}
     </section>
     <p class="hint-line">👆 Koʻchani bosing → <b>“Nima qilsak?”</b> → oqibatini koʻring.</p>
-    ${aiBox(S, null)}`;
+    <button class="btn wide ai-cta" data-act="tab" data-tab="ai">🤖 AI yordamchi bilan gaplashish</button>`;
   }
 
   const kpi = (t, v, sub, src) => `<div class="kpi"><span class="kpi-t">${t}</span><b class="kpi-v">${v}</b>${sub ? `<span class="kpi-s">${E(sub)}</span>` : ''}${B(src)}</div>`;
@@ -158,6 +158,7 @@
       ${mine.length ? `<h4>Muammolar</h4><ul class="street-probs">${[...new Set(mine.map(p => p.type))].map(t => { const ps = mine.filter(p => p.type === t); return `<li><button class="link" data-act="problem" data-id="${ps[0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)}${ps.length > 1 ? ` — ${ps.length} ta joy` : ''}</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`; }).join('')}</ul>` : '<p class="small ok-text">Bu koʻchada muammo topilmadi.</p>'}
     </section>
     ${actions(S, s)}
+    <button class="btn wide ai-cta" data-act="chat-street-open" data-id="${s.id}">🤖 Bu koʻcha haqida AI bilan gaplashish</button>
     ${streetDetails(S, s)}`;
   }
 
@@ -266,6 +267,47 @@
         ${list.length > 3 ? `<details class="more"><summary>Yana ${list.length - 3} ta joy</summary><ul class="locs">${list.slice(3, 60).join('')}</ul></details>` : ''}
       </section>`;
     }).join('') || '<section class="card"><p>Muammo topilmadi.</p></section>'}`;
+  }
+
+  // ---------- AI yordamchi (chat) ----------
+  function chatSuggestions(S) {
+    const M = S.model, s = S.chatStreet != null ? M.streets[S.chatStreet] : null;
+    if (s && s.name) return [`${s.name}ni yopsak nima boʻladi?`, `${s.name}ni bir tomonlama qilsak-chi?`, `${s.name} bilan nima qilish kerak?`];
+    return ['Qaysi chorrahaga birinchi navbatda svetofor kerak?', 'Turistlar 20% koʻpaysa qayerda tirbandlik boʻladi?', 'Maktablar atrofida qanday xavf bor?'];
+  }
+  function chatSim(m) {
+    const x = m.sim;
+    if (!x) return '';
+    const chip = r => `<button class="chip sm ${r.dv > 0 ? 'up' : 'down'}" data-act="chat-street" data-id="${r.s}">${E(r.name || 'nomsiz')} ${r.dv > 0 ? '▲' : '▼'}</button>`;
+    return `<div class="chat-sim">
+      <div><span class="pill v-${x.level}">${E(x.verdict)}</span> <span class="small">Yoʻlda yurish vaqti ${x.tt >= 0 ? '+' : ''}${F.num(x.tt, 1)}%</span></div>
+      ${x.up.length ? `<div class="small"><b>Yuklama oshadi (qizil):</b> ${x.up.map(chip).join('')}</div>` : ''}
+      ${x.down.length ? `<div class="small"><b>Yengillashadi (yashil):</b> ${x.down.map(chip).join('')}</div>` : ''}
+      ${x.lines.length ? `<div class="small"><b>Avtobuslar:</b> ${x.lines.map(E).join(', ')}</div>` : ''}
+      <button class="btn xs" data-act="show-sim">🗺 Xaritada koʻrsatish</button>
+    </div>`;
+  }
+  function aiChat(S) {
+    const M = S.model, C = S.chat, s = S.chatStreet != null ? M.streets[S.chatStreet] : null;
+    const msgs = C.msgs.length ? C.msgs.map(m => m.role === 'user'
+      ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
+      : `<div class="chat-msg ai"><div class="bubble">
+          ${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}
+          <div class="ai-text">${NX.ai.render(m.text)}</div>${chatSim(m)}</div></div>`).join('')
+      : `<div class="chat-msg ai"><div class="bubble"><p><b>Salom!</b> Men Samarqand koʻchalari boʻyicha yordamchiman.</p>
+          <p>Xaritada koʻchani bosing va soʻrang: <i>“yopsak nima boʻladi?”</i>, <i>“bir tomonlama qilsak?”</i>, <i>“nima qilish kerak?”</i>.</p>
+          <p>Natija xaritada koʻrinadi: <span class="tag r">qizil</span> — yuklama oshadi, <span class="tag g">yashil</span> — kamayadi.</p></div></div>`;
+    return `<section class="card chat" id="chat">
+      <div class="chat-h"><b>🤖 AI yordamchi</b>${NX.ai.available() ? '' : '<small class="muted">AI ulanmagan — sayt hisobi bilan javob beradi</small>'}</div>
+      ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
+      <div class="chat-log">${msgs}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}</div></div>` : ''}</div>
+      <div class="chips">${chatSuggestions(S).map(q => `<button class="chip" data-act="chat-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
+      <form data-form="chat" class="chat-form">
+        <textarea name="q" rows="2" placeholder="${s ? 'Masalan: yopsak nima boʻladi?' : 'Savolingizni yozing…'}" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea>
+        <button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button>
+      </form>
+      ${C.msgs.length ? '<button class="link small" data-act="chat-reset">Yangi suhbat</button>' : ''}
+    </section>`;
   }
 
   // ---------- Yoʻnalishlar ----------
@@ -403,5 +445,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, problems, nowCard, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

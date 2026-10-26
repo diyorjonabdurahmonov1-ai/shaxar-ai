@@ -84,7 +84,7 @@ async function clickStreet(page, name) {
   const homeTxt = await page.textContent('#panel');
   ok('Bosh panel qisqa: holat, asosiy muammolar, yoʻriqnoma', /Tirbandlik/.test(homeTxt) && /Asosiy muammolar/.test(homeTxt) && /Nima qilsak/.test(homeTxt) && !(await page.$('.kpi')) && !(await page.$('.index-card')));
   const tabs = await page.$$eval('.tabs [data-tab]', e => e.map(x => x.textContent));
-  ok('Faqat 3 ta boʻlim: Xarita, Muammolar, Hisobot', tabs.join(',') === 'Xarita,Muammolar,Hisobot', tabs.join(','));
+  ok('4 ta boʻlim: Xarita, Muammolar, AI yordamchi, Hisobot', tabs.join(',') === 'Xarita,Muammolar,AI yordamchi,Hisobot', tabs.join(','));
   ok('Keraksiz funksiyalar yoʻq (Belgilash, tirbandlik xabari)', !(await page.$('.nx-mark')) && !(await page.$('#reportCard')));
   await page.waitForFunction(() => /17°C/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('Ob-havo va yoʻlga taʼsiri qisqa', /Yoʻl hoʻl/.test(await page.textContent('.live')));
@@ -138,13 +138,24 @@ async function clickStreet(page, name) {
   await page.click('.facts .refs .ref');
   ok('Avtobus liniyasi shu xaritada koʻrsatiladi', await page.evaluate(() => NX.state.tab === 'map' && NX.state.route != null) && /bekat/.test(await page.textContent('#toast')));
 
-  // AI (kalitsiz): savoldan koʻcha va stsenariy aniqlanadi
+  // AI yordamchi (chat, kalitsiz): savoldan koʻcha va stsenariy aniqlanadi, natija xaritada
   await page.click('[data-act=home]');
-  await page.fill('#aiBox textarea[name=q]', 'Registon koʻchasini yopsak nima boʻladi?');
-  await page.click('#aiBox form button');
-  await page.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
-  ok('AI yoʻq: “AI ishlamadi” deb aniq yoziladi va hisob natijasi beriladi', /AI ishlamadi/.test(await page.textContent('#aiBox .ai-src')) && await page.evaluate(() => NX.state.sim.last.type === 'close'));
-  await page.evaluate(() => { NX.state.ai.answer = null; NX.state.ai.q = ''; });
+  await page.click('.ai-cta');
+  await page.waitForSelector('#chat', { timeout: 5000 });
+  ok('“AI yordamchi” boʻlimi va kirish tugmasi', await page.evaluate(() => NX.state.tab === 'ai'));
+  await page.evaluate(() => NX.view.clearDeltas());
+  await page.fill('#chat textarea[name=q]', 'Registon koʻchasini yopsak nima boʻladi?');
+  await page.click('#chat form button');
+  await page.waitForSelector('#chat .chat-sim', { timeout: 60000 });
+  ok('Chat: “yopsak” → hisob, natija xaritada qizil/yashil', await page.evaluate(() => NX.state.sim.last.type === 'close' && NX.map.hasDeltas()) && /AI ishlamadi/.test(await page.textContent('#chat .ai-src')));
+  ok('Chat: taʼsirlangan koʻchalar tugma sifatida', (await page.$$('#chat .chat-sim [data-act=chat-street]')).length > 0);
+  // Xaritada koʻchani bosish — suhbatga biriktiriladi, boʻlim oʻzgarmaydi
+  await clickStreet(page, 'Dagbitskiy koʻchasi');
+  await page.waitForFunction(() => /Dagbitskiy/.test(document.querySelector('#chat .chat-ctx').textContent), null, { timeout: 5000 });
+  ok('Chat: xaritada bosilgan koʻcha “Tanlangan” boʻladi', await page.evaluate(() => NX.state.tab === 'ai'));
+  await page.click('#chat [data-act=chat-ask]');
+  await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
+  ok('Chat: tanlangan koʻcha uchun tayyor savol (yopish)', await page.evaluate(() => /Dagbitskiy/.test(NX.state.sim.last.label) && NX.state.sim.last.type === 'close'));
 
   // Muammolar boʻlimi
   await page.click('.tabs [data-tab=problems]');
@@ -202,24 +213,23 @@ async function clickStreet(page, name) {
   const rep = JSON.parse(fs.readFileSync(p, 'utf8'));
   ok('JSON eksport ishlaydi', rep.kpi && rep.streets.length > 5 && rep.lastSimulation && rep.recommendations.length > 0, `${dl.suggestedFilename()} · koʻchalar ${rep.streets.length}`);
 
-  // AI
-  await page.click('.tabs [data-tab=map]');
-  await page.click('[data-act=home]').catch(() => {});
+  // AI (kalit bilan) — chat
   await page.evaluate(() => { localStorage.setItem('nx:key:openai', JSON.stringify('sk-test')); });
-  await page.fill('textarea[name=q]', 'Dagbitskiy koʻchasini bir tomonlama qilsak nima boʻladi?');
-  await page.click('form[data-form=ai] button');
-  await page.waitForSelector('.ai-text', { timeout: 90000 });
-  const aiTxt = await page.textContent('.ai-text');
+  await page.click('.tabs [data-tab=ai]');
+  await page.click('#chat [data-act=chat-reset]');
+  await page.fill('#chat textarea[name=q]', 'Dagbitskiy koʻchasini bir tomonlama qilsak nima boʻladi?');
+  await page.click('#chat form button');
+  await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 90000 });
+  const aiTxt = await page.textContent('#chat .chat-msg.ai .ai-text');
   const body = ctx.openaiBodies[ctx.openaiBodies.length - 1];
-  const userMsg = body.messages[1].content;
+  const userMsg = body.messages[body.messages.length - 1].content;
   ok('AI: koʻcha aniqlanadi va simulyatsiya JSON yuboriladi', /Dagbitskiy/.test(userMsg) && /simulyatsiya/.test(userMsg) && /umumiy_yol_vaqti/.test(userMsg), 'model: ' + body.model);
   ok('AI: model ketma-ketligi (404 → keyingisi)', ctx.openaiBodies.some(b => b.model === 'gpt-5.4-mini') && body.model === 'gpt-5.5');
-  ok('AI javobi koʻrsatiladi va “AI javobi” deb belgilanadi', /Hozirgi holat/.test(aiTxt) && /AI javobi/.test(await page.textContent('#aiBox .ai-src')));
+  ok('AI javobi koʻrsatiladi (ogohlantirishsiz)', /Hozirgi holat/.test(aiTxt) && !(await page.$('#chat .ai-src')));
   // Umumiy savol (koʻcha va stsenariysiz): AI ga real holat beriladi
-  await page.fill('#aiBox textarea[name=q]', 'Hozir qaysi koʻchalar tirband va ob-havo qanday?');
-  const nBefore = ctx.openaiBodies.length;
-  await page.click('#aiBox form button');
-  await page.waitForFunction(n => window.NX.state.ai.answer && !window.NX.state.ai.busy, nBefore, { timeout: 60000 });
+  await page.fill('#chat textarea[name=q]', 'Hozir qaysi koʻchalar tirband va ob-havo qanday?');
+  await page.click('#chat form button');
+  await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
   const gen = ctx.openaiBodies[ctx.openaiBodies.length - 1];
   const genMsg = gen.messages[gen.messages.length - 1].content;
   ok('Umumiy savolda AI ga ob-havo, tirbandlik, hodisalar, avtobuslar beriladi', /ob_havo/.test(genMsg) && /hozirgi_tirbandlik/.test(genMsg) && /avtobus_liniyalari/.test(genMsg) && /muammolar/.test(genMsg), 'xabarlar: ' + gen.messages.length);
@@ -315,11 +325,12 @@ async function clickStreet(page, name) {
   const p5 = await ctx5.newPage();
   const e5 = watchErrors(p5);
   await p5.goto(BASE);
-  await p5.waitForSelector('#aiBox textarea', { timeout: 20000 });
-  await p5.fill('#aiBox textarea', 'Registon koʻchasini yopsak nima boʻladi?');
-  await p5.click('#aiBox form button');
-  await p5.waitForSelector('#aiBox .ai-text', { timeout: 60000 });
-  const aiTxt5 = await p5.textContent('#aiBox .ai-text');
+  await p5.waitForSelector('#panel .live', { timeout: 20000 });
+  await p5.click('.tabs [data-tab=ai]');
+  await p5.fill('#chat textarea', 'Registon koʻchasini yopsak nima boʻladi?');
+  await p5.click('#chat form button');
+  await p5.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 60000 });
+  const aiTxt5 = await p5.textContent('#chat .chat-msg.ai .ai-text');
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
   // PIN bilan tuzatish hamma uchun saqlanadi
   await p5.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));

@@ -12,6 +12,7 @@ Loyiha **hokimiyat va shahar xizmatlari** uchun: shahar transportini boshqarish 
 |---|---|
 | **Xarita** | Yandex real tirbandligi (probkalar). Koʻchani bosganda: qisqa maʼlumot, shu koʻchadagi muammolar va **“Nima qilsak?”** — bir tomonlama qilish, yopish, avtobus yoʻlagi, svetofor, talab oshishi oqibatlari butun tarmoq boʻyicha hisoblanadi. |
 | **Muammolar** | Avtomatik topilgan muammolar (svetoforsiz chorrahalar, maktab oldida oʻtish yoʻqligi, bekatdan uzoq hududlar…), yechimi va taxminiy narxi. Xato boʻlsa — “Muammo emas” / “Svetofor bor” (PIN bilan hamma uchun saqlanadi). |
+| **AI yordamchi** | Chat: xaritada koʻchani belgilang va soʻrang (“yopsak nima boʻladi?”, “nima qilish kerak?”). Simulyatsiya avtomatik ishlaydi — yuklama oshadigan yoʻllar xaritada qizil, yengillashadiganlari yashil boʻladi; AI kelajakdagi xavflarni aytadi. |
 | **Hisobot** | Koʻrsatkichlar, tavsiyalar (soʻmda, taxminiy), JSON eksport. |
 | **AI savol** | Oʻzbekcha savolga sayt maʼlumotlari asosida qisqa javob (OpenAI, Cloudflare Worker orqali, kalit yashirin). |
 
