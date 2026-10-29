@@ -597,6 +597,7 @@ async function clickStreet(page, name) {
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 4 }) });
+    if (path === '/webcams' && /mode=fi/.test(req.url())) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ total: 1, source: 'Fintraffic Digitraffic (CC BY 4.0)', items: [{ id: 'C0150200', title: 'Tie 1 Helsinki', city: 'Finlyandiya (test)', lat: 60.2, lon: 24.9, preview: 'https://weathercam.digitraffic.fi/C0150200.jpg', detail: 'https://www.liikennetilanne.fi/en', test: true }] }) });
     if (path === '/webcams') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ total: 2, source: 'Windy.com', items: [{ id: 101, title: 'Samarkand - Registan', city: 'Samarkand', lat: 39.6547, lon: 66.9757, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/101.jpg', detail: 'https://www.windy.com/webcams/101' }, { id: 102, title: 'Samarkand - Siab', city: 'Samarkand', lat: 39.6620, lon: 66.9810, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/102.jpg', detail: 'https://www.windy.com/webcams/102' }] }) });
     if (path.startsWith('/layers')) {
       const sys = path.split('/')[2];
@@ -706,6 +707,8 @@ async function clickStreet(page, name) {
   await p8.click('[data-act=cam-ai] >> nth=0');
   await p8.waitForFunction(() => NX.state.webcams.ai && NX.state.webcams.ai[101] && !NX.state.webcams.ai[101].busy, null, { timeout: 15000 });
   const camReq = px.chat.slice(camChat0).find(b => /vebkamera/.test(b.messages[0].content));
+  const fi = await p8.evaluate(() => NX.webcams.load(60, 'fi').then(l => ({ n: l.length, test: l[0].test, keep: NX.webcams.get().length })));
+  ok('Test kameralar (Finlyandiya, ochiq maʼlumot): alohida roʻyxat, Samarqand xaritasiga qoʻshilmaydi', fi.n === 1 && fi.test && fi.keep === 2, JSON.stringify(fi));
   ok('🤖 Vebkamera kadri AI’ga yuboriladi (arzon model)', camReq && camReq.model === 'gpt-6-luna' && camReq.messages[1].content.some(x => x.type === 'image_url' && /windy\.com/.test(x.image_url.url)));
   const c0 = await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center);
   const gas = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Gaz quvuri 1', diametr: '159 mm' }, geometry: { type: 'LineString', coordinates: [[c0[1] - 0.003, c0[0]], [c0[1] + 0.003, c0[0]]] } }] };

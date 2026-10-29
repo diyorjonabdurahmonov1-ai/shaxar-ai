@@ -24,7 +24,7 @@ const MAX_BODY_CHARS = 30000;
 const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
 const IMAGE_MODELS = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
 // Faqat Mapillary suratlari (Meta CDN) AI’ga koʻrsatiladi
-const PHOTO_OK = u => { try { const h = new URL(u); return h.protocol === 'https:' && /(^|\.)(fbcdn\.net|mapillary\.com|windy\.com)$/.test(h.hostname); } catch (e) { return false; } };
+const PHOTO_OK = u => { try { const h = new URL(u); return h.protocol === 'https:' && /(^|\.)(fbcdn\.net|mapillary\.com|windy\.com|digitraffic\.fi)$/.test(h.hostname); } catch (e) { return false; } };
 const limit = (key, max) => { const k = key + ':' + Math.floor(Date.now() / 3600000); const n = (hits.get(k) || 0) + 1; hits.set(k, n); if (hits.size > 5000) hits.clear(); return n > max; };
 // Xabar matni yoki [matn, surat] qismlari
 function cleanContent(c) {
@@ -55,7 +55,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 7, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/version') return json({ v: 8, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -305,13 +305,17 @@ async function layers(req, env, cors, okOrigin, path) {
 // ---------- Ochiq vebkameralar (Windy Webcams API v3) ----------
 let camCache = { ts: 0, key: '', body: null };
 async function webcams(req, env, cors) {
+  const u = new URL(req.url), mode = u.searchParams.get('mode') || '';
+  if (mode === 'fi') return digitraffic(cors);
   if (!env.WINDY_KEY) return json({ error: { code: 'no_windy_key', message: 'Serverda Windy kaliti (WINDY_KEY) sozlanmagan' } }, 501, cors);
-  const u = new URL(req.url), lat = +u.searchParams.get('lat') || 39.6547, lon = +u.searchParams.get('lon') || 66.9757, r = Math.min(250, +u.searchParams.get('r') || 60);
+  const lat = +u.searchParams.get('lat') || 39.6547, lon = +u.searchParams.get('lon') || 66.9757, r = Math.min(250, +u.searchParams.get('r') || 60);
   if (Math.abs(lat - 39.65) > 3 || Math.abs(lon - 66.97) > 3) return json({ error: { code: 'bad_item', message: 'Faqat Samarqand atrofi' } }, 400, cors);
-  const key = lat.toFixed(2) + ',' + lon.toFixed(2) + ',' + r;
+  const key = mode + lat.toFixed(2) + ',' + lon.toFixed(2) + ',' + r;
   // Windy bepul tarifida rasm havolalari ~10 daqiqa amal qiladi — 5 daqiqa kesh
   if (camCache.body && camCache.key === key && Date.now() - camCache.ts < 5 * 60e3) return json(camCache.body, 200, cors);
-  const api = `https://api.windy.com/webcams/api/v3/webcams?nearby=${lat},${lon},${r}&include=location,images,urls,player&limit=50&lang=en`;
+  // mode=uz — test uchun butun Oʻzbekiston boʻyicha
+  const api = mode === 'uz' ? 'https://api.windy.com/webcams/api/v3/webcams?countries=UZ&include=location,images,urls,player&limit=50&lang=en'
+    : `https://api.windy.com/webcams/api/v3/webcams?nearby=${lat},${lon},${r}&include=location,images,urls,player&limit=50&lang=en`;
   const w = await fetch(api, { headers: { 'x-windy-api-key': env.WINDY_KEY } });
   const d = await w.json().catch(() => null);
   if (!w.ok || !d) return json({ error: { code: 'windy_error', message: 'Windy javob bermadi (HTTP ' + w.status + ')' } }, 502, cors);
@@ -324,5 +328,21 @@ async function webcams(req, env, cors) {
   })).filter(c => isFinite(c.lat) && isFinite(c.lon));
   const body = { total: d.total || list.length, items: list, source: 'Windy.com' };
   camCache = { ts: Date.now(), key, body };
+  return json(body, 200, cors);
+}
+
+// Test manbasi: Finlyandiya yoʻl ob-havo kameralari (Fintraffic Digitraffic, ochiq maʼlumot, CC BY 4.0)
+let fiCache = { ts: 0, body: null };
+async function digitraffic(cors) {
+  if (fiCache.body && Date.now() - fiCache.ts < 10 * 60e3) return json(fiCache.body, 200, cors);
+  const r = await fetch('https://tie.digitraffic.fi/api/weathercam/v1/stations', { headers: { 'Digitraffic-User': 'CityJam/1.0', 'Accept-Encoding': 'gzip' } });
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !d || !Array.isArray(d.features)) return json({ error: { code: 'fi_error', message: 'Digitraffic javob bermadi (HTTP ' + r.status + ')' } }, 502, cors);
+  // Helsinki atrofidagi 12 ta kamera (har biridan birinchi koʻrinish)
+  const items = d.features.filter(f => f.geometry && f.properties && (f.properties.presets || []).length)
+    .map(f => ({ f, dd: Math.hypot(f.geometry.coordinates[1] - 60.2, (f.geometry.coordinates[0] - 24.9) * 0.5) })).sort((a, b) => a.dd - b.dd).slice(0, 12)
+    .map(({ f }) => { const p = f.properties.presets[0].id; return { id: p, title: f.properties.name || p, city: 'Finlyandiya (test)', lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], updated: f.properties.dataUpdatedTime || null, preview: 'https://weathercam.digitraffic.fi/' + p + '.jpg', detail: 'https://www.liikennetilanne.fi/en', test: true }; });
+  const body = { total: items.length, items, source: 'Fintraffic Digitraffic (CC BY 4.0)' };
+  fiCache = { ts: Date.now(), body };
   return json(body, 200, cors);
 }

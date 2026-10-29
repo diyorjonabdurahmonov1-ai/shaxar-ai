@@ -182,17 +182,25 @@
   }
 
   // Ochiq vebkameralar (Windy): suratlar va AI tahlili
+  function camItem(W, c) {
+    const a = (W.ai || {})[c.id] || {};
+    return `<div class="cam">
+        ${c.preview ? `<a href="${E(c.detail)}" target="_blank" rel="noopener"><img src="${E(c.preview)}" alt="${E(c.title)}" loading="lazy"></a>` : ''}
+        <div class="small"><b>${c.test ? '🧪 ' : ''}${E(c.title)}</b>${c.city ? ` · ${E(c.city)}` : ''}<br><a href="${E(c.detail)}" target="_blank" rel="noopener">${c.test && c.src ? E(c.src) : 'Windy.com'} ↗</a>${c.updated ? ` · <span class="muted">${E(new Date(c.updated).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }))}</span>` : ''}</div>
+        <div class="row-btns">${c.test ? '' : `<button class="btn xs" data-act="cam-fly" data-lat="${c.lat}" data-lon="${c.lon}">🗺 Xaritada</button>`}${c.preview ? `<button class="btn xs" data-act="cam-ai" data-id="${E(String(c.id))}" ${a.busy ? 'disabled' : ''}>🤖 Hozirgi kadrni tahlil qil</button>` : ''}</div>
+        ${a.busy ? '<p class="small muted"><span class="spinner sm"></span> AI koʻrmoqda…</p>' : a.err ? `<p class="small bad-text">⚠️ ${E(a.err)}</p>` : a.text ? `<div class="ai-text small">${NX.ai.render(a.text)}</div>` : ''}
+      </div>`;
+  }
   function webcamBox(S) {
     const W = S.webcams || {}, list = W.list || [];
     return `<div class="vpart"><b>🌐 Ochiq vebkameralar (Windy.com)</b>
       ${W.busy ? '<p class="small muted"><span class="spinner sm"></span> Qidirilmoqda…</p>' : W.err ? `<p class="small bad-text">⚠️ ${E(W.err)}</p>` : W.list ? (list.length ? '' : '<p class="small">Samarqand atrofida (60 km) ochiq vebkamera topilmadi.</p>') : ''}
-      ${list.length ? `<p class="small">${list.length} ta kamera topildi (Samarqanddan 60 km gacha).</p><div class="cams">${list.map(c => { const a = (W.ai || {})[c.id] || {}; return `<div class="cam">
-        ${c.preview ? `<a href="${E(c.detail)}" target="_blank" rel="noopener"><img src="${E(c.preview)}" alt="${E(c.title)}" loading="lazy"></a>` : ''}
-        <div class="small"><b>${E(c.title)}</b>${c.city ? ` · ${E(c.city)}` : ''}<br><a href="${E(c.detail)}" target="_blank" rel="noopener">Windy.com ↗</a>${c.updated ? ` · <span class="muted">${E(new Date(c.updated).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }))}</span>` : ''}</div>
-        <div class="row-btns"><button class="btn xs" data-act="cam-fly" data-lat="${c.lat}" data-lon="${c.lon}">🗺 Xaritada</button>${c.preview ? `<button class="btn xs" data-act="cam-ai" data-id="${E(String(c.id))}" ${a.busy ? 'disabled' : ''}>🤖 Hozirgi kadrni tahlil qil</button>` : ''}</div>
-        ${a.busy ? '<p class="small muted"><span class="spinner sm"></span> AI koʻrmoqda…</p>' : a.err ? `<p class="small bad-text">⚠️ ${E(a.err)}</p>` : a.text ? `<div class="ai-text small">${NX.ai.render(a.text)}</div>` : ''}
-      </div>`; }).join('')}</div>` : ''}
+      ${list.length ? `<p class="small">${list.length} ta kamera topildi (Samarqanddan 60 km gacha).</p><div class="cams">${list.map(c => camItem(W, c)).join('')}</div>` : ''}
       <button class="btn xs" data-act="cam-load" ${W.busy ? 'disabled' : ''}>${W.list ? '🔄 Yangilash' : '🔍 Ochiq vebkameralarni topish'}</button>
+      ${W.list && !list.length ? `<div class="vpart"><b class="small">🧪 Test uchun (AI tahlilini sinash) — boshqa joylardagi ochiq kameralar:</b>
+        <div class="row-btns"><button class="btn xs" data-act="cam-test" data-mode="uz" ${W.testBusy ? 'disabled' : ''}>🇺🇿 Butun Oʻzbekiston (Windy)</button><button class="btn xs" data-act="cam-test" data-mode="fi" ${W.testBusy ? 'disabled' : ''}>🇫🇮 Finlyandiya yoʻl kameralari (ochiq maʼlumot)</button></div>
+        ${W.testBusy ? '<p class="small muted"><span class="spinner sm"></span> Yuklanmoqda…</p>' : W.testErr ? `<p class="small bad-text">⚠️ ${E(W.testErr)}</p>` : W.test ? (W.test.length ? `<div class="cams">${W.test.map(c => camItem(W, c)).join('')}</div>` : '<p class="small">Topilmadi.</p>') : ''}
+      </div>` : ''}
       <p class="small muted">Faqat egalari hammaga eʼlon qilgan kameralar (Windy katalogi). “Xavfsiz shahar” kameralari — rasmiy ruxsat bilan ulanadi.</p>
     </div>`;
   }

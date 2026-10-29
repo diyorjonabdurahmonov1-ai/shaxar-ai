@@ -1321,9 +1321,15 @@
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;
         case 'cam-load': camLoad(); break;
+        case 'cam-test': {
+          const W = S.webcams = S.webcams || {};
+          W.testBusy = b.dataset.mode; W.testErr = null; renderKeepScroll();
+          NX.webcams.load(60, b.dataset.mode).then(l => { W.test = l; W.testMode = b.dataset.mode; }, e => { W.testErr = e.message; }).then(() => { W.testBusy = null; renderKeepScroll(); });
+          break;
+        }
         case 'cam-fly': NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 16); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
         case 'cam-ai': {
-          const W = S.webcams || {}, cam = (W.list || []).find(c => String(c.id) === b.dataset.id);
+          const W = S.webcams || {}, cam = (W.list || []).concat(W.test || []).find(c => String(c.id) === b.dataset.id);
           if (!cam) break;
           W.ai = W.ai || {}; W.ai[cam.id] = { busy: true }; renderKeepScroll();
           NX.ai.webcamCheck(cam).then(t => { W.ai[cam.id] = { text: t }; }, e => { W.ai[cam.id] = { err: e.message }; }).then(renderKeepScroll);
