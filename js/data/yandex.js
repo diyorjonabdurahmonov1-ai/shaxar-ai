@@ -83,5 +83,7 @@
   NX.yandex = {
     key, load, show, hide, highlight, state,
     getMap: () => (active && ymap ? ymap : null),
-    setPicker: fn => { picker = fn; }, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
+    setPicker: fn => { picker = fn; },
+    // Bosish chiziq ustiga tushsa ham tanlov rejimi ishlasin
+    takePick: (lat, lon) => { if (!picker) return false; const f = picker; picker = null; f(lat, lon); return true; }, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
 })();

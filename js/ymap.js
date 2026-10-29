@@ -6,7 +6,7 @@
   const NX = window.NX;
   const COL = { green: '#16a34a', amber: '#f59e0b', red: '#dc2626' };
   let M = null, colorMode = { mode: 'now' }, showProb = false, pieces = null;
-  const G = { sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
+  const G = { seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
   const Y = () => NX.yandex && NX.yandex.getMap && NX.yandex.getMap();
   let layoutCache = null;
 
@@ -47,7 +47,7 @@
       const lls = [];
       M.streets[id].ways.forEach(i => { const ll = M.ways[i].ll; lls.push(...ll); c.add(line(ll, { strokeColor: '#06b6d4', strokeWidth: 8, strokeOpacity: 0.9, interactivityModel: 'default#geoObject', cursor: 'pointer' })); });
       // Ajratilgan koʻchani qayta bosish — ajratishni olib tashlash
-      if (c.events) c.events.add('click', () => { if (NX.view.onSelClick) NX.view.onSelClick(); });
+      if (c.events) c.events.add('click', e => { const p = e.get && e.get('coords'); if (p && NX.yandex.takePick(p[0], p[1])) return; if (NX.view.onSelClick) NX.view.onSelClick(); });
       if (fit !== false) fitTo(lls, 17);
     },
     showDeltas(res, pcs) {
@@ -60,6 +60,12 @@
       }
     },
     clearDeltas() { drop('delta'); },
+    selectSegment(lines) {
+      if (!Y()) return;
+      if (!lines) { drop('seg'); return; }
+      const c = coll('seg');
+      lines.forEach(ll => c.add(line(ll, { strokeColor: '#f97316', strokeWidth: 11, strokeOpacity: 0.95 })));
+    },
     drawProblems() {
       if (!Y() || !M) return;
       const c = coll('prob');
@@ -112,12 +118,12 @@
     },
     flyTo(lat, lon, z) { const map = Y(); if (map) map.setCenter([lat, lon], z || 17, { duration: 300 }); },
     pickPoint(kind, cb) {
-      const k = NX.fixes.KIND[kind], wrap = document.querySelector('.map-wrap');
+      const k = typeof kind === 'string' ? NX.fixes.KIND[kind] : kind, wrap = document.querySelector('.map-wrap');
       Ymap.cancelPick();
       const bar = document.createElement('div');
       bar.className = 'nx-pickbar ypick';
-      bar.innerHTML = `<span>${k.icon} <b>${k.uz}</b> joyini xaritada bosing</span><button type="button">Bekor qilish</button>`;
-      bar.querySelector('button').addEventListener('click', Ymap.cancelPick);
+      bar.innerHTML = `<span>${k.text || `${k.icon} <b>${k.uz}</b> joyini xaritada bosing`}</span><button type="button">Bekor qilish</button>`;
+      bar.querySelector('button').addEventListener('click', () => { Ymap.cancelPick(); if (k.onCancel) k.onCancel(); });
       wrap.appendChild(bar);
       NX.yandex.setPicker((lat, lon) => { Ymap.cancelPick(); cb({ lat, lng: lon }); });
     },
@@ -138,7 +144,7 @@
   const ONLY_ACTIVE = { pickPoint: 1, cancelPick: 1 };
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
-  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'drawProblems', 'showProblems',
+  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawProblems', 'showProblems',
     'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;

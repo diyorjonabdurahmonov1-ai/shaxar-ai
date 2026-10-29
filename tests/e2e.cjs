@@ -156,6 +156,33 @@ async function clickStreet(page, name) {
   await page.click('#chat [data-act=chat-ask]');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
   ok('Chat: tanlangan koʻcha uchun tayyor savol (yopish)', await page.evaluate(() => /Dagbitskiy/.test(NX.state.sim.last.label) && NX.state.sim.last.type === 'close'));
+  // Koʻchaning bir qismini tanlash: ikki nuqta → faqat shu qism tahlil qilinadi
+  await page.click('#chat [data-act=seg-pick]');
+  await page.waitForFunction(() => NX.state.segPick && NX.state.segPick.step === 1 && document.querySelector('.nx-pickbar'), null, { timeout: 10000 });
+  const segPts = await page.evaluate(() => {
+    const M = NX.state.model, s = M.streets.find(x => x.name === 'Dagbitskiy koʻchasi');
+    const pcs = NX.state.simInfo.pieces.map((p, i) => [p, i]).filter(([p]) => M.ways[p[0]].street === s.id);
+    const A = M.ways[pcs[0][0][0]].ll[pcs[0][0][1]], last = pcs[Math.max(1, Math.floor(pcs.length / 2))][0], B = M.ways[last[0]].ll[last[2]];
+    const map = NX.map.leaflet();
+    map.fitBounds([A, B], { padding: [60, 60], animate: false });
+    const r = document.getElementById('map').getBoundingClientRect();
+    const px = ll => { const p = map.latLngToContainerPoint(ll); return { x: r.left + p.x + 2, y: r.top + p.y + 2 }; };
+    return { a: px(A), b: px(B), total: pcs.length };
+  });
+  await page.waitForTimeout(300);
+  await page.mouse.click(segPts.a.x, segPts.a.y);
+  await page.waitForFunction(() => NX.state.segPick && NX.state.segPick.step === 2, null, { timeout: 5000 });
+  ok('Qism: birinchi nuqtadan keyin “oxirini bosing”', /oxirini/.test(await page.textContent('.nx-pickbar')) && (await page.isVisible('#chat .seg-bar.picking')));
+  await page.mouse.click(segPts.b.x, segPts.b.y);
+  await page.waitForFunction(() => NX.state.segment, null, { timeout: 5000 });
+  const segN = await page.evaluate(() => NX.state.segment.pieces.length);
+  ok('Qism tanlandi: koʻchaning faqat bir boʻlagi', segN > 0 && segN < segPts.total && (await page.isVisible('#chat .seg-bar.on')) && (await page.evaluate(() => NX.state.tab)) === 'ai', `${segN}/${segPts.total}`);
+  ok('Qism uchun tayyor savollar', /Shu qismini/.test(await page.textContent('#chat .chips')));
+  await page.click('#chat [data-act=chat-ask]');
+  await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 6, null, { timeout: 60000 });
+  ok('Simulyatsiya faqat tanlangan qism uchun', await page.evaluate(() => NX.state.sim.last.type === 'close' && /→/.test(NX.state.sim.last.label) && / m\)|km\)/.test(NX.state.sim.last.label) && NX.map.hasDeltas()), await page.evaluate(() => NX.state.sim.last.label));
+  await page.click('#chat [data-act=seg-clear]');
+  ok('“Butun koʻcha” — qism bekor qilinadi', await page.evaluate(() => NX.state.segment === null) && /Butun koʻcha/.test(await page.textContent('#chat .seg-bar')));
 
   // Muammolar boʻlimi
   await page.click('.tabs [data-tab=problems]');

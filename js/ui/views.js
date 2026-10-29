@@ -163,6 +163,14 @@
     ${streetDetails(S, s)}`;
   }
 
+  // Butun koʻcha yoki uning bir qismi
+  function segBar(S, s) {
+    const seg = S.segment && S.segment.street === s.id ? S.segment : null, pick = S.segPick && S.segPick.street === s.id ? S.segPick : null;
+    if (pick) return `<div class="seg-bar picking">✂️ Xaritada qism <b>${pick.step === 1 ? 'boshini' : 'oxirini'}</b> bosing <span class="muted small">(${pick.step}/2)</span><button class="link" data-act="seg-clear">Bekor qilish</button></div>`;
+    if (seg) return `<div class="seg-bar on">✂️ Qism: <b>${E(NX.segment.label(seg))}</b> · ${F.km(seg.len)}<button class="link" data-act="seg-pick" data-id="${s.id}">Qayta tanlash</button><button class="link" data-act="seg-clear">Butun koʻcha</button></div>`;
+    return `<div class="seg-bar"><span>Butun koʻcha · ${F.km(s.length)}</span><button class="btn xs" data-act="seg-pick" data-id="${s.id}">✂️ Bir qismini tanlash</button></div>`;
+  }
+
   function directionLabels(s) {
     const [ux, uy] = s.axis;
     return { A: NX.geo.compass(ux, uy), B: NX.geo.compass(-ux, -uy) };
@@ -178,6 +186,7 @@
     const res = S.sim.last && S.sim.last.street === s.id ? simResult(S, S.sim.last) : '';
     return `<section class="card" id="whatif">
       <h3>Nima qilsak? ${B('bashorat')}</h3>
+      ${segBar(S, s)}
       <p class="muted small">Variantni bosing — oqibati hisoblanadi.</p>
       <div class="act-grid">
         ${btn('oneway-A', '→', ow ? `Faqat ${d.A}ga yurish` : 'Bir tomonlama qilish', `faqat ${d.A} tomonga`)}
@@ -273,6 +282,7 @@
   // ---------- AI yordamchi (chat) ----------
   function chatSuggestions(S) {
     const M = S.model, s = S.chatStreet != null ? M.streets[S.chatStreet] : null;
+    if (s && S.segment && S.segment.street === s.id) return ['Shu qismini yopsak nima boʻladi?', 'Shu qismini bir tomonlama qilsak-chi?', 'Shu qismida nima qilish kerak?'];
     if (s && s.name) return [`${s.name}ni yopsak nima boʻladi?`, `${s.name}ni bir tomonlama qilsak-chi?`, `${s.name} bilan nima qilish kerak?`];
     return ['Qaysi chorrahaga birinchi navbatda svetofor kerak?', 'Turistlar 20% koʻpaysa qayerda tirbandlik boʻladi?', 'Maktablar atrofida qanday xavf bor?'];
   }
@@ -300,7 +310,7 @@
           <p>Natija xaritada koʻrinadi: <span class="tag r">qizil</span> — yuklama oshadi, <span class="tag g">yashil</span> — kamayadi.</p></div></div>`;
     return `<section class="card chat" id="chat">
       <div class="chat-h"><b>🤖 AI yordamchi</b>${NX.ai.available() ? '' : '<small class="muted">AI ulanmagan — sayt hisobi bilan javob beradi</small>'}</div>
-      ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
+      ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>${segBar(S, s)}` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
       <div class="chat-log">${msgs}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}</div></div>` : ''}</div>
       <div class="chips">${chatSuggestions(S).map(q => `<button class="chip" data-act="chat-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
       <form data-form="chat" class="chat-form">

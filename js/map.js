@@ -48,6 +48,7 @@
     });
     L_.hover = L.layerGroup().addTo(map);
     L_.hl = L.layerGroup().addTo(map);
+    L_.seg = L.layerGroup().addTo(map);
     addSearch();
     addLayerControl();
     addLegend();
@@ -140,11 +141,11 @@
   let picking = null;
   function pickPoint(kind, cb) {
     cancelPick();
-    const k = NX.fixes.KIND[kind];
+    const k = typeof kind === 'string' ? NX.fixes.KIND[kind] : kind;
     const bar = L.DomUtil.create('div', 'nx-pickbar', map.getContainer());
-    bar.innerHTML = `<span>${k.icon} <b>${k.uz}</b> joyini xaritada bosing</span><button type="button">Bekor qilish</button>`;
+    bar.innerHTML = `<span>${k.text || `${k.icon} <b>${k.uz}</b> joyini xaritada bosing`}</span><button type="button">Bekor qilish</button>`;
     L.DomEvent.disableClickPropagation(bar);
-    bar.querySelector('button').addEventListener('click', cancelPick);
+    bar.querySelector('button').addEventListener('click', () => { cancelPick(); if (k.onCancel) k.onCancel(); });
     map.getContainer().classList.add('picking');
     const onClick = e => { cancelPick(); cb(e.latlng); };
     picking = { bar, onClick };
@@ -364,6 +365,12 @@
     if (fit) map.fitBounds(s.bounds, { padding: [40, 40], maxZoom: 17 });
   }
 
+  // Koʻchaning tanlangan qismi (toʻq sariq)
+  function selectSegment(lines) {
+    L_.seg.clearLayers();
+    (lines || []).forEach(ll => L.polyline(ll, { renderer, color: '#f97316', weight: 10, opacity: 0.95, interactive: false }).addTo(L_.seg));
+  }
+
   function highlightRoute(i) {
     routeHi = i;
     M.routes.forEach(r => r.layers.forEach(pl => pl.setStyle(i == null ? { weight: 2.5, opacity: 0.75 } : r.i === i ? { weight: 6, opacity: 1 } : { weight: 1.5, opacity: 0.2 })));
@@ -396,7 +403,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

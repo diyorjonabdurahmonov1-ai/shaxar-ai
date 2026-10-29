@@ -13,7 +13,7 @@
     ai: { q: '', busy: null, answer: null },
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
-    chat: { msgs: [], busy: null }, chatStreet: null,
+    chat: { msgs: [], busy: null }, chatStreet: null, segment: null, segPick: null,
     calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
@@ -120,6 +120,7 @@
 
   function setTab(t) {
     if (t !== 'map') ensureLeaflet();
+    if (S.segPick) { NX.view.cancelPick(); S.segPick = null; }
     // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     S.tab = t;
@@ -133,7 +134,40 @@
     else panel.scrollTop = 0;
   }
 
+  // ---------- Koʻchaning bir qismi ----------
+  const segOf = sid => (S.segment && S.segment.street === sid ? S.segment : null);
+  function setSegment(seg) {
+    S.segment = seg;
+    NX.view.selectSegment(seg ? seg.lines : null);
+  }
+  function refreshSeg() { if (S.tab === 'ai') renderChat(); else renderActions(); }
+  async function pickSegment(sid) {
+    NX.view.cancelPick();
+    setSegment(null);
+    const s = S.model.streets[sid];
+    await NX.sim.whenReady();
+    S.simInfo = NX.sim.info();
+    const cancel = () => { S.segPick = null; refreshSeg(); };
+    const step = (n, cb) => {
+      S.segPick = { street: sid, step: n }; refreshSeg();
+      NX.view.pickPoint({ text: n === 1 ? `✂️ <b>${NX.esc(s.name || 'Koʻcha')}</b>: qism <b>boshini</b> bosing` : '✂️ Endi qism <b>oxirini</b> bosing', onCancel: cancel }, ll => cb([ll.lat, ll.lng]));
+    };
+    step(1, A => step(2, B => {
+      S.segPick = null;
+      const seg = NX.segment.build(S.model, S.simInfo.pieces, sid, A, B);
+      if (!seg) { toast('Qism topilmadi: ikki nuqtani koʻchaning turli joylarida bosing.', 'warn'); refreshSeg(); return; }
+      setSegment(seg);
+      toast(`Tanlandi: ${NX.segment.label(seg)} · ${F.km(seg.len)}`, 'ok');
+      refreshSeg();
+    }));
+  }
+  function dropSegmentUnless(sid) {
+    if (S.segPick && S.segPick.street !== sid) { NX.view.cancelPick(); S.segPick = null; }
+    if (S.segment && S.segment.street !== sid) setSegment(null);
+  }
+
   function openStreet(id, opt) {
+    dropSegmentUnless(id);
     S.tab = 'map'; S.street = id; S.measureErr = null;
     ensureLeaflet();
     NX.view.selectStreet(id, true);
@@ -145,6 +179,13 @@
 
   // ---------- Simulyatsiya ----------
   function scenarioFor(s, type) {
+    const r = scenarioWhole(s, type), seg = segOf(s.id);
+    if (!seg || r.sc.type === 'demand') return r;
+    r.sc.pieces = seg.pieces;
+    r.label = r.label.replace(/^[^:]*:/, `${s.name || 'Nomsiz yoʻl'} (${NX.segment.label(seg)}, ${F.km(seg.len)}):`);
+    return r;
+  }
+  function scenarioWhole(s, type) {
     const d = V.directionLabels(s), nm = s.name || 'Nomsiz yoʻl';
     switch (type) {
       case 'oneway-A': return { sc: { type: 'oneway', street: s.id, axis: s.axis }, label: `${nm}: bir tomonlama (${d.A} tomonga)`, dirSign: 1 };
@@ -213,6 +254,7 @@
       ensureLeaflet();
       NX.view.showDeltas(r, S.simInfo.pieces);
       NX.view.selectStreet(streetId, false);
+      if (segOf(streetId)) NX.view.selectSegment(S.segment.lines);
     } catch (e) {
       console.error(e);
       toast('Simulyatsiya xatosi: ' + e.message, 'bad');
@@ -303,6 +345,7 @@
       const id = streetId != null ? streetId : nearestStreet(lat, lon);
       if (id == null) return;
       S.chatStreet = S.chatStreet === id ? null : id;
+      dropSegmentUnless(S.chatStreet);
       NX.view.selectStreet(S.chatStreet, false);
       renderChat();
       return;
@@ -317,6 +360,7 @@
     openStreet(id);
   }
   function clearStreet() {
+    dropSegmentUnless(null);
     S.street = null;
     NX.view.selectStreet(null);
     if (S.tab === 'map') render();
@@ -464,6 +508,7 @@
     try {
       const res = await NX.ai.ask(q, S.model, {
         defaultStreet: S.chatStreet != null ? S.model.streets[S.chatStreet] : null,
+        segment: S.segment,
         simulate: async (street, scen) => {
           S.chat.busy = `“${street.name}” boʻyicha hisoblanmoqda — natija xaritada chiziladi…`; renderChat();
           S.chatStreet = street.id;
@@ -605,9 +650,11 @@
         }
         case 'tab': setTab(b.dataset.tab); break;
         case 'chat-ask': chatSend(b.dataset.q); break;
-        case 'chat-clear': S.chatStreet = null; NX.view.selectStreet(null); renderChat(); break;
+        case 'chat-clear': S.chatStreet = null; dropSegmentUnless(null); NX.view.selectStreet(null); renderChat(); break;
+        case 'seg-pick': if (id != null) pickSegment(id); break;
+        case 'seg-clear': NX.view.cancelPick(); S.segPick = null; setSegment(null); refreshSeg(); break;
         case 'chat-reset': S.chat.msgs = []; renderChat(); break;
-        case 'chat-street-open': S.chatStreet = id; setTab('ai'); NX.view.selectStreet(id, false); break;
+        case 'chat-street-open': S.chatStreet = id; setTab('ai'); NX.view.selectStreet(id, false); if (S.segment) NX.view.selectSegment(S.segment.lines); break;
         case 'chat-street':
           NX.view.selectStreet(id, true);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -696,6 +743,7 @@
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape' || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) return;
       NX.view.cancelPick();
+      if (S.segPick) { S.segPick = null; refreshSeg(); return; }
       if (S.street != null) clearStreet();
     });
   }

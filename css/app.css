@@ -463,3 +463,10 @@ details.pgroup .pill { margin-left: auto; }
 .pano-box { height: min(70vh, 560px); background: #0f172a; position: relative; }
 .pano-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #e2e8f0; }
 .pano-cta { margin-top: 10px; }
+
+/* Koʻchaning bir qismi */
+.seg-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0 8px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; }
+.seg-bar > span:first-child { flex: 1; min-width: 0; }
+.seg-bar.on { border: 1px solid #f97316; background: color-mix(in srgb, #f97316 10%, transparent); }
+.seg-bar.picking { border: 1px solid #f97316; animation: segPulse 1.2s ease-in-out infinite alternate; }
+@keyframes segPulse { from { box-shadow: 0 0 0 0 rgba(249, 115, 22, .0); } to { box-shadow: 0 0 0 4px rgba(249, 115, 22, .25); } }

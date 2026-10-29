@@ -222,7 +222,8 @@ function NXSimFactory() {
     const notes = [];
     if (!sc || sc.type === 'none') return { factor: 1, notes };
     if (sc.type === 'demand') return { factor: sc.factor || 1.2, notes };
-    const ps = N.streetPieces.get(sc.street) || [];
+    // sc.pieces — koʻchaning faqat tanlangan qismi
+    const ps = sc.pieces ? sc.pieces.filter(p => p >= 0 && p < N.P && N.pStreet[p] === sc.street) : N.streetPieces.get(sc.street) || [];
     const { pieces, nx, ny, eOn } = N;
     let single = 0;
     for (const p of ps) {

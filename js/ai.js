@@ -66,6 +66,7 @@ Qoidalar:
 - Sen hokimiyat va shahar xizmatlari xodimlari bilan gaplashyapsan: aniq, amaliy, qaror qabul qilishga yordam beradigan javob ber.
 - Agar savol “koʻchani oʻzgartirsak nima boʻladi?” turida boʻlsa va JSON’da “simulyatsiya” berilgan boʻlsa:
   avval bir gapda xulosa, keyin qaysi koʻchalar koʻproq yuklanadi (ular xaritada qizil koʻrsatilgan) va qaysi avtobuslarga taʼsir qiladi, keyin 1–2 ta amaliy maslahat.
+- Agar koʻchada “tanlangan_qism” berilgan boʻlsa — gap butun koʻcha emas, faqat shu qism (qayerdan–qayergacha) haqida; javobda buni aniq ayt va “qismdagi_muammolar”ga tayan.
 - Agar savol “bu koʻchani nima qilish kerak?” turida boʻlsa — koʻchaning “muammolar” roʻyxati va yechimlariga tayan, ustuvorlik tartibida ayt.
 - Mos boʻlsa, javob oxirida “Kelajakda:” deb bitta gap yoz: transport oqimi oshsa (masalan, turistik mavsumda) qaysi joy birinchi boʻlib tirband boʻlishi mumkin — faqat “sigim_toʻlishi” raqamlariga tayanib.`;
 
@@ -79,6 +80,17 @@ Qoidalar:
       muammolar: M.problems.filter(p => p.street === s.id || (p.streets && p.streets.includes(s.id))).slice(0, 6).map(p => ({ turi: NX.PROBLEM[p.type].short, joy: p.title, yechim: NX.PROBLEM[p.type].fix })),
       tomtom: s.tomtom ? { joriy_tezlik_kmh: Math.round(s.tomtom.currentSpeed), erkin_tezlik_kmh: Math.round(s.tomtom.freeFlowSpeed), tirbandlik_foiz: Math.round(s.tomtom.congestion), vaqt: NX.fmt.time(s.tomtom.ts) } : 'oʻlchanmagan',
     };
+  }
+
+  // Foydalanuvchi koʻchaning faqat bir qismini tanlagan boʻlsa
+  function segFacts(seg, s, M) {
+    if (!seg || seg.street !== s.id) return {};
+    return { tanlangan_qism: {
+      qayerdan: seg.from.name ? seg.from.name + ' bilan kesishma' : 'koʻcha boshi', qayergacha: seg.to.name ? seg.to.name + ' bilan kesishma' : 'koʻcha oxiri',
+      uzunlik_m: Math.round(seg.len), butun_koʻcha_m: Math.round(s.length),
+      qismdagi_muammolar: NX.segment.problems(M, seg).slice(0, 6).map(p => ({ turi: NX.PROBLEM[p.type].short, joy: p.title, yechim: NX.PROBLEM[p.type].fix })),
+      izoh: 'Savol va simulyatsiya faqat shu qism haqida.',
+    } };
   }
 
   function simFacts(res, M) {
@@ -202,7 +214,7 @@ Qoidalar:
     if (street && scen) sim = await opts.simulate(street, scen);
     const ctx = Object.assign({
       savol: q, hudud: 'Samarqand tarixiy markazi',
-      koʻcha: street ? streetFacts(street, M) : null,
+      koʻcha: street ? Object.assign(streetFacts(street, M), segFacts(opts.segment, street, M)) : null,
       ikkinchi_koʻcha: found[1] ? streetFacts(found[1].s, M) : null,
       simulyatsiya: simFacts(sim, M),
     }, cityFacts(M, opts.state));
