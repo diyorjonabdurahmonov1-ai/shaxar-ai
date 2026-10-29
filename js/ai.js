@@ -270,12 +270,15 @@ Tuzilma (har biri 1 qator):
 **Boshqacha yoʻl:** agar taklif qilingan yechimdan yaxshiroq variant boʻlsa — bitta gap.
 Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.”`;
 
-  async function vision(p, M, chk) {
-    if (!(chk && chk.photo)) throw new Error('Bu joyda surat yoʻq.');
+  // views — 4 tomondan suratlar (boʻlmasa — eng yaqin surat)
+  async function vision(p, M, chk, views) {
+    const list = views && views.length ? views : chk && chk.photo ? [Object.assign({ side: '' }, chk.photo)] : [];
+    if (!list.length) throw new Error('Bu joyda surat yoʻq.');
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
-    const facts = problemFacts(p, M, chk);
-    const messages = [{ role: 'system', content: VISION.replace('${sana}', chk.photo.when || 'nomaʼlum sana') },
-      { role: 'user', content: [{ type: 'text', text: 'Joy haqida maʼlumot (JSON):\n' + JSON.stringify(facts) }, { type: 'image_url', image_url: { url: chk.photo.url, detail: 'low' } }] }];
+    const n = proxyV >= 4 || userKey() ? 4 : 2;
+    const facts = Object.assign(problemFacts(p, M, chk), { suratlar: list.slice(0, n).map((x, i) => `${i + 1}-surat: ${x.side || 'yaqin'} (${x.d} m, ${x.when})`) });
+    const messages = [{ role: 'system', content: VISION.replace('${sana}', list[0].when || 'nomaʼlum sana') + '\nBir nechta surat boʻlsa — ular bitta joyning turli tomonlari; hammasiga qarab xulosa qil.' },
+      { role: 'user', content: [{ type: 'text', text: 'Joy haqida maʼlumot (JSON):\n' + JSON.stringify(facts) }].concat(list.slice(0, n).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }))) }];
     const r = await callOpenAI(userKey(), null, null, null, messages);
     return r.text;
   }
@@ -344,16 +347,38 @@ Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda
     coverage: 'Add a modern covered bus stop shelter with a bench, a bus stop sign and a small bus pull-in bay.',
     spacing: 'Add a modern covered bus stop shelter with a bench and a bus stop sign at the curb.',
   };
-  async function solutionImage(p, chk) {
+  // Real surat ustiga aniq, kichik oʻzgarish (svetofor ustuni, zebra) — qolgan hamma narsa oʻzgarmaydi
+  const EDIT = {
+    junction: 'Add ONE standard vehicle traffic signal (three-section red-yellow-green head, black housing) on a grey steel pole about 3 m high at the near corner of the intersection on the right side of the road, facing oncoming traffic, with correct perspective and real-world scale. Paint white zebra crossing stripes across the road at the intersection entrance and a solid white stop line 2 m before it.',
+    school: 'Paint a white zebra pedestrian crossing across the road in front of the school entrance on a slightly raised speed table (yellow edge markings), add a blue square "pedestrian crossing" sign on each side and a round "30" speed limit sign, with correct perspective and real-world scale.',
+    crossings: 'Paint a white zebra pedestrian crossing across the road with a blue square "pedestrian crossing" sign on each side, correct perspective and scale.',
+  };
+  // mode: 'photo' — eng yaxshi real suratga chizish; 'top' — reja (OSM) + 4 surat asosida tepadan koʻrinish
+  async function solutionImage(p, chk, opt) {
+    opt = opt || {};
     if (userKey() && !proxyUrl()) throw new Error('AI rasm faqat sayt serveri (Worker) orqali ishlaydi.');
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
-    const what = IMG[p.type] || 'Show the proposed road safety improvement.';
-    const photo = chk && chk.photo ? chk.photo.url : null;
-    const prompt = photo
-      ? `Edit this real street photo from Samarkand, Uzbekistan. ${what} Keep the same viewpoint, buildings, weather and everything else unchanged; photorealistic.`
-      : `Photorealistic street-level view of a street in the historic center of Samarkand, Uzbekistan (low buildings, plane trees, blue domes far away). ${what}`;
-    const r = await NX.fetchJSON(proxyUrl() + '/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, photo }) }, 180000);
-    if (r.ok && r.data && r.data.b64) return { src: 'data:image/png;base64,' + r.data.b64, edited: !!r.data.edited };
+    const views = (opt.views || []).slice(0, proxyV >= 4 ? 4 : 1);
+    const best = views[0] || (chk && chk.photo) || null;
+    let body;
+    if (opt.mode === 'top') {
+      if (proxyV < 4) throw new Error(OLD_WORKER);
+      const what = p.type === 'school' ? 'a raised zebra crossing (yellow edges) in front of the school, "children" signs and 30 km/h signs' : 'a traffic signal at every red marker, a solid white stop line and a white zebra crossing on every approach';
+      body = {
+        plan: opt.plan, photos: views.map(x => x.url), quality: 'medium',
+        prompt: `Create a photorealistic aerial top-down view (satellite style, camera straight down, north up) of THIS real place in Samarkand, Uzbekistan.
+Image 1 is an exact to-scale plan of the real roads from OpenStreetMap: dark grey = asphalt, light grey = curbs, red markers = proposed traffic signals, white stripes = proposed zebra crossings, purple square "M" = school.
+${views.length ? `Images 2–${views.length + 1} are real street photos of the same place from different sides — use them for road surface, curbs, trees, building roofs and colours.` : ''}
+Keep the road geometry, widths and directions EXACTLY as in the plan. Show the proposed solution: ${what}. Realistic small cars on the roads. No text, no labels, no arrows, no markers in the final image.`,
+      };
+    } else {
+      const what = EDIT[p.type] || IMG[p.type] || 'Show the proposed road safety improvement.';
+      body = best
+        ? { photo: best.url, prompt: `Photorealistic edit of this exact real photo from Samarkand, Uzbekistan. ${what} Do NOT change anything else: same camera position, road layout, buildings, trees, sky, light and weather. No text, no people added, no extra cars.` }
+        : { prompt: `Photorealistic street-level view of a street in the historic center of Samarkand, Uzbekistan (low buildings, plane trees). ${IMG[p.type] || ''}` };
+    }
+    const r = await NX.fetchJSON(proxyUrl() + '/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 240000);
+    if (r.ok && r.data && r.data.b64) return { src: 'data:image/png;base64,' + r.data.b64, edited: !!r.data.edited, mode: opt.mode || 'photo' };
     const e = r.data && r.data.error;
     throw new Error(r.status === 429 ? ((e && e.message) || 'Rasm limiti tugadi.') : 'Rasm chizilmadi: ' + ((e && e.message) || 'HTTP ' + r.status));
   }

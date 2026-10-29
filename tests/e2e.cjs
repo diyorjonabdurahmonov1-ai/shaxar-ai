@@ -211,7 +211,10 @@ async function clickStreet(page, name) {
   await page.waitForTimeout(300);
   await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().fire('click', { latlng: L.latLng(p.lat + 0.0002, p.lon + 0.0002) }); });
   await page.waitForTimeout(900);
-  ok('Muammolar boʻlimida xarita bosilsa boʻlim oʻzgarmaydi, yaqin muammo ochiladi', await page.evaluate(() => NX.state.tab === 'problems' && !!NX.state.focusPid) && !!(await page.$('.locrow.on')));
+  ok('Muammolar boʻlimida xarita bosilsa boʻlim oʻzgarmaydi, yaqin muammo ochiladi', await page.evaluate(() => NX.state.tab === 'problems' && !!NX.state.focusPid && NX.state.problemOpen === NX.state.focusPid));
+  ok('Muammo paneli: faqat shu muammo — nima qilish kerak (qadamlar) va tepadan reja', (await page.$$('#panel .prob')).length === 1 && (await page.$$('#panel .steps li')).length >= 3 && !!(await page.$('#panel .plan-svg path')) && /svetofor/.test(await page.textContent('#panel .plan-wrap + p')));
+  await page.click('[data-act=problem-close]');
+  ok('“Barcha muammolar” — roʻyxatga qaytadi', (await page.$$('#panel .prob')).length > 1);
   await page.click('.tabs [data-tab=report]');
   ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc):not(.fixmk)')).length === 0);
   // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari
@@ -480,7 +483,7 @@ async function clickStreet(page, name) {
     const u = new URL(route.request().url());
     mly.tokens.add(u.searchParams.get('access_token'));
     const [w, so, e, n] = u.searchParams.get('bbox').split(',').map(Number), c = [(w + e) / 2, (so + n) / 2];
-    if (/\/images/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: [{ id: '123', captured_at: Date.UTC(2025, 5, 1), thumb_1024_url: 'https://scontent.example.fbcdn.net/t.jpg', computed_geometry: { type: 'Point', coordinates: [c[0] + 0.0001, c[1]] } }] }) });
+    if (/\/images/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: [[0.0001, 0, 270], [0, 0.00027, 180], [0, -0.00027, 0], [-0.00035, 0, 90]].map(([dx, dy, ca], i) => ({ id: '12' + i, captured_at: Date.UTC(2025, 5, 1), thumb_1024_url: 'https://scontent.example.fbcdn.net/t' + i + '.jpg', compass_angle: ca, computed_geometry: { type: 'Point', coordinates: [c[0] + dx, c[1] + dy] } })) }) });
     featCalls++;
     route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: (Math.round(c[0] * 1e4) + Math.round(c[1] * 1e4)) % 3 === 0 ? [{ id: 'f1', object_value: 'object--traffic-light--general-upright', geometry: { type: 'Point', coordinates: c }, last_seen_at: Date.UTC(2025, 5, 1) }] : [] }) });
   });
@@ -489,7 +492,7 @@ async function clickStreet(page, name) {
   const pc = { store: {}, posts: 0 };
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
-    if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 3 }) });
+    if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 4 }) });
     if (path === '/photo-checks') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ items: pc.store }) });
     if (path === '/photo-check') {
       const q = JSON.parse(req.postData()); pc.posts++;
@@ -532,7 +535,20 @@ async function clickStreet(page, name) {
   await p8.click(`${jCard} [data-act=verify-img]`);
   await p8.waitForSelector(`${jCard} .vgen img`, { timeout: 15000 });
   ok('🎨 AI rasm: real surat ustiga, “haqiqiy emas” belgisi bilan', /haqiqiy emas/.test(await p8.textContent(`${jCard} .vgen`)) && px.image[0] && /fbcdn/.test(px.image[0].photo));
-  if (process.env.SHOT) { await p8.evaluate(() => document.querySelector('#reviewCard').scrollIntoView()); await p8.screenshot({ path: process.env.SHOT }); }
+  // Bitta muammo paneli: 4 tomondan suratlar, AI xulosasi avtomatik, tepadan koʻrinish (reja + suratlar)
+  const chatBefore = px.chat.length;
+  await p8.click(`${jCard} .loc >> nth=1`);
+  await p8.waitForSelector('#panel .views4 img', { timeout: 15000 });
+  await p8.waitForSelector('#panel .ai-text', { timeout: 15000 });
+  const vis = px.chat.slice(chatBefore).find(b => /Svetofor:/.test(b.messages[0].content) || /mutaxassis/.test(b.messages[0].content));
+  ok('Muammo paneli: 4 tomondan real suratlar va AI xulosasi (avtomatik)', (await p8.$$('#panel .views4 img')).length >= 2 && vis && vis.messages[1].content.filter(x => x.type === 'image_url').length >= 2, 'suratlar: ' + (await p8.$$('#panel .views4 img')).length);
+  await p8.click('#panel [data-act=pimg][data-mode=top]');
+  await p8.waitForSelector('#panel .vgen img', { timeout: 20000 });
+  const topReq = px.image[px.image.length - 1];
+  ok('🛰 Tepadan koʻrinish: AI’ga reja (OSM) va real suratlar yuboriladi', /^data:image\/png;base64,/.test(topReq.plan || '') && (topReq.photos || []).length >= 2 && /top-down/.test(topReq.prompt) && /haqiqiy emas/.test(await p8.textContent('#panel .vgen')));
+  if (process.env.SHOT) { await p8.evaluate(() => { document.getElementById('panel').scrollTop = 0; }); await p8.screenshot({ path: process.env.SHOT }); }
+  if (process.env.SHOT3) await p8.locator('#panel .plan-wrap').screenshot({ path: process.env.SHOT3 });
+  await p8.click('[data-act=problem-close]');
   await p8.click('#reviewCard details summary');
   await p8.click('#reviewCard [data-act=review-undo] >> nth=0');
   await p8.waitForTimeout(500);

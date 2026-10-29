@@ -92,7 +92,11 @@
     let html;
     NX.view.showProblems(S.tab === 'problems');
     if (S.tab === 'map') html = S.area ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
-    else if (S.tab === 'problems') html = V.problems(S);
+    else if (S.tab === 'problems') {
+      const op = S.problemOpen && M.problems.find(x => x.id === S.problemOpen);
+      if (!op) S.problemOpen = null;
+      html = op ? V.problem(S, op) : V.problems(S);
+    }
     else if (S.tab === 'ai') html = V.aiChat(S);
     else if (S.tab === 'routes') html = V.routes(S);
     else html = V.report(S);
@@ -233,6 +237,7 @@
   const probById = pid => S.model && S.model.problems.find(x => x.id === pid);
   function renderRow(pid) {
     if (S.tab !== 'problems') return;
+    if (S.problemOpen) { if (S.problemOpen === pid) renderKeepScroll(); return; }
     const p = probById(pid), li = p && panel.querySelector(`li[data-row="${CSS.escape(pid)}"]`);
     if (li) li.outerHTML = V.locRow(S, p);
   }
@@ -253,6 +258,30 @@
     try { v[k] = Object.assign({ busy: false }, await fn(p, v.res)); } catch (e) { v[k] = { busy: false, err: e.message }; }
     renderRow(pid);
   }
+  // Muammo bosilganda — panelda faqat shu muammo: holati, nima qilish kerak, reja, 4 tomondan suratlar, AI xulosasi
+  async function openProblem(p) {
+    S.problemOpen = p.id;
+    ensureLeaflet();
+    focusProblem(p);
+    render(); panel.scrollTop = 0;
+    const v = S.verify[p.id] = S.verify[p.id] || {};
+    if (!NX.mly.available()) return;
+    if (!v.res && !v.busy) await verifyCheck(p);
+    if (!v.views) {
+      v.views = { busy: true }; renderRow(p.id);
+      try { v.views = { list: await NX.mly.views4(p) }; } catch (e) { v.views = { err: e.message, list: [] }; }
+      renderRow(p.id);
+    }
+    // AI xulosasi — avtomatik; bir marta koʻrilgan suratlar uchun saqlanadi
+    const list = v.views.list && v.views.list.length ? v.views.list : null;
+    if (!v.ai && NX.ai.available() && (list || (v.res && v.res.photo))) {
+      const ck = 'pvai:' + p.key + ':' + (list || [v.res.photo]).map(x => x.id).join(',');
+      const hit = NX.store.get(ck, null);
+      if (hit) { v.ai = { text: hit }; renderRow(p.id); }
+      else verifyPart(p.id, 'ai', async () => { const text = await NX.ai.vision(p, S.model, v.res, list); NX.store.set(ck, text); return { text }; });
+    }
+  }
+
   // ---------- Avtomatik tekshiruv: muammolar real suratlar bilan (Mapillary + AI) ----------
   const REVIEW_TYPES = ['junction', 'school'];
   const keepKeys = () => new Set(NX.store.get('review:keep', []));
@@ -556,7 +585,7 @@
     // Hudud panelida xaritani bosish hududni yopib yubormaydi
     if (S.tab === 'map' && S.area) return;
     // Muammolar boʻlimida — eng yaqin muammo ochiladi, boshqa boʻlimga oʻtib ketmaydi
-    if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) focusProblem(p); return; }
+    if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) openProblem(p); return; }
     const id = streetId != null ? streetId : nearestStreet(lat, lon);
     if (id == null) return;
     if (S.tab === 'forecast') { S.fc.street = id; NX.view.selectStreet(id, false); render(); focusPanel(); return; }
@@ -857,9 +886,16 @@
         case 'retry': loadData(!!(S.model || S.load === 'error')); break;
         case 'home': clearStreet(); break;
         case 'street': if (id != null) { openStreet(id); } break;
+        case 'problem-close': S.problemOpen = null; render(); break;
+        case 'pimg': {
+          const pid = b.dataset.pid, mode = b.dataset.mode, v = S.verify[pid] || {};
+          verifyPart(pid, mode === 'top' ? 'top' : 'photo', async (p, r) => NX.ai.solutionImage(p, r, { mode, views: v.views && v.views.list, plan: mode === 'top' ? await NX.plan.png(S.model, p) : null }));
+          break;
+        }
         case 'problem': {
           const p = M.problems.find(x => x.id === b.dataset.id);
           if (!p) break;
+          if (S.tab === 'problems') { openProblem(p); break; }
           ensureLeaflet();
           focusProblem(p);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });

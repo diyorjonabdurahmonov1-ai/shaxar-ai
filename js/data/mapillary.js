@@ -32,7 +32,7 @@
     const list = await get('images', { bbox: bbox(lat, lon, r), limit: 50, fields: 'id,captured_at,thumb_1024_url,computed_geometry,geometry,compass_angle' });
     return list.map(x => {
       const g = (x.computed_geometry || x.geometry || {}).coordinates;
-      return g ? { id: x.id, url: x.thumb_1024_url, date: x.captured_at, d: dist(lat, lon, g) } : null;
+      return g ? { id: x.id, url: x.thumb_1024_url, date: x.captured_at, d: dist(lat, lon, g), lat: g[1], lon: g[0], ca: x.compass_angle } : null;
     }).filter(x => x && x.url).sort((a, b) => (a.d - b.d) - (b.date - a.date) / (365 * DAY) * 20);
   }
   async function features(lat, lon, r) {
@@ -77,10 +77,34 @@
     return res;
   }
 
+  // Joyga 4 tomondan qaragan suratlar: har bir yondashuv (shimol/sharq/janub/gʻarb) uchun joyga qarab olingan eng yaxshisi
+  const SIDES = ['shimoldan', 'sharqdan', 'janubdan', 'gʻarbdan'];
+  async function views4(p) {
+    const ck = 'mly4:' + p.key, hit = NX.store.get(ck, null);
+    if (hit && Date.now() - hit.ts < DAY) return hit.list;
+    const ph = await photos(p.lat, p.lon, 90);
+    const [px, py] = NX.geo.xy(p.lat, p.lon);
+    const best = [null, null, null, null];
+    ph.forEach(x => {
+      if (x.d < 5 || x.d > 90) return;
+      const [qx, qy] = NX.geo.xy(x.lat, x.lon);
+      const fromP = (Math.atan2(qx - px, qy - py) * 180) / Math.PI;          // joydan suratgacha (shimoldan soat yoʻnalishida)
+      const side = Math.round((((fromP % 360) + 360) % 360) / 90) % 4;       // surat qaysi tomonda turibdi
+      const toP = (fromP + 180) % 360;                                      // suratdan joyga qarash yoʻnalishi
+      const off = x.ca == null ? 90 : Math.abs((((x.ca - toP) % 360) + 540) % 360 - 180);
+      if (off > 60) return;                                                 // kamera joyga qaramagan
+      const score = off + x.d * 0.6 - (x.date || 0) / (365 * DAY) * 10;
+      if (!best[side] || score < best[side].score) best[side] = Object.assign({ score, side: SIDES[side] }, x);
+    });
+    const list = best.filter(Boolean).map(x => ({ id: x.id, url: x.url, when: when(x.date), d: Math.round(x.d), side: x.side, link: link(x.id) }));
+    NX.store.set(ck, { ts: Date.now(), list });
+    return list;
+  }
+
   // AI koʻrigi natijasi (surat boʻyicha) — saqlab qoʻyiladi, qayta pul sarflanmasin
   const aiKey = (p, r) => 'mlyai:' + p.key + ':' + (r.photo ? r.photo.id : '');
   const aiGet = (p, r) => NX.store.get(aiKey(p, r), null);
   const aiSet = (p, r, v) => NX.store.set(aiKey(p, r), v);
 
-  NX.mly = { token, available: () => !!token(), check, photos, features, link, RULE, aiGet, aiSet };
+  NX.mly = { token, available: () => !!token(), check, photos, views4, features, link, RULE, aiGet, aiSet };
 })();

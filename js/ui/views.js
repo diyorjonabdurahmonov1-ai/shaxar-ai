@@ -299,6 +299,55 @@
     return `<p class="vsum small">${b && b.busy ? `<span class="spinner sm"></span> Tekshirilmoqda: ${b.done}/${b.total} · ` : ''}✅ ${n('ok')} ta joyda bor · ❌ ${n('bad')} ta tasdiqlandi · ❔ ${n('unknown')} ta surat yoʻq</p>`;
   }
 
+  // ---------- Bitta muammo: faqat shu joy haqida ----------
+  function problem(S, p) {
+    const meta = NX.PROBLEM[p.type], v = S.verify[p.id] || {}, r = v.res, FIX = FIXBTN[p.type];
+    const st = r ? VST[r.status] || VST.info : null;
+    const busy = (x, t) => (x && x.busy ? `<p class="small muted"><span class="spinner sm"></span> ${t}…</p>` : x && x.err ? `<p class="small bad-text">⚠️ ${E(x.err)}</p>` : '');
+    const plan = (p.type === 'junction' || p.type === 'school') ? NX.plan.svg(S.model, p) : null;
+    const views = v.views && v.views.list ? v.views.list : [];
+    const fig = (x, cap) => x && x.src ? `<figure class="vgen"><img src="${x.src}" alt="AI chizgan yechim"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b> ${cap}</figcaption></figure>` : '';
+    return `
+    <button class="back" data-act="problem-close">← Barcha muammolar</button>
+    <section class="card prob" style="--c:${meta.color}">
+      <div class="prob-h"><span class="prob-ico" aria-hidden="true">${meta.icon}</span><div><b>${E(meta.short)}</b><small>${E(p.title)}</small></div></div>
+      ${st ? `<p class="vverdict ${st[1]}">${st[0]} ${E(r.text)}</p>` : v.busy ? '<p class="small muted"><span class="spinner sm"></span> Real suratlar tekshirilmoqda…</p>' : ''}
+      <h4>Muammo</h4>
+      <p>${E(meta.what)}</p>${p.detail ? `<p class="small muted">${E(p.detail)}</p>` : ''}
+      <h4>Nima qilish kerak</h4>
+      <ol class="steps">${(meta.steps || [meta.fix]).map(x => `<li>${E(x)}</li>`).join('')}</ol>
+      <p class="small muted">Oʻrtacha narxi: ~${F.uzs((p.qty || 1) * meta.cost)}</p>
+      <div class="row-btns">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button>${NX.pano.btn(p.lat, p.lon, p.title, 'btn xs', '📷 Yandex panorama')}</div>
+    </section>
+    ${plan ? `<section class="card">
+      <h3>📐 Qanday boʻlishi kerak — tepadan ${B('osm')}</h3>
+      <div class="plan-wrap">${plan.svg}</div>
+      <p class="small">${E(plan.note)}</p>
+      <p class="plan-leg small"><span><i class="lg-y"></i>yangi svetofor</span><span><i class="lg-z"></i>yangi zebra va toʻxtash chizigʻi</span><span><i class="lg-s"></i>mavjud svetofor</span><span><i class="lg-c"></i>mavjud oʻtish</span></p>
+      <p class="small muted">Yoʻllar OpenStreetMap’dagi real geometriya va polosalar soni boʻyicha, masshtabda.</p>
+    </section>` : ''}
+    ${NX.mly.available() ? `<section class="card">
+      <h3>📷 Real suratlar — ${views.length ? views.length + ' tomondan' : 'joyning oʻzi'}</h3>
+      ${busy(v.views, 'Suratlar olinmoqda')}
+      ${views.length ? `<div class="views4">${views.map(x => `<a href="${E(x.link)}" target="_blank" rel="noopener"><img src="${E(x.url)}" alt="${E(x.side)}" loading="lazy"><span>${E(x.side)} · ${E(x.when)}</span></a>`).join('')}</div>`
+        : r && r.photo ? `<a class="vphoto" href="${E(r.photo.link)}" target="_blank" rel="noopener"><img src="${E(r.photo.url)}" alt="Real surat" loading="lazy"><span>📷 ${E(r.photo.when)} · Mapillary ↗</span></a>`
+        : v.views && !v.views.busy ? '<p class="small muted">Bu joyda Mapillary surati yoʻq.</p>' : ''}
+    </section>` : ''}
+    ${views.length || (r && r.photo) ? `<section class="card">
+      <h3>🤖 AI xulosasi ${B('ai')}</h3>
+      ${busy(v.ai, 'AI suratlarni koʻrmoqda')}${v.ai && v.ai.text ? `<div class="ai-text">${NX.ai.render(v.ai.text)}</div>` : ''}
+      ${busy(v.web, 'Internetdan qidirilmoqda')}${v.web && v.web.text != null ? `<div class="vpart"><b>🌐 Ochiq manbalar</b><div class="ai-text">${NX.ai.render(v.web.text || 'Hech narsa topilmadi.')}</div>${v.web.sources.length ? `<ul class="vsrc">${v.web.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div>` : ''}
+      ${!v.web ? `<button class="btn xs" data-act="verify-web" data-pid="${p.id}">🌐 Internetdan ham qidirish</button>` : ''}
+    </section>` : ''}
+    ${NX.ai.available() ? `<section class="card">
+      <h3>🎨 Yechim rasmi (AI)</h3>
+      <p class="small muted">AI real suratlar${plan ? ' va yuqoridagi reja' : ''} asosida chizadi. ~1 daqiqa.</p>
+      <div class="row-btns">${plan ? `<button class="btn xs primary" data-act="pimg" data-mode="top" data-pid="${p.id}" ${v.top && v.top.busy ? 'disabled' : ''}>🛰 Tepadan koʻrinish</button>` : ''}${views.length || (r && r.photo) ? `<button class="btn xs" data-act="pimg" data-mode="photo" data-pid="${p.id}" ${v.photo && v.photo.busy ? 'disabled' : ''}>📷 Real suratga chizish</button>` : ''}</div>
+      ${busy(v.top, 'Tepadan koʻrinish chizilmoqda')}${fig(v.top, 'Real yoʻllar rejasi va suratlar asosida, tepadan.')}
+      ${busy(v.photo, 'Real suratga chizilmoqda')}${fig(v.photo, `Real surat${views[0] ? ' (' + E(views[0].side) + ')' : ''} ustiga yechim chizilgan.`)}
+    </section>` : ''}`;
+  }
+
   // Muammolarni real suratlar bilan avtomatik tekshiruv natijasi
   function reviewCard(S) {
     if (!NX.mly.available()) return '<div id="reviewCard"></div>';
@@ -566,5 +615,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, area, problems, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, area, problems, problem, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

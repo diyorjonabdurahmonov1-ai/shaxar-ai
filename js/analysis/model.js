@@ -18,31 +18,37 @@
       uz: 'Maktab/bogʻcha yonida xavfsiz oʻtish yoʻq', short: 'Maktab oldida xavf', icon: '🏫', color: '#7c3aed', weight: 100, cost: 80e6, unit: 'joy',
       what: 'Maktab yoki bogʻchaning 150 m atrofida belgilangan piyoda oʻtish joyi ham, svetofor ham yoʻq. Bolalar yoʻlni xavfli joydan kesib oʻtadi.',
       fix: 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan), “Bolalar” belgisi va 30 km/soat tezlik cheklovi qoʻyish.',
+      steps: ['Joyni koʻrish: bolalar yoʻlni qayerdan kesib oʻtadi (ertalab 7:30–8:30).', 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan) va zebra chizish.', '“Bolalar” (1.23) belgisi va 30 km/soat tezlik cheklovi; kechasi yoritish.', 'Agar yoʻl 4 polosali boʻlsa — tugmali piyoda svetofori.'],
     },
     junction: {
       uz: 'Svetoforsiz yirik chorraha', short: 'Svetoforsiz chorraha', icon: '🚦', color: '#dc2626', weight: 80, cost: 600e6, unit: 'chorraha',
       what: 'Ikki katta koʻcha kesishadi, lekin svetofor yoʻq. Tigʻiz soatlarda tiqilinch va avariya xavfi yuqori.',
       fix: 'Avval chorrahada mashinalar sonini sanash. Oqim katta boʻlsa — svetofor yoki aylanma harakat (halqa) qurish.',
+      steps: ['Tigʻiz soatda (8:00–9:00, 17:00–19:00) har yoʻnalishdan oʻtadigan mashinalarni sanash.', 'Oqim kichik boʻlsa — “Asosiy yoʻl / Yoʻl bering” belgilari va zebra yetarli.', 'Oqim katta boʻlsa — har bir yoʻnalishga svetofor, toʻxtash chizigʻi va piyoda oʻtish joyi (rejada sariq).', 'Joy keng boʻlsa — svetofor oʻrniga aylanma harakat (halqa) varianti.'],
     },
     congestion: {
       uz: 'Hozir tirbandlik (TomTom)', short: 'Hozirgi tirbandlik', icon: '🚗', color: '#b91c1c', weight: 75, cost: 30e6, unit: 'koʻcha',
       what: 'TomTom oʻlchoviga koʻra mashinalar odatdagidan kamida 30% sekin yurmoqda.',
       fix: 'Svetofor vaqtlarini sozlash, koʻcha chetida toʻxtashni taqiqlash, avtobusga alohida yoʻlak ajratish.',
+      steps: ['Tirbandlik qaysi soatda boʻlishini kuzatish.', 'Svetofor fazalarini sozlash.', 'Koʻcha chetida toʻxtashni taqiqlash.', 'Avtobusga alohida yoʻlak.'],
     },
     coverage: {
       uz: '400 m ichida bekat yoʻq hudud', short: 'Bekat uzoq', icon: '🚏', color: '#e11d48', weight: 50, cost: 35e6, unit: 'bekat',
       what: 'Bu hududdan eng yaqin avtobus bekatigacha 400 m dan koʻp. Odamlar, ayniqsa keksalar, uzoq piyoda yurishga majbur.',
       fix: 'Hududga yangi bekat qoʻyish yoki yaqin avtobus yoʻnalishini shu yerdan oʻtkazish.',
+      steps: ['Hududda odamlar qayerdan koʻp yuradi — aniqlash.', 'Eng yaqin avtobus yoʻnalishini shu yerdan oʻtkazish yoki yangi bekat qoʻyish.', 'Bekatga soyabon, oʻrindiq va piyoda yoʻlak.'],
     },
     spacing: {
       uz: 'Bekatlar oraligʻi 900 m dan katta', short: 'Bekatlar orasi uzoq', icon: '↔', color: '#d97706', weight: 40, cost: 35e6, unit: 'bekat',
       what: 'Bitta avtobus yoʻnalishidagi ikki qoʻshni bekat orasi 900 m dan uzun.',
       fix: 'Ikki bekat oraligʻiga yangi bekat qoʻshish.',
+      steps: ['Ikki bekat oʻrtasidagi eng gavjum joyni tanlash (maktab, bozor, poliklinika yonida).', 'Yangi bekat: soyabon, oʻrindiq, bekat belgisi.'],
     },
     crossings: {
       uz: 'Piyoda oʻtish joylari kam (< 2 ta/km)', short: 'Oʻtish joyi kam', icon: '🚶', color: '#0284c7', weight: 30, cost: 20e6, unit: 'oʻtish joyi',
       what: 'Katta koʻchada piyoda oʻtish joylari juda kam. Odamlar yoʻlni xohlagan joydan kesib oʻtadi.',
       fix: 'Har 300–500 m da “zebra”, belgi va yoritish qoʻyish.',
+      steps: ['Odamlar koʻchani qayerdan koʻp kesib oʻtishini kuzatish.', 'Har 300–500 m da zebra, “Piyoda oʻtish joyi” belgisi va yoritish.', 'Keng koʻchada — oʻrtada piyoda “orolcha”.'],
     },
   };
 

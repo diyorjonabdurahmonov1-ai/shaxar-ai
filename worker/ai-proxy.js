@@ -25,9 +25,9 @@ function cleanContent(c) {
   if (!Array.isArray(c)) return String(c || '');
   const parts = [];
   let imgs = 0;
-  c.slice(0, 6).forEach(x => {
+  c.slice(0, 8).forEach(x => {
     if (x && x.type === 'text') parts.push({ type: 'text', text: String(x.text || '') });
-    else if (x && x.type === 'image_url' && x.image_url && PHOTO_OK(x.image_url.url) && imgs < 2) { imgs++; parts.push({ type: 'image_url', image_url: { url: String(x.image_url.url), detail: 'low' } }); }
+    else if (x && x.type === 'image_url' && x.image_url && PHOTO_OK(x.image_url.url) && imgs < 4) { imgs++; parts.push({ type: 'image_url', image_url: { url: String(x.image_url.url), detail: 'low' } }); }
   });
   return parts;
 }
@@ -48,7 +48,7 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
-    if (path === '/version') return json({ v: 3, features: ['vision', 'search', 'image', 'photo-check'] }, 200, cors);
+    if (path === '/version') return json({ v: 4, features: ['vision', 'search', 'image', 'photo-check', 'image-multi'] }, 200, cors);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
@@ -57,7 +57,7 @@ export default {
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
       if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
       const raw = await req.text();
-      if (raw.length > 8000) return json({ error: { code: 'too_large', message: 'Soʻrov juda katta' } }, 413, cors);
+      if (raw.length > (path === '/image' ? 1500000 : 8000)) return json({ error: { code: 'too_large', message: 'Soʻrov juda katta' } }, 413, cors);
       let b;
       try { b = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
       const ip = req.headers.get('CF-Connecting-IP') || 'x';
@@ -179,20 +179,25 @@ async function image(b, env, cors, ip) {
     if (used >= IMAGES_PER_DAY) return json({ error: { code: 'proxy_rate_limit', message: 'Bugungi rasm limiti tugadi' } }, 429, cors);
     await env.CORRECTIONS.put(dk, String(used + 1), { expirationTtl: 3 * 86400 });
   }
-  const prompt = String(b.prompt || '').slice(0, 1500);
+  const prompt = String(b.prompt || '').slice(0, 3000);
   if (!prompt) return json({ error: { code: 'bad_item', message: 'Tavsif yoʻq' } }, 400, cors);
-  let photo = null;
-  if (b.photo && PHOTO_OK(b.photo)) {
-    const pr = await fetch(b.photo);
-    if (pr.ok) photo = await pr.blob();
+  // Kirish rasmlari: reja (PNG, sayt chizgan) + Mapillary suratlari (4 tagacha)
+  const inputs = [];
+  if (typeof b.plan === 'string' && /^data:image\/png;base64,/.test(b.plan) && b.plan.length < 1400000) {
+    const bin = atob(b.plan.split(',')[1]), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    inputs.push(new Blob([u8], { type: 'image/png' }));
   }
+  const urls = (Array.isArray(b.photos) ? b.photos : b.photo ? [b.photo] : []).filter(PHOTO_OK).slice(0, 4);
+  for (const u of urls) { const pr = await fetch(u); if (pr.ok) inputs.push(await pr.blob()); }
+  const photo = inputs.length ? inputs : null;
   let last = null;
   for (const model of IMAGE_MODELS) {
     let r;
     if (photo) {
       const f = new FormData();
-      f.append('model', model); f.append('prompt', prompt); f.append('size', '1024x1024'); f.append('quality', 'low');
-      f.append('image', photo, 'photo.jpg');
+      f.append('model', model); f.append('prompt', prompt); f.append('size', '1024x1024'); f.append('quality', b.quality === 'medium' ? 'medium' : 'low');
+      photo.forEach((im, i) => f.append(photo.length > 1 ? 'image[]' : 'image', im, (im.type === 'image/png' ? 'plan' : 'photo') + i + (im.type === 'image/png' ? '.png' : '.jpg')));
       r = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
     } else {
       r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify({ model, prompt, size: '1024x1024', quality: 'low' }) });
