@@ -14,7 +14,7 @@
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
     chat: { msgs: [], busy: null }, chatStreet: null, segment: null, segPick: null,
-    verify: {}, verifyOpen: null, verifyBatch: null, area: null,
+    verify: {}, verifyOpen: null, verifyBatch: null, area: null, review: null,
     calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
@@ -57,7 +57,10 @@
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
       startLive();
       // Boshqa foydalanuvchilar saqlagan tuzatishlar (svetofor bor, muammo emas…) serverdan olinadi
-      NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); });
+      NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); }, () => {}).then(() => {
+        // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta); AI koʻrigi — sayt egasi brauzerida (PIN bor)
+        if (!S.reviewStarted) { S.reviewStarted = true; review({ ai: !!NX.fixes.pin() }); }
+      });
       // Asosiy xarita — Yandex (real tirbandlik + tahlil). Ishlamasa — zaxira xarita va probkalar tugmasi
       if (S.yandexOn == null) setYandex(true);
       else if (S.yandexMain) NX.view.syncYandex(M, NX.fixes.list());
@@ -246,6 +249,75 @@
     try { v[k] = Object.assign({ busy: false }, await fn(p, v.res)); } catch (e) { v[k] = { busy: false, err: e.message }; }
     renderRow(pid);
   }
+  // ---------- Avtomatik tekshiruv: muammolar real suratlar bilan (Mapillary + AI) ----------
+  const REVIEW_TYPES = ['junction', 'school'];
+  const keepKeys = () => new Set(NX.store.get('review:keep', []));
+  function renderReview() { if (S.tab === 'problems') swap('#reviewCard', V.reviewCard(S)); }
+  async function review(opt) {
+    opt = opt || {};
+    if (!S.model || !NX.mly.available() || (S.review && S.review.busy)) return;
+    const keep = keepKeys();
+    const items = S.model.problems.filter(p => REVIEW_TYPES.includes(p.type) && !keep.has(p.key)).slice(0, 150);
+    const R = S.review = Object.assign(S.review || { fixed: [] }, { busy: true, stage: 'Mapillary suratlari tekshirilmoqda', done: 0, total: items.length, err: null });
+    renderReview();
+    // 1) Mapillary suratlaridan avtomatik topilgan svetofor/zebra (bepul)
+    let i = 0;
+    const run = async () => { while (i < items.length) { const p = items[i++]; await verifyCheck(p); R.done++; if (R.done % 5 === 0) renderReview(); } };
+    await Promise.all([run(), run(), run()]);
+    const resolved = items.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'ok').map(p => ({ p, by: 'Mapillary', r: S.verify[p.id].res }));
+    // 2) AI suratni koʻradi — obyekt topilmagan, lekin surati bor joylar
+    if (opt.ai) {
+      if (!(await NX.ai.proxyReady())) R.err = 'AI koʻrigi uchun Cloudflare Worker’ni yangilash kerak (worker/ai-proxy.js).';
+      else {
+        const todo = items.filter(p => { const v = S.verify[p.id]; return v && v.res && v.res.status === 'bad' && v.res.photo; }).slice(0, opt.aiMax || 40);
+        Object.assign(R, { stage: 'AI suratlarni koʻrib chiqmoqda', done: 0, total: todo.length });
+        renderReview();
+        let k = 0;
+        const runAI = async () => {
+          while (k < todo.length) {
+            const p = todo[k++], v = S.verify[p.id];
+            let a = NX.mly.aiGet(p, v.res);
+            if (!a) {
+              try { a = await NX.ai.photoCheck(p, v.res); NX.mly.aiSet(p, v.res, a); }
+              catch (e) { R.err = e.message; if (/Worker|limit|kalit|kredit/i.test(e.message)) k = todo.length; a = null; }
+            }
+            if (a) {
+              const what = p.type === 'junction' ? 'svetofor' : 'piyoda oʻtish joyi';
+              const seen = p.type === 'junction' ? a.signal : (a.crossing === 'bor' || a.signal === 'bor' ? 'bor' : a.crossing);
+              if (seen === 'bor') { v.res = Object.assign({}, v.res, { status: 'ok', by: 'ai', text: `AI suratda ${what} borligini koʻrdi: ${a.note}` }); resolved.push({ p, by: 'AI', r: v.res }); }
+              else if (seen === 'yoq') v.res = Object.assign({}, v.res, { by: 'ai', text: `AI ham tasdiqladi — suratda ${what} yoʻq: ${a.note}` });
+              else v.res = Object.assign({}, v.res, { status: 'unknown', by: 'ai', text: `Suratdan aniqlab boʻlmadi: ${a.note}` });
+            }
+            R.done++; renderRow(p.id); if (R.done % 3 === 0) renderReview();
+          }
+        };
+        await Promise.all([runAI(), runAI()]);
+      }
+    }
+    // 3) Suratda svetofor/oʻtish bor joylar — xaritaga belgi qoʻyiladi va muammolar roʻyxatidan olinadi
+    if (resolved.length) {
+      const added = NX.fixes.addLocal(resolved.map(x => ({ kind: x.p.type === 'junction' ? 'signal' : 'crossing', lat: x.p.lat, lon: x.p.lon, key: x.p.key, note: `${x.p.title} — ${x.by} surati${x.r.photo ? ' (' + x.r.photo.when + ')' : ''}` })));
+      added.forEach((f, n) => R.fixed.push({ id: f.id, key: resolved[n].p.key, title: resolved[n].p.title, by: resolved[n].by, photo: resolved[n].r.photo, kind: f.kind }));
+      rebuildModel();
+    }
+    R.busy = false; R.ts = Date.now();
+    renderReview();
+    if (resolved.length) toast(`Real suratlarda ${resolved.length} ta joyda ${resolved.some(x => x.p.type === 'junction') ? 'svetofor' : 'oʻtish joyi'} bor ekan — muammolar roʻyxatidan olindi.`, 'ok');
+  }
+  async function reviewUndo(id) {
+    const R = S.review, f = R && R.fixed.find(x => x.id === id);
+    if (!f) return;
+    try { await NX.fixes.remove(id); } catch (e) { toast(e.message, 'bad'); return; }
+    NX.store.set('review:keep', [...keepKeys().add(f.key)]);
+    R.fixed = R.fixed.filter(x => x.id !== id);
+    rebuildModel();
+    toast('Qaytarildi — bu joy yana muammo sifatida koʻrsatiladi.', 'ok');
+  }
+  async function reviewShare() {
+    try { const n = await NX.fixes.syncLocal(); await NX.fixes.loadShared(); S.review.shared = true; rebuildModel(); toast(`${n} ta tuzatish hamma uchun saqlandi.`, 'ok'); }
+    catch (e) { toast('Saqlanmadi: ' + e.message, 'bad'); }
+  }
+
   async function verifyAll(type) {
     const items = S.model.problems.filter(p => p.type === type).slice(0, 60);
     const b = S.verifyBatch = { type, busy: true, done: 0, total: items.length };
@@ -812,6 +884,9 @@
         case 'area-redraw': drawArea(); break;
         case 'area-ask': areaAsk(b.dataset.q); break;
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
+        case 'review-ai': review({ ai: true }); break;
+        case 'review-undo': reviewUndo(b.dataset.fid); break;
+        case 'review-share': reviewShare(); break;
         case 'verify-ai': verifyPart(b.dataset.pid, 'ai', async (p, r) => ({ text: await NX.ai.vision(p, S.model, r) })); break;
         case 'verify-web': verifyPart(b.dataset.pid, 'web', (p, r) => NX.ai.webSearch(p, S.model, r)); break;
         case 'verify-img': verifyPart(b.dataset.pid, 'img', (p, r) => NX.ai.solutionImage(p, r)); break;

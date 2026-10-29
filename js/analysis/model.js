@@ -8,7 +8,7 @@
     stopToStreet: 30, signalToStreet: 12, crossingToStreet: 12, schoolToStreet: 150,
     routeToStreet: 15, routeMinSamples: 4, routeSampleStep: 15,
     cell: 250, coverage: 400, spacingMax: 900,
-    junctionMerge: 35, junctionSignal: 40, schoolSafe: 150, crossingsPerKm: 2, congestion: 30,
+    junctionMerge: 35, junctionSignal: 60, schoolSafe: 150, crossingsPerKm: 2, congestion: 30,
   };
   NX.RULES = R;
 
@@ -368,7 +368,13 @@
       const perKm = n / (s.length / 1000);
       if (perKm < R.crossingsPerKm) add('crossings', { lat: s.center[0], lon: s.center[1], sev: perKm < 1 ? 2 : 1, title: nameOf(s), detail: `${NX.fmt.num(perKm, 1)} ta oʻtish joyi/km (${n} ta, ${NX.fmt.km(s.length)}).`, street: s.id, perKm });
     });
-    probs.forEach(p => { p.score = NX.PROBLEM[p.type].weight + p.sev * 10; p.key = p.type + ':' + p.lat.toFixed(4) + ':' + p.lon.toFixed(4); });
+    // id — barqaror (qayta hisoblashda ham oʻzgarmaydi): tur va joy boʻyicha
+    const seen = new Map();
+    probs.forEach(p => {
+      p.score = NX.PROBLEM[p.type].weight + p.sev * 10; p.key = p.type + ':' + p.lat.toFixed(4) + ':' + p.lon.toFixed(4);
+      const n = seen.get(p.key) || 0; seen.set(p.key, n + 1);
+      p.id = n ? p.key + ':' + n : p.key;
+    });
     probs.sort((a, b) => b.score - a.score);
     // “Bu muammo emas” deb belgilanganlar chiqarib tashlanadi
     const dis = NX.fixes ? NX.fixes.dismissed() : new Set();

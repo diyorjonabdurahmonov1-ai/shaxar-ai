@@ -280,6 +280,25 @@ Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.
     return r.text;
   }
 
+  // Tezkor koʻrik: suratda svetofor / piyoda oʻtish bormi (qisqa JSON javob)
+  const PHOTO_CHECK = `Senga chorraha yoki maktab yonidagi real koʻcha surati (1–2 ta, Mapillary) beriladi.
+Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda_otish":"bor|yoq|noaniq","izoh":"oʻzbekcha 1 qisqa gap"}
+“bor” — faqat suratda aniq koʻrinsa (svetofor chirogʻi yoki ustuni; oq-qora zebra chiziqlari). Koʻrinmasa yoki surat boshqa tomonga qaragan boʻlsa — “noaniq”.
+“yoq” — chorraha/yoʻl aniq koʻrinib turibdi, lekin svetofor (yoki zebra) yoʻq.`;
+  async function photoCheck(p, chk) {
+    if (!(chk && chk.photo)) throw new Error('Surat yoʻq.');
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const imgs = [chk.photo, chk.photo2].filter(Boolean).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }));
+    const messages = [{ role: 'system', content: PHOTO_CHECK }, { role: 'user', content: [{ type: 'text', text: `Joy: ${p.title}. Muammo: ${NX.PROBLEM[p.type].short}.` }].concat(imgs) }];
+    const r = await callOpenAI(userKey(), null, null, null, messages);
+    const m = r.text.match(/\{[\s\S]*\}/);
+    let j = null;
+    try { j = m && JSON.parse(m[0]); } catch (e) { j = null; }
+    if (!j) throw new Error('AI javobi tushunarsiz.');
+    const v = x => (/^bor/i.test(x || '') ? 'bor' : /^yo/i.test(x || '') ? 'yoq' : 'noaniq');
+    return { signal: v(j.svetofor), crossing: v(j.piyoda_otish), note: String(j.izoh || '').slice(0, 200) };
+  }
+
   async function webSearch(p, M, chk) {
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
     const meta = NX.PROBLEM[p.type];
@@ -376,5 +395,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, proxyReady, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
 })();

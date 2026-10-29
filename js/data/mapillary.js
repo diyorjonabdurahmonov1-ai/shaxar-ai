@@ -46,26 +46,27 @@
 
   // Muammo turi boʻyicha nima izlanadi
   const RULE = {
-    junction: { r: 45, want: 'signal', yes: 'Suratlarda svetofor bor', no: 'Suratlarda svetofor koʻrinmadi' },
+    junction: { r: 60, want: 'signal', yes: 'Suratlarda svetofor bor', no: 'Suratlarda svetofor koʻrinmadi' },
     school: { r: 150, want: 'crossing', yes: 'Yaqinida piyoda oʻtish joyi yoki svetofor bor', no: 'Yaqinida zebra ham, svetofor ham koʻrinmadi' },
     crossings: { r: 150, want: 'crossing', count: true },
   };
 
   async function check(p) {
-    const ck = 'mly:' + p.key, hit = NX.store.get(ck, null);
+    const ck = 'mly2:' + p.key, hit = NX.store.get(ck, null);
     if (hit && Date.now() - hit.ts < DAY) return hit;
     const rule = RULE[p.type];
     const [ph, ft] = await Promise.all([photos(p.lat, p.lon, rule ? Math.min(rule.r, 80) : 80), rule ? features(p.lat, p.lon, rule.r) : Promise.resolve([])]);
     const sig = ft.filter(f => isSignal(f.v)), cro = ft.filter(f => isCrossing(f.v));
-    const photo = ph[0] ? { id: ph[0].id, url: ph[0].url, date: ph[0].date, when: when(ph[0].date), d: Math.round(ph[0].d), link: link(ph[0].id) } : null;
-    const res = { ts: Date.now(), photo, photos: ph.length, signals: sig.length, crossings: cro.length, status: 'info', text: '' };
+    const P = x => ({ id: x.id, url: x.url, date: x.date, when: when(x.date), d: Math.round(x.d), link: link(x.id) });
+    const photo = ph[0] ? P(ph[0]) : null;
+    const res = { ts: Date.now(), photo, photo2: ph[1] ? P(ph[1]) : null, photos: ph.length, signals: sig.length, crossings: cro.length, status: 'info', text: '' };
     const near = a => (a.length ? Math.round(Math.min(...a.map(f => f.d))) : null);
     if (rule && rule.count) {
       res.text = cro.length ? `Atrofda (150 m) suratlarda ${cro.length} ta piyoda oʻtish joyi topildi.` : ph.length ? 'Atrofdagi suratlarda piyoda oʻtish joyi koʻrinmadi.' : 'Bu joyda Mapillary surati yoʻq.';
       res.status = ph.length || cro.length ? (cro.length ? 'info' : 'bad') : 'unknown';
     } else if (rule) {
       const found = rule.want === 'signal' ? sig : cro.concat(p.type === 'school' ? sig : []);
-      if (found.length) { res.status = 'ok'; res.text = `${rule.yes} (${near(found)} m da). Xaritani tuzatish kerak boʻlishi mumkin.`; }
+      if (found.length) { res.status = 'ok'; res.by = 'mapillary'; res.text = `${rule.yes} (${near(found)} m da) — Mapillary suratlaridan avtomatik topildi.`; }
       else if (ph.length) { res.status = 'bad'; res.text = `${rule.no} — muammo tasdiqlanmoqda.`; }
       else { res.status = 'unknown'; res.text = 'Bu joyda Mapillary surati yoʻq — tekshirib boʻlmadi.'; }
     } else {
@@ -76,5 +77,10 @@
     return res;
   }
 
-  NX.mly = { token, available: () => !!token(), check, photos, features, link };
+  // AI koʻrigi natijasi (surat boʻyicha) — saqlab qoʻyiladi, qayta pul sarflanmasin
+  const aiKey = (p, r) => 'mlyai:' + p.key + ':' + (r.photo ? r.photo.id : '');
+  const aiGet = (p, r) => NX.store.get(aiKey(p, r), null);
+  const aiSet = (p, r, v) => NX.store.set(aiKey(p, r), v);
+
+  NX.mly = { token, available: () => !!token(), check, photos, features, link, RULE, aiGet, aiSet };
 })();

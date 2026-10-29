@@ -53,6 +53,14 @@
     } catch (e) { return { item: it, shared: false, reason: e.message }; }
   }
 
+  // Faqat shu brauzerga (avtomatik tekshiruv natijalari; PIN bilan keyin “hamma uchun” yuboriladi)
+  function addLocal(items) {
+    const local = NX.store.get(LOCAL, []);
+    const out = items.map(item => Object.assign({ id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ts: Date.now() }, item, { lat: +(+item.lat).toFixed(6), lon: +(+item.lon).toFixed(6) }));
+    NX.store.set(LOCAL, local.concat(out));
+    return out;
+  }
+
   async function remove(id) {
     NX.store.set(LOCAL, NX.store.get(LOCAL, []).filter(x => x.id !== id));
     if (shared.some(x => x.id === id)) {
@@ -78,5 +86,5 @@
   const dismissed = () => new Set(list().filter(x => x.kind === 'dismiss' && x.key).map(x => x.key));
   const osmEditUrl = (lat, lon) => `https://www.openstreetmap.org/edit?editor=id#map=19/${lat.toFixed(6)}/${lon.toFixed(6)}`;
 
-  NX.fixes = { KIND, list, loadShared, add, remove, syncLocal, asPoints, dismissed, osmEditUrl, pin, status: () => sharedOk, hasServer: () => !!base() };
+  NX.fixes = { KIND, list, loadShared, add, addLocal, remove, syncLocal, asPoints, dismissed, osmEditUrl, pin, status: () => sharedOk, hasServer: () => !!base() };
 })();

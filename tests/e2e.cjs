@@ -494,6 +494,7 @@ async function clickStreet(page, name) {
     if (path === '/search') { px.search++; return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ text: 'Hokimiyat 2026-yilda svetofor qoʻyishni rejalashtirgan.', sources: [{ url: 'https://samarkand.uz/news/1', title: 'Samarqand hokimligi' }] }) }); }
     if (path === '/image') { px.image.push(b); return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ b64: PNG.toString('base64'), edited: !!b.photo }) }); }
     px.chat.push(b);
+    if (/Faqat JSON/.test(b.messages[0].content)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: '{"svetofor":"bor","piyoda_otish":"noaniq","izoh":"Chorrahada svetofor ustuni koʻrinadi."}' } }] }) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: '**Svetofor:** suratda koʻrinmayapti\n**Nima qilish kerak:** sanash.' } }] }) });
   });
   const p8 = await ctx8.newPage();
@@ -501,8 +502,14 @@ async function clickStreet(page, name) {
   await p8.goto(BASE);
   await p8.waitForSelector('#panel .live', { timeout: 20000 });
   await p8.click('.tabs [data-tab=problems]');
-  const jCard = '.prob:has([data-act=verify-all][data-type=junction])';
-  await p8.click(`${jCard} [data-act=verify]`);
+  // Avtomatik tekshiruv: sahifa ochilganda Mapillary suratlari koʻriladi, svetofor topilgan joylar roʻyxatdan olinadi
+  await p8.waitForFunction(() => NX.state.review && !NX.state.review.busy, null, { timeout: 60000 });
+  const rv = await p8.evaluate(() => ({ fixed: NX.state.review.fixed.length, keys: NX.state.review.fixed.map(f => f.key), left: NX.state.model.problems.filter(p => p.type === 'junction').length }));
+  const gone = await p8.evaluate(keys => keys.every(k => !NX.state.model.problems.some(p => p.key === k)) && keys.every(k => NX.fixes.list().some(f => f.key === k && f.kind !== 'dismiss')), rv.keys);
+  ok('Avtomatik: suratda svetofor bor joylar muammolardan olinadi (xaritada 🚦 belgisi)', rv.fixed > 0 && gone && rv.left > 0, JSON.stringify({ fixed: rv.fixed, left: rv.left }));
+  ok('Tekshiruv natijasi kartasi (✅/❌/❔)', /roʻyxatdan olindi/.test(await p8.textContent('#reviewCard')) && (await p8.isVisible('#reviewCard [data-act=review-ai]')));
+  const jCard = '.prob:has-text("Svetoforsiz chorraha")';
+  await p8.click(`${jCard} [data-act=verify] >> nth=0`);
   await p8.waitForSelector(`${jCard} .vbox .vverdict`, { timeout: 15000 });
   ok('🔎 Tekshirish: Mapillary xulosasi va real surat', (await p8.isVisible(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
   await p8.click(`${jCard} [data-act=verify-ai]`);
@@ -516,12 +523,17 @@ async function clickStreet(page, name) {
   await p8.click(`${jCard} [data-act=verify-img]`);
   await p8.waitForSelector(`${jCard} .vgen img`, { timeout: 15000 });
   ok('🎨 AI rasm: real surat ustiga, “haqiqiy emas” belgisi bilan', /haqiqiy emas/.test(await p8.textContent(`${jCard} .vgen`)) && px.image[0] && /fbcdn/.test(px.image[0].photo));
-  await p8.click(`${jCard} [data-act=verify-all]`);
-  await p8.waitForFunction(() => NX.state.verifyBatch && !NX.state.verifyBatch.busy, null, { timeout: 60000 });
-  const sum = await p8.textContent(`${jCard} .vsum`);
-  ok('Hammasini tekshirish: ✅/❌/❔ xulosa', /✅ [1-9]/.test(sum) && /❌ [1-9]/.test(sum), sum.trim());
-  ok('Suratda svetofor bor joyda — “xaritani tuzatish” tugmasi', await p8.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction' && NX.state.verify[x.id] && NX.state.verify[x.id].res.status === 'ok'); return !!p; }));
-  if (process.env.SHOT) { await p8.evaluate(s => document.querySelector(s + ' .vbox').scrollIntoView(), jCard); await p8.screenshot({ path: process.env.SHOT }); }
+  // AI koʻrigi: Mapillary obyekt topmagan joylarni AI suratdan koʻradi
+  await p8.click('#reviewCard [data-act=review-ai]');
+  await p8.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.model.problems.filter(p => p.type === 'junction').length === 0, null, { timeout: 60000 });
+  const checks = px.chat.filter(b => /Faqat JSON/.test(b.messages[0].content)).length;
+  ok('AI suratlarni koʻrib chiqadi — svetofor koʻrgan joylar ham olinadi', checks === rv.left && (await p8.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `AI soʻrovlari: ${checks}`);
+  if (process.env.SHOT) { await p8.evaluate(() => document.querySelector('#reviewCard').scrollIntoView()); await p8.screenshot({ path: process.env.SHOT }); }
+  await p8.click('#reviewCard details summary');
+  await p8.click('#reviewCard [data-act=review-undo] >> nth=0');
+  await p8.waitForTimeout(500);
+  const und = await p8.evaluate(() => { const keep = JSON.parse(localStorage.getItem('nx:review:keep') || '[]'); return { keep, back: keep.filter(k => NX.state.model.problems.some(p => p.key === k)).length, near: keep.map(k => { const [, la, lo] = k.split(':').map(Number); const [x, y] = NX.geo.xy(la, lo); return Math.min(...NX.state.model.signals.map(s => Math.hypot(s.x - x, s.y - y))); }) }; });
+  ok('“Baribir muammo” — joy qaytariladi', und.back === 1, JSON.stringify(und));
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
   // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------

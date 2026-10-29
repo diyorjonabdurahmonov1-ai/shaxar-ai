@@ -299,6 +299,28 @@
     return `<p class="vsum small">${b && b.busy ? `<span class="spinner sm"></span> Tekshirilmoqda: ${b.done}/${b.total} · ` : ''}✅ ${n('ok')} ta joyda bor · ❌ ${n('bad')} ta tasdiqlandi · ❔ ${n('unknown')} ta surat yoʻq</p>`;
   }
 
+  // Muammolarni real suratlar bilan avtomatik tekshiruv natijasi
+  function reviewCard(S) {
+    if (!NX.mly.available()) return '<div id="reviewCard"></div>';
+    const R = S.review, M = S.model;
+    const items = M.problems.filter(p => p.type === 'junction' || p.type === 'school');
+    const n = k => items.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === k).length;
+    const fixed = R ? R.fixed : [];
+    const local = NX.fixes.list().filter(x => !x.shared && x.id[0] === 'a').length;
+    return `<section class="card review" id="reviewCard">
+      <h3>🔎 Real suratlar bilan tekshiruv</h3>
+      ${R && R.busy ? progress({ p: R.total ? R.done / R.total : 0, label: `${R.stage}: ${R.done}/${R.total}` }) : ''}
+      ${R ? `<ul class="rv-sum">
+        <li>✅ <b>${fixed.length}</b> ta joyda suratda svetofor yoki piyoda oʻtish bor ekan — roʻyxatdan olindi (xaritada 🚦/🚶 belgisi).</li>
+        <li>❌ <b>${n('bad')}</b> ta joyda suratda koʻrinmadi — muammo tasdiqlanmoqda.</li>
+        <li>❔ <b>${n('unknown')}</b> ta joyda surat yoʻq yoki aniq emas.</li></ul>` : '<p class="small muted">Tekshiruv boshlanmoqda…</p>'}
+      ${R && R.err ? `<p class="small warn-line">⚠️ ${E(R.err)}</p>` : ''}
+      ${R && !R.busy ? `<div class="row-btns">${n('bad') ? `<button class="btn xs primary" data-act="review-ai">🤖 AI suratlarni koʻrib chiqsin (${Math.min(40, n('bad'))} ta)</button>` : ''}${local && NX.fixes.pin() ? `<button class="btn xs" data-act="review-share">💾 Hamma uchun saqlash (${local})</button>` : ''}</div>` : ''}
+      ${fixed.length ? `<details class="more"><summary>Roʻyxatdan olinganlar (${fixed.length})</summary><ul class="locs">${fixed.map(f => `<li class="locrow"><span>${f.kind === 'signal' ? '🚦' : '🚶'} ${E(f.title)} <small class="muted">— ${E(f.by)}</small></span><div class="loc-acts">${f.photo ? `<a class="btn xs" href="${E(f.photo.link)}" target="_blank" rel="noopener">📷 Surat</a>` : ''}<button class="btn xs" data-act="review-undo" data-fid="${E(f.id)}">Baribir muammo</button></div></li>`).join('')}</ul></details>` : ''}
+      <p class="small muted">Mapillary — odamlar olgan ochiq koʻcha suratlari. Surat eski boʻlishi mumkin; har bir joyni “🔎 Tekshirish” bilan koʻrish mumkin.</p>
+    </section>`;
+  }
+
   function problems(S) {
     const M = S.model;
     const groups = Object.keys(NX.PROBLEM).map(t => ({ t, meta: NX.PROBLEM[t], items: M.problems.filter(p => p.type === t) })).filter(g => g.items.length)
@@ -308,6 +330,7 @@
       <h2>Muammolar va yechimlar</h2>
       <p class="small muted">Joy nomini bosing — xaritada koʻrsatiladi. “🔎 Tekshirish” — joyning real surati: svetofor, zebra bormi; AI tahlili va maslahat.</p>
     </section>
+    ${reviewCard(S)}
     ${groups.map(g => {
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
       const list = g.items.map(p => locRow(S, p));
@@ -315,7 +338,7 @@
       return `<section class="card prob" style="--c:${g.meta.color}">
         <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy · ~${F.uzs(qty * g.meta.cost)}</small></div></div>
         <p class="fix"><b>Yechim:</b> ${E(g.meta.fix)}</p>
-        ${canBatch ? `<button class="btn xs" data-act="verify-all" data-type="${g.t}" ${S.verifyBatch && S.verifyBatch.busy ? 'disabled' : ''}>🔎 Hammasini real surat bilan tekshirish</button>${verifySummary(S, g.items)}` : ''}
+        ${canBatch && g.t === 'crossings' ? `<button class="btn xs" data-act="verify-all" data-type="${g.t}" ${S.verifyBatch && S.verifyBatch.busy ? 'disabled' : ''}>🔎 Hammasini real surat bilan tekshirish</button>${verifySummary(S, g.items)}` : ''}
         <ul class="locs">${list.slice(0, 3).join('')}</ul>
         ${list.length > 3 ? `<details class="more"><summary>Yana ${list.length - 3} ta joy</summary><ul class="locs">${list.slice(3, 60).join('')}</ul></details>` : ''}
       </section>`;
@@ -467,7 +490,7 @@
     const unsafe = M.schools.filter(o => !o.safe);
     if (unsafe.length) out.push({ pr: 100, t: 'Maktab va bogʻchalar oldida xavfsiz piyoda oʻtish joylari', why: `${unsafe.length} ta muassasa yonida 150 m ichida oʻtish joyi/svetofor yoʻq.`, qty: unsafe.length, unit: 'koʻtarilgan oʻtish + belgilar', cost: COST.schoolCrossing, items: unsafe.slice(0, 8).map(o => o.name || (o.kind === 'kindergarten' ? 'Bogʻcha' : 'Maktab')) });
     const uj = M.junctions.filter(j => !j.signalised).sort((a, b) => Math.max(...b.streets.map(s => M.streets[s].rank)) - Math.max(...a.streets.map(s => M.streets[s].rank)));
-    if (uj.length) out.push({ pr: 80, t: 'Svetoforsiz yirik chorrahalarni tartibga solish', why: `${uj.length} ta yirik koʻchalar kesishmasida 40 m ichida svetofor yoʻq. Avval transport sanogʻi bilan zarurati tekshiriladi.`, qty: uj.length, unit: 'svetofor obyekti', cost: COST.signal, items: uj.slice(0, 8).map(j => j.name) });
+    if (uj.length) out.push({ pr: 80, t: 'Svetoforsiz yirik chorrahalarni tartibga solish', why: `${uj.length} ta yirik koʻchalar kesishmasida ${NX.RULES.junctionSignal} m ichida svetofor yoʻq. Avval transport sanogʻi bilan zarurati tekshiriladi.`, qty: uj.length, unit: 'svetofor obyekti', cost: COST.signal, items: uj.slice(0, 8).map(j => j.name) });
     const cong = M.streets.filter(s => s.tomtom && s.tomtom.congestion >= NX.RULES.congestion);
     if (cong.length) out.push({ pr: 75, t: 'Tirband koʻchalarda svetofor fazalarini optimallashtirish va avtobus ustuvorligi', why: `TomTom oʻlchovi boʻyicha ${cong.length} ta koʻchada tirbandlik 30% dan yuqori.`, qty: cong.length, unit: 'koʻcha', cost: COST.signalOpt, items: cong.map(s => s.name || 'nomsiz').slice(0, 8) });
     if (M.gapClusters.length) {
@@ -544,5 +567,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, area, problems, locRow, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, area, problems, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();
