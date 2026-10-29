@@ -439,7 +439,7 @@ Keep the road geometry, widths and directions EXACTLY as in the plan. Show the p
 
   // ---------- Belgilangan hudud (mahalla) va qurilish ----------
   // Tavsiyani xaritada koʻrsatish: faqat berilgan REAL nomzod joylar (id) dan
-  const MAPRULE = `- Agar “nomzod_joylar” berilgan boʻlsa va tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
+  const MAPRULE = `- “nomzod_joylar” berilgan boʻlsa — javobni ALBATTA xaritadagi belgilar bilan bogʻla. Agar tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
 \`\`\`json
 {"belgilar":[{"id":"L2","nima":"Bogʻcha","izoh":"qisqa sabab"},{"id":"C1","nima":"Yangi yoʻl","izoh":"…"}]}
 \`\`\`

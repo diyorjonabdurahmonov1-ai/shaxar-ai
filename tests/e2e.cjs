@@ -809,6 +809,9 @@ async function clickStreet(page, name) {
   ok('3D: rejadagi bino va qishki soya', await p9.evaluate(() => NX.map3d.map().getSource('plan')._data.features.some(f => f.properties.kind === 'plan')) && /soyada qoladi/.test(await p9.textContent('#panel')));
   if (process.env.SHOT8) await p9.screenshot({ path: process.env.SHOT8 });
   await p9.click('.tabs [data-tab=map]');
+  const anns = await p9.evaluate(() => [...document.querySelectorAll('.leaflet-marker-icon.ann')].map(x => x.textContent));
+  if (process.env.SHOT13) await p9.screenshot({ path: process.env.SHOT13 });
+  ok('Qurilish natijasi xaritada belgilanadi: bino, yuklanadigan koʻchalar, bekat, maktab', anns.length >= 3 && anns.some(t => /🏢/.test(t)) && anns.some(t => /🚏/.test(t)) && anns.some(t => /🏫/.test(t)), anns.join(' | '));
   ok('Bino safarlari mahalla koʻchalariga ham tarqaladi (bir nechta chiqish)', await p9.evaluate(() => NX.state.area.res.sim.deltas.length / 2 >= 6), await p9.evaluate(() => String(NX.state.area.res.sim.deltas.length / 2)));
   if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }
   await p9.click('.tabs [data-tab=ai]');

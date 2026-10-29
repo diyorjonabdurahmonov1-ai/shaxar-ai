@@ -103,7 +103,10 @@
       if (!Y()) return;
       if (!poly) { drop('area'); return; }
       const c = coll('area');
-      c.add(new window.ymaps.Polygon([poly], {}, { fillColor: '#6366f1', fillOpacity: 0.14, strokeColor: '#4f46e5', strokeOpacity: 0.95, strokeWidth: 4, strokeStyle: 'shortdash', interactivityModel: 'default#silent' }));
+      const ring = poly.map(p => [+p[0], +p[1]]);
+      c.add(new window.ymaps.Polygon([ring.concat([ring[0]])], {}, { fillColor: '#6366f1', fillOpacity: 0.14, strokeWidth: 0, interactivityModel: 'default#silent' }));
+      // Chegara — alohida yopiq chiziq (Polygon chegarasi baʼzan chizilmaydi)
+      c.add(line(ring.concat([ring[0]]), { strokeColor: '#4f46e5', strokeWidth: 4, strokeOpacity: 0.95, strokeStyle: 'shortdash' }));
       if (pt) c.add(mark(pt[0], pt[1], '🏢', '#6366f1', '', 'Rejalashtirilgan bino', 36));
       if (fit) fitTo(poly, 17);
     },

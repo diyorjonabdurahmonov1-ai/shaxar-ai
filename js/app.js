@@ -598,6 +598,29 @@
     return { facts, opts, best, sid, web };
   }
 
+  // Qurilish hisobi boʻlsa — sayt oʻzi xaritada belgilaydigan asosiy joylar (AI’ga bogʻliq emas)
+  function areaMapPoints(A) {
+    const out = [], M = S.model, st = A.st, R = A.res;
+    if (!R) return out;
+    const [cx, cy] = NX.geo.xy(st.center[0], st.center[1]);
+    out.push({ kind: 'point', lat: st.center[0], lon: st.center[1], title: `🏢 ${A.spec.flats} xonadon, ${A.spec.floors} qavat`, note: `~${R.b.residents} kishi, ~${R.b.cars} mashina, ertalab ~${R.b.peak} mashina/soat` });
+    // Eng koʻp yuklanadigan 3 koʻcha — bino safarlari eng koʻp tushadigan joyda
+    R.sim.affected.filter(x => x.dv >= 15 && x.name).slice(0, 3).forEach(x => {
+      const s = M.streets[x.s]; let best = null, bd = Infinity;
+      s.ways.forEach(wi => M.ways[wi].xy.forEach((q, k) => { const d = Math.hypot(q[0] - cx, q[1] - cy); if (d < bd) { bd = d; best = M.ways[wi].ll[k]; } }));
+      if (best) out.push({ kind: 'point', lat: best[0], lon: best[1], title: `🚗 ${x.name}: +${Math.round(x.dv)} mashina/soat`, note: 'Ertalabki tigʻiz soatda shu koʻchaga qoʻshimcha yuk (hisob).' });
+    });
+    const near = arr => arr.map(o => ({ o, d: Math.hypot(o.x - cx, o.y - cy) })).sort((a, b) => a.d - b.d)[0];
+    const bs = near(M.stops), sc = near(M.schools);
+    if (bs) out.push({ kind: 'point', lat: bs.o.lat, lon: bs.o.lon, title: `🚏 Eng yaqin bekat — ${Math.round(bs.d)} m`, note: bs.d > 400 ? 'Uzoq: yangi bekat kerak.' : 'Piyoda yetsa boʻladi.' });
+    if (sc) out.push({ kind: 'point', lat: sc.o.lat, lon: sc.o.lon, title: `🏫 Eng yaqin ${sc.o.kind === 'kindergarten' ? 'bogʻcha' : 'maktab'} — ${Math.round(sc.d)} m`, note: `~${R.b.pupils} oʻquvchi, ~${R.b.kids} bogʻcha yoshidagi bola qoʻshiladi — sigʻimi taʼlim boʻlimidan aniqlanadi.` });
+    // Boʻsh yerlar (OSM) — bogʻcha va avtoturargoh uchun
+    const L = (A.cand && A.cand.L) || [];
+    if (L[0]) out.push({ kind: 'point', lat: L[0].lat, lon: L[0].lon, title: `🧒 Bogʻcha uchun boʻsh yer (${F.int(L[0].maydon_m2)} m²)`, note: `${L[0].turi}${L[0].nomi ? ' · ' + L[0].nomi : ''} — yer egaligi kadastrdan tekshiriladi.` });
+    if (L[1]) out.push({ kind: 'point', lat: L[1].lat, lon: L[1].lon, title: `🅿️ Avtoturargoh uchun (${F.int(L[1].maydon_m2)} m²)`, note: `~${R.b.parking} ta joy kerak.` });
+    return out;
+  }
+
   async function areaAsk(q) {
     const A = S.area;
     q = (q || '').trim();
@@ -647,9 +670,10 @@
       r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet }));
       if (internet && !r.sources) r.sources = internet.manbalar;
     }
-    // AI belgilagan joylar — xaritada (faqat real nomzodlardan)
+    // Xaritada: sayt hisobidagi asosiy joylar + AI belgilagan joylar (faqat real nomzodlardan)
     const pa = NX.area.actionsFrom(r.text, A.cand);
     r.text = pa.text;
+    pa.actions = areaMapPoints(A).concat(pa.actions).slice(0, 14);
     if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
     A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;

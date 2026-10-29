@@ -8,6 +8,7 @@
   const REFRESH = 60e3;
   let el = null, items = [], sample = false, collapsed = false, lastTick = Date.now();
   let box = NX.store.get('cw:box', null);                // { x, y, w, h } — map-wrap ichida, px
+  if (box && box.y < 56) box.y = 56;
 
   const E = s => NX.esc(String(s == null ? '' : s));
   const hhmm = t => (t ? new Date(t).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Samarkand' }) : '—');
@@ -63,7 +64,7 @@
     el.classList.add('moving');
     const move = ev => {
       const dx = ev.clientX - sx, dy = ev.clientY - sy;
-      if (kind === 'drag') box = Object.assign({}, start, { x: Math.max(0, Math.min(wrap.width - 120, start.x + dx)), y: Math.max(0, Math.min(wrap.height - 30, start.y + dy)) });
+      if (kind === 'drag') box = Object.assign({}, start, { x: Math.max(0, Math.min(wrap.width - 120, start.x + dx)), y: Math.max(56, Math.min(wrap.height - 30, start.y + dy)) });   // tepadagi qidiruv va tugmalar ustiga chiqmasin
       else box = Object.assign({}, start, { w: Math.max(250, Math.min(wrap.width - start.x - 4, start.w + dx)), h: Math.max(140, Math.min(wrap.height - start.y - 4, start.h + dy)) });
       if (kind === 'resize') { const before = el.querySelectorAll('.cw-cam').length; place(); if (capacity() !== before) render(); } else place();
     };

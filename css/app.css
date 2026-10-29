@@ -620,5 +620,5 @@ details.pgroup .pill { margin-left: auto; }
 .cw-dlg-f .btn { margin-left: auto; }
 .cw-ai { padding: 0 10px 10px; font-family: inherit; font-size: 13px; color: #e0f2fe; }
 @media (max-width: 820px) { .cam-wall { top: 104px; } }
-.ann { background: #7c3aed; color: #fff; font: 600 12px/1.2 system-ui, sans-serif; padding: 4px 8px 4px 4px; border-radius: 999px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); border: 2px solid #fff; display: inline-flex; align-items: center; gap: 5px; transform: translate(-50%, -50%); }
+.ann { background: #7c3aed; color: #fff; font: 600 13px/1.2 system-ui, sans-serif; padding: 3px 6px 3px 3px; border-radius: 999px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .35); border: 2px solid #fff; display: inline-flex; align-items: center; gap: 5px; transform: translate(-50%, -50%); }
 .ann-n { background: #fff; color: #7c3aed; border-radius: 50%; width: 18px; height: 18px; display: inline-grid; place-items: center; font-size: 11px; }
