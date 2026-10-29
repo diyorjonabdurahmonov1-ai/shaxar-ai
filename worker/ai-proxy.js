@@ -55,7 +55,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 8, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/version') return json({ v: 9, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -306,7 +306,7 @@ async function layers(req, env, cors, okOrigin, path) {
 let camCache = { ts: 0, key: '', body: null };
 async function webcams(req, env, cors) {
   const u = new URL(req.url), mode = u.searchParams.get('mode') || '';
-  if (mode === 'fi') return digitraffic(cors);
+  if (mode === 'fi') return digitraffic(cors, Math.max(4, Math.min(40, +u.searchParams.get('n') || 12)));
   if (!env.WINDY_KEY) return json({ error: { code: 'no_windy_key', message: 'Serverda Windy kaliti (WINDY_KEY) sozlanmagan' } }, 501, cors);
   const lat = +u.searchParams.get('lat') || 39.6547, lon = +u.searchParams.get('lon') || 66.9757, r = Math.min(250, +u.searchParams.get('r') || 60);
   if (Math.abs(lat - 39.65) > 3 || Math.abs(lon - 66.97) > 3) return json({ error: { code: 'bad_item', message: 'Faqat Samarqand atrofi' } }, 400, cors);
@@ -332,17 +332,17 @@ async function webcams(req, env, cors) {
 }
 
 // Test manbasi: Finlyandiya yoʻl ob-havo kameralari (Fintraffic Digitraffic, ochiq maʼlumot, CC BY 4.0)
-let fiCache = { ts: 0, body: null };
-async function digitraffic(cors) {
-  if (fiCache.body && Date.now() - fiCache.ts < 10 * 60e3) return json(fiCache.body, 200, cors);
+let fiCache = { ts: 0, body: null, n: 0 };
+async function digitraffic(cors, n) {
+  if (fiCache.body && fiCache.n === n && Date.now() - fiCache.ts < 10 * 60e3) return json(fiCache.body, 200, cors);
   const r = await fetch('https://tie.digitraffic.fi/api/weathercam/v1/stations', { headers: { 'Digitraffic-User': 'CityJam/1.0', 'Accept-Encoding': 'gzip' } });
   const d = await r.json().catch(() => null);
   if (!r.ok || !d || !Array.isArray(d.features)) return json({ error: { code: 'fi_error', message: 'Digitraffic javob bermadi (HTTP ' + r.status + ')' } }, 502, cors);
-  // Helsinki atrofidagi 12 ta kamera (har biridan birinchi koʻrinish)
+  // Helsinki atrofidagi n ta kamera (har biridan birinchi koʻrinish)
   const items = d.features.filter(f => f.geometry && f.properties && (f.properties.presets || []).length)
-    .map(f => ({ f, dd: Math.hypot(f.geometry.coordinates[1] - 60.2, (f.geometry.coordinates[0] - 24.9) * 0.5) })).sort((a, b) => a.dd - b.dd).slice(0, 12)
+    .map(f => ({ f, dd: Math.hypot(f.geometry.coordinates[1] - 60.2, (f.geometry.coordinates[0] - 24.9) * 0.5) })).sort((a, b) => a.dd - b.dd).slice(0, n)
     .map(({ f }) => { const p = f.properties.presets[0].id; return { id: p, title: f.properties.name || p, city: 'Finlyandiya (test)', lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], updated: f.properties.dataUpdatedTime || null, preview: 'https://weathercam.digitraffic.fi/' + p + '.jpg', detail: 'https://www.liikennetilanne.fi/en', test: true }; });
   const body = { total: items.length, items, source: 'Fintraffic Digitraffic (CC BY 4.0)' };
-  fiCache = { ts: Date.now(), body };
+  fiCache = { ts: Date.now(), body, n };
   return json(body, 200, cors);
 }

@@ -714,6 +714,15 @@ async function clickStreet(page, name) {
   ok('Panel qayta chizilganda yozilayotgan matn oʻchmaydi', (await p8.inputValue('#chat textarea[name=q]')) === 'yarim yozilgan savol');
   await p8.fill('#chat textarea[name=q]', '');
   await p8.click('.tabs [data-tab=map]');
+  // Sudrab koʻchirish va burchakdan choʻzish
+  const b0 = await p8.locator('#camWall').boundingBox(), h0 = await p8.locator('#camWall .cw-h').boundingBox();
+  await p8.mouse.move(h0.x + 60, h0.y + h0.height / 2); await p8.mouse.down(); await p8.mouse.move(h0.x - 140, h0.y + 150, { steps: 6 }); await p8.mouse.up();
+  const b1 = await p8.locator('#camWall').boundingBox();
+  const cap0 = await p8.evaluate(() => NX.camwall.capacity());
+  const rz = await p8.locator('#camWall .cw-resize').boundingBox();
+  await p8.mouse.move(rz.x + 8, rz.y + 8); await p8.mouse.down(); await p8.mouse.move(rz.x + 120, rz.y + 220, { steps: 6 }); await p8.mouse.up();
+  const b2 = await p8.locator('#camWall').boundingBox(), cap1 = await p8.evaluate(() => NX.camwall.capacity());
+  ok('Kamera devori: sudrab koʻchiriladi, choʻzilsa kattalashadi va koʻproq kamera sigʻadi; joyi eslab qolinadi', b1.x < b0.x - 100 && b1.y > b0.y + 100 && b2.width > b1.width + 80 && b2.height > b1.height + 150 && cap1 > cap0 && (await p8.evaluate(() => !!localStorage.getItem('nx:cw:box'))), JSON.stringify({ b0: [b0.x, b0.y], b1: [b1.x, b1.y, b1.width, b1.height], b2: [b2.width, b2.height], cap0, cap1 }));
   await p8.click('#camWall .cw-cam >> nth=0');
   await p8.waitForSelector('#camDlg .cw-big', { timeout: 5000 });
   ok('Kamera bosilsa kattalashadi, AI tahlil tugmasi bor', !!(await p8.$('#camDlg [data-cw=ai]')));

@@ -6,10 +6,10 @@
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
   let list = null;
   // mode: '' — Samarqand atrofi; 'uz' — butun Oʻzbekiston (test); 'fi' — Finlyandiya yoʻl kameralari (test, ochiq maʼlumot)
-  async function load(r, mode) {
+  async function load(r, mode, n) {
     if (!base()) throw new Error('Sayt serveri (Worker) ulanmagan.');
     const [la, lo] = NX.config.center;
-    const res = await NX.fetchJSON(`${base()}/webcams?lat=${la}&lon=${lo}&r=${r || 60}${mode ? '&mode=' + mode : ''}`, {}, 25000);
+    const res = await NX.fetchJSON(`${base()}/webcams?lat=${la}&lon=${lo}&r=${r || 60}${mode ? '&mode=' + mode : ''}${n ? '&n=' + n : ''}`, {}, 25000);
     if (!res.ok || !res.data || !Array.isArray(res.data.items)) {
       const e = res.data && res.data.error;
       throw new Error(e && e.code === 'no_windy_key' ? 'Windy kaliti Worker’ga qoʻyilmagan (WINDY_KEY).' : res.status === 404 || res.status === 405 ? 'Worker eski — yangi versiyani qoʻyish kerak.' : 'Vebkameralar olinmadi: ' + ((e && e.message) || 'HTTP ' + res.status));
