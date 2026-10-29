@@ -48,15 +48,20 @@
       ${T.busy ? `<p class="small"><span class="spinner sm"></span> ${E(T.busy)}…</p>` : ''}
       ${T.err ? `<p class="small bad-text">⚠️ ${E(T.err)}</p>` : ''}
       ${b.length ? `<div class="atiles">${[[F.int(b.length), 'bino'], [est + '%', 'qavati nomaʼlum'], [ghi ? F.int(ghi) : '—', 'kVt·soat/m² yiliga quyosh'], [rain ? rain.d24 + ' mm' : '—', 'yomgʻir, 24 soat']].map(([v, l]) => `<div class="atile"><b>${v}</b><small>${l}</small></div>`).join('')}</div>` : ''}
-      <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('plan', '🏗 Yangi bino va soya')}</div>
+      <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('quake', '🏚 Zilzila')}${chip('plan', '🏗 Yangi bino va soya')}</div>
       <div class="row-btns"><button class="btn xs" data-act="twin-base" data-base="sat">🛰 Sunʼiy yoʻldosh</button><button class="btn xs" data-act="twin-base" data-base="street">🗺 Xarita</button></div>
     </section>
+    ${twinChat(S)}
     <section class="card">
       <h3>🌧 Suv toshqini xavfi ${B('meteo')}</h3>
       ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
-      ${fl ? `<p class="small">Relyef boʻyicha atrofidan past (suv oqib kelib toʻplanadigan) <b>${fl.hot.length}</b> ta joy topildi. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
-        ${fl.streets.length ? `<p class="small"><b>Yomgʻirda suv toʻplanishi mumkin boʻlgan koʻchalar:</b> ${fl.streets.slice(0, 8).map(x => E(x.name)).join(', ')}</p>` : ''}
-        <p class="small muted">Relyef: Copernicus DEM (~90 m), Open-Meteo. Kanalizatsiya xaritasi “Tizimlar”da yuklansa, AI kollektorlar bilan solishtiradi.</p>` : ''}
+      ${fl ? `<p class="small">Relyef boʻyicha katta maydondan suv oqib keladigan va sekin oqadigan <b>${fl.basins}</b> ta joy bor. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
+        <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa (bosing — xaritada koʻrinadi):</b></p>
+        <div class="chips">${[10, 30, 50, 80, 120].map(mm => `<button class="chip${T.scen && T.scen.rain === mm ? ' on' : ''}" data-act="twin-rain" data-mm="${mm}">${mm} mm</button>`).join('')}</div>
+        ${T.scen ? `<p><b>${T.scen.rain} mm</b> yomgʻirda (1 soatda): koʻchalarda ~<b>${T.scen.areaHa} ga</b> 10 sm dan chuqur suv, <b>${T.scen.buildings}</b> ta bino oldida 20 sm+${T.scen.critical.length ? `, shu jumladan: ${T.scen.critical.map(E).join(', ')}` : ''}.</p>
+          ${T.scen.streets.length ? `<ul class="small">${T.scen.streets.slice(0, 8).map(x => `<li><b>${E(x.name)}</b> — ${Math.round(x.max * 100)} sm gacha, ${F.int(x.len)} m</li>`).join('')}</ul>` : '<p class="small ok-text">Koʻchalarda suv toʻplanmaydi.</p>'}
+          <p class="plan-leg small"><span><i style="background:#60a5fa"></i>&lt;30 sm</span><span><i style="background:#2563eb"></i>30–60 sm</span><span><i style="background:#1e3a8a"></i>&gt;60 sm</span><span><i style="background:#1d4ed8;border-radius:2px"></i>suv ostidagi bino</span></p>` : ''}
+        <p class="small muted">Relyef: ${E(fl.src || '')}, 60 m katak. Model: soatiga ${NX.systems.get('sewer') ? 15 : 10} mm ni kanalizatsiya olib ketadi, qolganining 70% i asfalt va tomlardan oqib, relyef boʻylab past koʻchalarga yigʻiladi; chuqurlik — Manning formulasi (koʻcha 20 m). Daryo va kanal oʻzanlari hisobga kirmaydi. Kanalizatsiya xaritasi “Tizimlar”da yuklansa, aniqroq boʻladi.</p>` : ''}
     </section>
     <section class="card">
       <h3>☀️ Tomlardagi quyosh energiyasi ${B('meteo')}</h3>
@@ -74,6 +79,18 @@
     </section>`;
   }
 
+  function twinChat(S) {
+    const C = S.twinChat || { msgs: [], busy: null };
+    const sugg = ['50 mm kuchli yomgʻir yogʻsa qaysi koʻchalarni suv bosadi?', 'Sel boʻlsa (100 mm) qaysi maktab va shifoxonalar xavf ostida?', '8 balli zilzila boʻlsa qaysi binolar koʻproq xavf ostida?'];
+    return `<section class="card chat" id="twinChat">
+      <h3>🤖 AI tahlil — favqulodda vaziyatlar</h3>
+      <p class="small muted">Soʻrang: “… mm yomgʻir yogʻsa?”, “zilzila boʻlsa?” — AI hisoblaydi, natija 3D xaritada koʻrinadi.</p>
+      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div></div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      <div class="chips">${sugg.map(q => `<button class="chip" data-act="twin-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
+      <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Masalan: 70 mm yomgʻir yogʻsa qayerni suv bosadi?" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
+    </section>`;
+  }
+
   // ---------- Hodisalar (real vaqt) ----------
   function alerts(S) {
     const M = S.model, out = [], W = S.weather && S.weather.data, lvl = S.yandexState && S.yandexState.level;
@@ -82,7 +99,7 @@
     const sc = M.problems.filter(p => p.type === 'school').length, jn = M.problems.filter(p => p.type === 'junction').length;
     const conf = M.problems.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'bad').length;
     const R = S.twin && S.twin.rain;
-    if (R && R.d24 >= 8) out.push({ l: R.d24 >= 20 ? 'r' : 'a', t: `24 soatda ${R.d24} mm yomgʻir kutilmoqda — past joylarda suv toʻplanishi mumkin${S.twin.flood ? ` (${S.twin.flood.hot.length} ta joy)` : ''}`, s: 'Open-Meteo', act: 'twin' });
+    if (R && R.d24 >= 8) out.push({ l: R.d24 >= 20 ? 'r' : 'a', t: `24 soatda ${R.d24} mm yomgʻir kutilmoqda — past joylarda suv toʻplanishi mumkin${S.twin.alertScen && S.twin.alertScen.streets.length ? `: ${S.twin.alertScen.streets.slice(0, 3).map(x => x.name).join(', ')} (hisob)` : ''}`, s: 'Open-Meteo', act: 'twin' });
     if (sc) out.push({ l: 'r', t: `${sc} ta maktab/bogʻcha oldida xavfsiz oʻtish yoʻq`, s: 'OSM', act: 'problems' });
     if (jn) out.push({ l: 'a', t: `${jn} ta yirik chorrahada svetofor yoʻq${conf ? ` (${conf} tasi suratda tasdiqlandi)` : ''}`, s: conf ? 'Mapillary + AI' : 'OSM', act: 'problems' });
     if (S.review && S.review.fixed.length) out.push({ l: 'i', t: `${S.review.fixed.length} ta joy suratda tekshirildi — muammo emas, roʻyxatdan olindi`, s: 'Mapillary + AI' });

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const NX = window.NX;
-  let map = null, ready = null, mode = 'height', data = { buildings: [], ghi: null, flood: null, plan: null };
+  let map = null, ready = null, mode = 'height', data = { buildings: [], ghi: null, flood: null, plan: null, scen: null, onView: null };
   const BASE = {
     sat: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution: 'Surat: Esri, Maxar, Earthstar Geographics' },
     street: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'], attribution: '© Esri, OpenStreetMap hissadorlari' },
@@ -11,22 +11,29 @@
   const colorHeight = lv => (lv >= 9 ? '#7c3aed' : lv >= 5 ? '#2563eb' : lv >= 3 ? '#0ea5e9' : lv >= 2 ? '#94a3b8' : '#cbd5e1');
   const colorSolar = kwh => (kwh >= 50000 ? '#b45309' : kwh >= 20000 ? '#f59e0b' : kwh >= 8000 ? '#fcd34d' : kwh >= 3000 ? '#fde68a' : '#e5e7eb');
 
+  // Suv ostidagi kataklar (stsenariy boʻlsa — undan, boʻlmasa doimiy xavf xaritasidan)
+  let wetSet = null;
+  const cellKey = ll => { const [x, y] = NX.geo.xy(ll[0], ll[1]); return Math.round(x / 60) + ':' + Math.round(y / 60); };
+  const wetCells = () => (data.scen ? data.scen.cells : data.flood ? data.flood.hot : []);
   function buildingsGeo() {
-    const fl = data.flood, ghi = data.ghi && data.ghi.kwh, G = NX.geo;
-    const risky = fl ? fl.hot.map(c => G.xy(c.lat, c.lon)) : [];
+    const ghi = data.ghi && data.ghi.kwh;
+    wetSet = mode === 'flood' ? new Set(wetCells().map(c => cellKey([c.lat, c.lon]))) : null;
     return { type: 'FeatureCollection', features: data.buildings.map(b => {
       const kwh = ghi ? NX.twin.roofKwh(b, ghi) : 0;
       let col = colorHeight(b.levels);
       if (mode === 'solar') col = colorSolar(kwh);
-      if (mode === 'flood') { const [x, y] = G.xy(b.c[0], b.c[1]); col = risky.some(h => Math.abs(h[0] - x) <= 60 && Math.abs(h[1] - y) <= 60) ? '#1d4ed8' : '#e2e8f0'; }
+      if (mode === 'flood') col = wetSet && wetSet.has(cellKey(b.c)) ? '#1d4ed8' : '#e2e8f0';
       if (mode === 'plan' && data.plan && data.plan.shaded.includes(b)) col = '#475569';
+      if (mode === 'quake') col = /school|kindergarten|hospital|clinic/.test(b.kind) ? '#dc2626' : b.levels >= 5 ? '#f97316' : b.levels >= 3 ? '#fbbf24' : '#cbd5e1';
       return { type: 'Feature', properties: { h: b.height, col, id: b.id, kwh }, geometry: { type: 'Polygon', coordinates: [b.ring] } };
     }) };
   }
+  // Suv chuqurligi rangi: <30 sm och, 30–60 sm, >60 sm toʻq koʻk
+  const depthCol = d => (d >= 0.6 ? '#1e3a8a' : d >= 0.3 ? '#2563eb' : '#60a5fa');
   function floodGeo() {
-    const fl = data.flood;
-    if (!fl || mode !== 'flood') return { type: 'FeatureCollection', features: [] };
-    return { type: 'FeatureCollection', features: fl.cells.filter(c => c.risk > 0.15).map(c => ({ type: 'Feature', properties: { r: c.risk }, geometry: { type: 'Polygon', coordinates: [NX.twin.cellPoly(c, fl.step)] } })) };
+    if (mode !== 'flood' || !(data.scen || data.flood)) return { type: 'FeatureCollection', features: [] };
+    const step = (data.scen || data.flood).step;
+    return { type: 'FeatureCollection', features: wetCells().map(c => ({ type: 'Feature', properties: { c: data.scen ? depthCol(c.depth) : '#3b82f6', o: data.scen ? 0.65 : 0.25 + 0.4 * (c.risk || 0) }, geometry: { type: 'Polygon', coordinates: [NX.twin.cellPoly(c, step)] } })) };
   }
   function planGeo() {
     const P = data.plan, f = [];
@@ -49,7 +56,8 @@
       map.addControl(new window.maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
       map.on('load', () => {
         map.addSource('flood', { type: 'geojson', data: floodGeo() });
-        map.addLayer({ id: 'flood', type: 'fill', source: 'flood', paint: { 'fill-color': '#2563eb', 'fill-opacity': ['*', 0.55, ['get', 'r']] } });
+        map.addLayer({ id: 'flood', type: 'fill', source: 'flood', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': ['get', 'o'] } });
+        map.on('moveend', () => { if (data.onView && map.getZoom() >= 14.3) { const b = map.getBounds(); data.onView({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }); } });
         map.addSource('bld', { type: 'geojson', data: buildingsGeo() });
         map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: { 'fill-extrusion-color': ['get', 'col'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.88 } });
         map.addSource('plan', { type: 'geojson', data: planGeo() });

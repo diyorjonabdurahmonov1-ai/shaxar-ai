@@ -79,8 +79,40 @@
     try { return await loading; } finally { loading = null; }
   }
 
+  // Tahlil hududidan tashqarida — xarita qayerga surilsa, oʻsha joyning binolari (0.01° plitalar, har biri bir marta)
+  const TILE = 0.01, tilesDone = new Set(), tileBusy = new Set();
+  async function loadView(bb, onStep) {
+    if (!list) return 0;
+    const B = NX.config.bbox, need = [];
+    for (let a = Math.floor(bb.s / TILE); a <= Math.floor(bb.n / TILE); a++) for (let o = Math.floor(bb.w / TILE); o <= Math.floor(bb.e / TILE); o++) {
+      const s = a * TILE, w = o * TILE, k = a + ':' + o;
+      if (s >= B.s && s + TILE <= B.n && w >= B.w && w + TILE <= B.e) continue;   // asosiy yuklamada bor
+      if (!tilesDone.has(k) && !tileBusy.has(k)) need.push({ k, s, w });
+    }
+    let added = 0;
+    for (const t of need.slice(0, 6)) {
+      tileBusy.add(t.k);
+      try {
+        let part = await NX.bigStore.get('bt:' + t.k);
+        if (!part || Date.now() - part.ts > TTL) {
+          onStep && onStep('Binolar yuklanmoqda');
+          const q = `[out:json][timeout:60];way["building"](${t.s.toFixed(4)},${t.w.toFixed(4)},${(t.s + TILE).toFixed(4)},${(t.w + TILE).toFixed(4)});out tags geom qt;`;
+          let got = null;
+          for (const url of NX.config.overpassMirrors) { try { const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 60000); if (r.ok && r.data && r.data.elements) { got = r.data; break; } } catch (e) { /* keyingi */ } }
+          if (!got) continue;
+          part = { ts: Date.now(), list: compact(got) };
+          NX.bigStore.set('bt:' + t.k, part);
+        }
+        const seen = new Set(list.map(b => b.id));
+        part.list.forEach(b => { if (!seen.has(b.id)) { list.push(b); added++; } });
+        tilesDone.add(t.k);
+      } finally { tileBusy.delete(t.k); }
+    }
+    return added;
+  }
+
   // Nuqta koʻpburchak ichidami (lon/lat)
   const inRing = (ring, lon, lat) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) c = !c; } return c; };
 
-  NX.buildings = { load, get: () => list, inRing, DEF_LEVELS, _compact: compact };
+  NX.buildings = { load, loadView, get: () => list, inRing, DEF_LEVELS, _compact: compact };
 })();

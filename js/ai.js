@@ -473,6 +473,24 @@ Qoidalar:
     const r = await callOpenAI(userKey(), null, null, null, messages, ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini']);
     return { text: r.text, src: 'ai', model: r.model };
   }
+  // 3D egizak: suv toshqini, zilzila, quyosh — stsenariy natijalari asosida
+  const TWIN = `Sen Samarqand shahar hokimiyati uchun favqulodda vaziyatlar va shahar infratuzilmasi boʻyicha bosh tahlilchisan. Javobing rahbariyatga koʻrsatiladi.
+Senga beriladi: savol; real maʼlumot (yogʻin prognozi, yillik quyosh nurlanishi — Open-Meteo; relyef — SRTM ~30 m; binolar — OpenStreetMap); stsenariy hisobi (N mm yomgʻir 1 soat ichida yogʻsa: relyef boʻylab oqim yigʻilishi va Manning formulasi bilan qaysi koʻchalarda qancha chuqur suv, nechta bino, qaysi maktab/shifoxona).
+Qoidalar:
+- Faqat savolga javob ber. 1-qator: aniq xulosa raqam bilan (masalan: “50 mm yomgʻirda ~12 ga suv ostida qoladi, eng xavfli — X koʻchasi, 60 sm gacha”).
+- Keyin: **Xavfli joylar** (koʻcha — chuqurlik, uzunlik), **Odamlar va binolar** (nechta bino, qaysi maktab/shifoxona), **Hozir nima qilish kerak** (ariq va kollektorlarni tozalash, nasoslar, ogohlantirish, yoʻl yopish — qayerda), **Uzoq muddatli yechim**.
+- Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
+- Zilzila soʻralsa: faqat berilgan maʼlumot (binolar qavati, maktab/shifoxonalar soni) asosida qaysi turdagi binolar koʻproq xavf ostida ekanini ayt; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt va uni qayerdan olish kerakligini (kadastr, qurilish inspeksiyasi) ayt. Raqam oʻylab topma.
+- Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv, chuqurligi rang bilan; zilzilada qizil — maktab/shifoxona, toʻq sariq — 5+ qavat).
+- JSON kalit nomlarini, texnik soʻzlarni yozma. Cheklovlarni faqat bir gapda ayt (relyef ~30 m, kanalizatsiya sigʻimi taxminiy).
+- Oʻzbek tilida (lotin), aniq va londa.`;
+  async function twinAsk(q, facts, history) {
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
+    const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
+    const r = await callOpenAI(userKey(), null, null, null, messages, ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini']);
+    return { text: r.text, src: 'ai' };
+  }
+
   // Erkin internet qidiruvi (koʻcha yoki hudud boʻyicha)
   async function webSearchQ(q, context) {
     if (!proxyUrl()) {
@@ -507,5 +525,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

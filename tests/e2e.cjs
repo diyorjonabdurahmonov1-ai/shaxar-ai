@@ -6,6 +6,25 @@ const { build } = require('./fixture.cjs');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765/index.html';
 const FX = build();
+// Sintetik relyef plitasi (Terrarium PNG, faqat test): shimolga koʻtarilgan tekislik + (39.650, 66.980) da botiq
+const zlib = require('zlib');
+function crc32(buf) { let c, crc = 0xffffffff; for (let n = 0; n < buf.length; n++) { c = (crc ^ buf[n]) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crc = (crc >>> 8) ^ c; } return (crc ^ 0xffffffff) >>> 0; }
+function png(w, h, rgba) {
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) { raw[y * (w * 4 + 1)] = 0; rgba.copy(raw, y * (w * 4 + 1) + 1, y * w * 4, (y + 1) * w * 4); }
+  const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(td)); return Buffer.concat([l, td, c]); };
+  const ih = Buffer.alloc(13); ih.writeUInt32BE(w, 0); ih.writeUInt32BE(h, 4); ih[8] = 8; ih[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+function terrTile(z, x, y) {
+  const n = 2 ** z, buf = Buffer.alloc(256 * 256 * 4);
+  for (let j = 0; j < 256; j++) for (let i = 0; i < 256; i++) {
+    const lon = ((x + (i + 0.5) / 256) / n) * 360 - 180, lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + (j + 0.5) / 256)) / n))) * 180) / Math.PI;
+    const e = 700 + (lat - 39.60) * 1500 - 6 * Math.exp(-(((lat - 39.650) / 0.0025) ** 2 + ((lon - 66.980) / 0.0032) ** 2)), v = e + 32768, k = (j * 256 + i) * 4;
+    buf[k] = Math.floor(v / 256); buf[k + 1] = Math.floor(v) % 256; buf[k + 2] = Math.floor((v % 1) * 256); buf[k + 3] = 255;
+  }
+  return png(256, 256, buf);
+}
 // Sintetik binolar (faqat test): markaz atrofida 12×12 kvadrat, baʼzilarida qavatlar soni bor
 const BLD = { elements: [] };
 for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
@@ -34,6 +53,7 @@ async function setupRoutes(ctx, opts = {}) {
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(isRoutes ? FX.routes : FX.streets) });
   });
   // Relyef: sintetik — markazdan janubi-sharqda botiq joy; quyosh arxivi; soatlik yogʻin
+  await ctx.route(/elevation-tiles-prod\/terrarium/, route => { const m = route.request().url().match(/terrarium\/(\d+)\/(\d+)\/(\d+)\.png/); route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: terrTile(+m[1], +m[2], +m[3]) }); });
   await ctx.route(/archive-api\.open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time: [], shortwave_radiation_sum: Array(365).fill(18) } }) }));
   await ctx.route(/api\.open-meteo\.com\/v1\/elevation/, route => {
     const u = new URL(route.request().url()), la = u.searchParams.get('latitude').split(',').map(Number), lo = u.searchParams.get('longitude').split(',').map(Number);
@@ -114,9 +134,17 @@ async function clickStreet(page, name) {
   const tw = await page.evaluate(() => ({ n: NX.state.twin.buildings.length, est: NX.state.twin.buildings.filter(b => b.est).length, ghi: NX.state.twin.ghi.kwh, hot: NX.state.twin.flood.hot.length, rain: NX.state.twin.rain && NX.state.twin.rain.d24, vis: !document.getElementById('map3d').hidden }));
   ok('3D egizak: binolar (OSM) 3D xaritada, qavati yoʻqlari belgilanadi', tw.n === 144 && tw.est > 0 && tw.vis, JSON.stringify(tw));
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
-  ok('Suv toshqini: relyefdagi botiq joylar va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')));
+  ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');
   ok('Toshqin rejimi: xavfli kataklar xaritada', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('flood')._data.features.length > 0));
+  await page.click('[data-act=twin-rain][data-mm="80"]');
+  const sc80 = await page.evaluate(() => { const s = NX.state.twin.scen; return { ha: s.areaHa, st: s.streets.length, max: Math.max(0, ...s.cells.map(c => c.depth)), f: NX.map3d.map().getSource('flood')._data.features.length }; });
+  await page.click('[data-act=twin-rain][data-mm="10"]');
+  const sc10 = await page.evaluate(() => NX.state.twin.scen.areaHa);
+  ok('“N mm yomgʻir” stsenariysi: suv chuqurligi xaritada; koʻp yomgʻir — kattaroq maydon', sc80.ha > 0 && sc80.max > 0.3 && sc80.f > 0 && sc10 < sc80.ha, JSON.stringify({ sc80, sc10 }));
+  await page.click('#twinChat [data-act=twin-ask] >> nth=0');
+  await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 60000 });
+  ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.scen.rain === 50 && NX.map3d.mode() === 'flood')));
   await page.click('.tabs [data-tab=map]');
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
   ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
