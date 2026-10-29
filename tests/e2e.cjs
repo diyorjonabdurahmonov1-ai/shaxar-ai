@@ -142,7 +142,7 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => NX.state.twin.climate, null, { timeout: 20000 });
   const cl = await page.evaluate(() => ({ n: NX.state.twin.climate.years.length, tr: NX.state.twin.climate.trend10, top: NX.state.twin.climate.top[0].p }));
   if (process.env.SHOT10) await page.locator('#panel section:has(.clim-svg)').screenshot({ path: process.env.SHOT10 });
-  ok('Iqlim: 1991-yildan yillik harorat/yogʻin (arxiv), isish tezligi, eng kuchli kunlar, Oʻzgidromet meʼyori', cl.n >= 34 && Math.abs(cl.tr - 0.3) < 0.05 && cl.top >= 20 && /Oʻzgidromet/.test(await page.textContent('#panel')) && (await page.$$('#panel .clim-svg')).length === 2, JSON.stringify(cl));
+  ok('Iqlim: 1991-yildan yillik harorat/yogʻin (arxiv), isish tezligi, eng kuchli kunlar, Oʻzgidromet meʼyori', cl.n >= 34 && Math.abs(cl.tr - 0.3) < 0.05 && cl.top >= 20 && /Oʻzgidromet/.test(await page.textContent('#panel')) && (await page.$$('#panel .clim-svg')).length === 3 && /data\.egov\.uz/.test(await page.textContent('#panel')), JSON.stringify(cl));
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');

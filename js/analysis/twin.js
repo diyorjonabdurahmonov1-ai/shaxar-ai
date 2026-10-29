@@ -106,8 +106,13 @@
     sel: 'Togʻ oldi hududlarida jadal yomgʻirlar sel toshqinlarini keltirib chiqaradi; bahorda qor koʻchkilari boʻlishi mumkin',
     eslatma: 'meʼyor qiymatlari hujjatdagi grafikdan oʻqilgan (taxminan)',
   };
+  // Oʻzgidromet ochiq maʼlumoti: data.egov.uz, 4-006-0012 “Pastliklardagi oʻrtacha yogʻingarchilik”, Samarqand, oylar boʻyicha (mm)
+  const EGOV_RAIN = {
+    manba: 'data.egov.uz, 4-006-0012 (Gidrometeorologiya xizmati agentligi)', yil: null,
+    samarqand: [19.3, 34.5, 69.1, 35.5, 0.7, 5, 0, 0, 0, 2.9, 19.4, 97.8],
+  };
   async function climate() {
-    const hit = await NX.bigStore.get('climate:v1');
+    const hit = await NX.bigStore.get('climate:v2');
     if (hit && Date.now() - hit.ts < 30 * 86400e3) return hit;
     const y1 = new Date().getFullYear() - 1, [la, lo] = NX.config.center;
     const r = await NX.fetchJSON(`https://archive-api.open-meteo.com/v1/archive?latitude=${la}&longitude=${lo}&start_date=1991-01-01&end_date=${y1}-12-31&daily=temperature_2m_mean,precipitation_sum&timezone=Asia%2FSamarkand`, {}, 60000);
@@ -127,8 +132,13 @@
     const xs = list.map(o => o.y), ys = list.map(o => o.t), mx = mean(xs), my = mean(ys);
     const slope = xs.reduce((t, x, i) => t + (x - mx) * (ys[i] - my), 0) / xs.reduce((t, x) => t + (x - mx) ** 2, 0);
     const top = days.sort((a, b) => b.p - a.p).slice(0, 8).map(x => ({ t: x.t, p: +x.p.toFixed(1) }));
-    const out = { ts: Date.now(), years: list, tNorm: +tN.toFixed(2), pNorm: Math.round(pN), trend10: +(slope * 10).toFixed(2), top, src: 'Open-Meteo arxivi (ERA5 qayta tahlili)', doc: UZHYDROMET };
-    NX.bigStore.set('climate:v1', out);
+    // Oylik yogʻin meʼyori (1991–2020)
+    const mon = Array.from({ length: 12 }, () => []), acc = new Map();
+    d.time.forEach((t, i) => { const y = +t.slice(0, 4), m = +t.slice(5, 7) - 1; if (y < 1991 || y > 2020) return; const k = y * 12 + m; acc.set(k, (acc.get(k) || 0) + (d.precipitation_sum[i] || 0)); });
+    acc.forEach((v, k) => mon[k % 12].push(v));
+    const monthNorm = mon.map(a => (a.length ? +(a.reduce((t, v) => t + v, 0) / a.length).toFixed(1) : 0));
+    const out = { ts: Date.now(), years: list, tNorm: +tN.toFixed(2), pNorm: Math.round(pN), trend10: +(slope * 10).toFixed(2), top, monthNorm, src: 'Open-Meteo arxivi (ERA5 qayta tahlili)', doc: UZHYDROMET };
+    NX.bigStore.set('climate:v2', out);
     return out;
   }
 
@@ -411,5 +421,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { climate, UZHYDROMET, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();

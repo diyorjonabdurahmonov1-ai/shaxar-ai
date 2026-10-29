@@ -85,6 +85,20 @@
     </section>`;
   }
 
+  // Oylar boʻyicha yogʻin: ERA5 meʼyori (ustun) va Oʻzgidromet ochiq maʼlumoti (nuqta, data.egov.uz)
+  function monthChart(C) {
+    const G = NX.twin.EGOV_RAIN, a = C.monthNorm || [], b = G.samarqand, W = 320, H = 120, mx = Math.max(...a, ...b, 10) * 1.1, bw = (W - 30) / 12;
+    const Y = v => H - 18 - (v / mx) * (H - 28), M = ['Ya', 'F', 'Mr', 'Ap', 'My', 'Iy', 'Il', 'Av', 'S', 'O', 'N', 'D'];
+    let g = `<svg viewBox="0 0 ${W} ${H}" class="clim-svg" role="img">`;
+    a.forEach((v, i) => { g += `<rect x="${24 + i * bw + 3}" y="${Y(v)}" width="${bw - 6}" height="${Math.max(0, H - 18 - Y(v))}" fill="#16a34a" opacity=".55"/>`; });
+    b.forEach((v, i) => { g += `<circle cx="${24 + i * bw + bw / 2}" cy="${Y(v)}" r="3.5" fill="#7c3aed"/>`; });
+    g += M.map((m, i) => `<text x="${24 + i * bw + bw / 2}" y="${H - 5}" font-size="9" text-anchor="middle" fill="#64748b">${m}</text>`).join('') + `<text x="2" y="10" font-size="9" fill="#64748b">${Math.round(mx)} mm</text></svg>`;
+    const sum = b.reduce((t, v) => t + v, 0), wet = ['dekabr–mart'];
+    return `<p class="small"><b>Oylar boʻyicha yogʻin</b></p>${g}
+      <p class="plan-leg small"><span><i style="background:#16a34a;opacity:.6;border-radius:0"></i>meʼyor 1991–2020 (ERA5)</span><span><i style="background:#7c3aed"></i>Oʻzgidromet${G.yil ? ', ' + G.yil : ''} (data.egov.uz)</span></p>
+      <p class="small">Oʻzgidromet maʼlumotida yil boʻyi ${F.num(sum, 0)} mm; eng koʻp — dekabr (${b[11]} mm) va mart (${b[2]} mm), iyul–sentabr — 0 mm. Toshqin xavfi asosan ${wet[0]} oylarida.</p>`;
+  }
+
   // Iqlim kartasi: yillik harorat va yogʻin (ERA5) + Oʻzgidromet meʼyori
   function climateCard(T) {
     const C = T.climate, D = NX.twin.UZHYDROMET;
@@ -104,6 +118,7 @@
         <p class="small"><b>Yillik harorat</b></p>${chart(C.years.map(o => o.t), C.tNorm, D.samarqand_harorat_meyori_c, '#ea580c', false, '°')}
         <p class="small"><b>Yillik yogʻin</b></p>${chart(C.years.map(o => o.p), C.pNorm, D.samarqand_yogin_meyori_mm, '#16a34a', true, ' mm')}
         <p class="plan-leg small"><span><i style="background:#dc2626;border-radius:0;height:3px"></i>meʼyor (ERA5)</span><span><i style="background:#7c3aed;border-radius:0;height:3px"></i>meʼyor (Oʻzgidromet)</span></p>
+        ${monthChart(C)}
         <p class="small"><b>Eng kuchli yomgʻirli kunlar:</b> ${C.top.slice(0, 5).map(x => `${x.t} — ${x.p} mm`).join('; ')}</p>` : '<p class="small muted">Iqlim arxivi yuklanmoqda…</p>'}
       <p class="small"><b>Oʻzgidromet (2024-yil):</b> ${E(D.yil2024)}. ${E(D.sel)}.</p>
       <p class="small muted">Manba: Open-Meteo arxivi (ERA5 qayta tahlili, ~25 km — kuchli jalalarni biroz kamaytirib koʻrsatadi); ${E(D.manba)} — meʼyorlar hujjat grafigidan taxminan oʻqilgan.</p>
