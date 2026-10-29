@@ -136,12 +136,13 @@ async function clickStreet(page, name) {
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');
-  ok('Toshqin rejimi: xavfli kataklar xaritada', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('flood')._data.features.length > 0));
+  ok('Toshqin rejimi: koʻchalardagi suv xaritada (30 mm)', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length > 0));
+  if (process.env.SHOT9) { await page.click('[data-act=twin-rain][data-mm="80"]'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT9 }); }
   await page.click('[data-act=twin-rain][data-mm="80"]');
-  const sc80 = await page.evaluate(() => { const s = NX.state.twin.scen; return { ha: s.areaHa, st: s.streets.length, max: Math.max(0, ...s.cells.map(c => c.depth)), f: NX.map3d.map().getSource('flood')._data.features.length }; });
+  const sc80 = await page.evaluate(() => { const s = NX.state.twin.scen; return { mode: s.mode, km: s.km, st: s.streets.length, max: Math.max(0, ...s.segs.map(c => c.d)), lines: NX.map3d.map().getSource('water')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length, top: s.streets[0] && s.streets[0].name }; });
   await page.click('[data-act=twin-rain][data-mm="10"]');
-  const sc10 = await page.evaluate(() => NX.state.twin.scen.areaHa);
-  ok('“N mm yomgʻir” stsenariysi: suv chuqurligi xaritada; koʻp yomgʻir — kattaroq maydon', sc80.ha > 0 && sc80.max > 0.3 && sc80.f > 0 && sc10 < sc80.ha, JSON.stringify({ sc80, sc10 }));
+  const sc10 = await page.evaluate(() => NX.state.twin.scen.km);
+  ok('“N mm yomgʻir”: suv real koʻchalar boʻylab chiziladi (kvadratsiz), koʻp yomgʻir — koʻproq koʻcha', sc80.mode === 'street' && sc80.km > 0 && sc80.st > 0 && sc80.lines > 0 && sc80.sq === 0 && sc10 < sc80.km && /koʻchasi/.test(sc80.top), JSON.stringify({ sc80, sc10 }));
   await page.click('#twinChat [data-act=twin-ask] >> nth=0');
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 60000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.scen.rain === 50 && NX.map3d.mode() === 'flood')));

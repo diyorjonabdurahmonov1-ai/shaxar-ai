@@ -161,6 +161,99 @@
     const zs = Array.from(D.z).filter(isFinite).sort((a, b) => a - b);
     return { cells: hot, hot, basins: hot.length, streets: s50.streets, zmin: zs[0], zmax: zs[zs.length - 1], step: D.step, src: D.src };
   }
+  // ---------- Koʻchalar boʻylab suv (shahar suvi asosan koʻchalar orqali oqadi) ----------
+  const ROAD_W = { trunk: 22, primary: 20, secondary: 16, tertiary: 12, unclassified: 9, residential: 8, living_street: 6 };
+  async function roads(onStep) {
+    const hit = await NX.bigStore.get('roads:v1');
+    if (hit && hit.list && hit.list.length && Date.now() - hit.ts < 30 * 86400e3) return hit.list;
+    onStep && onStep('Butun shahar koʻchalari yuklanmoqda (bir marta)');
+    const q = `[out:json][timeout:120];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${CITY.s},${CITY.w},${CITY.n},${CITY.e});out tags geom qt;`;
+    for (const url of NX.config.overpassMirrors) {
+      try {
+        const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 120000);
+        if (!r.ok || !r.data || !r.data.elements) continue;
+        const list = r.data.elements.filter(e => e.type === 'way' && e.geometry && e.geometry.length > 1).map(e => ({ id: e.id, hw: e.tags.highway, name: e.tags['name:uz'] || e.tags.name || '', nodes: e.nodes, ll: e.geometry.map(g => [+g.lat.toFixed(6), +g.lon.toFixed(6)]) }));
+        NX.bigStore.set('roads:v1', { ts: Date.now(), list });
+        return list;
+      } catch (e) { /* keyingi server */ }
+    }
+    throw new Error('Shahar koʻchalari yuklanmadi (Overpass).');
+  }
+  // Relyef qiymati nuqtada (bilinear)
+  function zAt(D, lat, lon) {
+    const [x, y] = G.xy(lat, lon), fx = (x - D.x0) / D.step - 0.5, fy = (y - D.y0) / D.step - 0.5;
+    const i = Math.max(0, Math.min(D.nx - 2, Math.floor(fx))), j = Math.max(0, Math.min(D.ny - 2, Math.floor(fy))), a = Math.max(0, Math.min(1, fx - i)), b = Math.max(0, Math.min(1, fy - j));
+    const z = (ii, jj) => D.z[jj * D.nx + ii];
+    return z(i, j) * (1 - a) * (1 - b) + z(i + 1, j) * a * (1 - b) + z(i, j + 1) * (1 - a) * b + z(i + 1, j + 1) * a * b;
+  }
+  // Koʻcha tarmogʻi: tugunlar (balandligi bilan), qoʻshnilar; har relyef katagining suvi eng yaqin tugunga tushadi; suv pastga oqadi
+  function streetNet(D, list) {
+    if (D._net && D._net.list === list) return D._net;
+    const nodes = new Map(), segs = [];
+    const node = (id, ll) => { let n = nodes.get(id); if (!n) { n = { id, lat: ll[0], lon: ll[1], z: zAt(D, ll[0], ll[1]), nb: [], area: 0, acc: 0, down: null, dseg: null }; nodes.set(id, n); } return n; };
+    list.forEach(w => {
+      for (let i = 1; i < w.ll.length; i++) {
+        const a = node(w.nodes[i - 1], w.ll[i - 1]), b = node(w.nodes[i], w.ll[i]);
+        const len = G.d(...G.xy(a.lat, a.lon), ...G.xy(b.lat, b.lon));
+        if (len < 0.5) continue;
+        const sg = { a, b, len, w: ROAD_W[w.hw] || 8, name: w.name, hw: w.hw };
+        segs.push(sg); a.nb.push({ n: b, sg }); b.nb.push({ n: a, sg });
+      }
+    });
+    const arr = [...nodes.values()];
+    // Relyef shovqini (bino, daraxt) — tugun balandligi qoʻshnilari bilan silliqlanadi
+    for (let it = 0; it < 2; it++) { const nz = arr.map(n => (n.z * 2 + n.nb.reduce((t, q) => t + q.n.z, 0)) / (2 + n.nb.length)); arr.forEach((n, i) => { n.z = nz[i]; }); }
+    // Suv yigʻish: har relyef katagi → eng yaqin tugun (150 m gacha)
+    const grid = new Map(), gk = (x, y) => Math.floor(x / 100) + ':' + Math.floor(y / 100);
+    arr.forEach(n => { const [x, y] = G.xy(n.lat, n.lon); n.x = x; n.y = y; const k = gk(x, y); (grid.get(k) || grid.set(k, []).get(k)).push(n); });
+    const A = D.step * D.step;
+    for (let k = 0; k < D.z.length; k++) {
+      const x = D.x0 + ((k % D.nx) + 0.5) * D.step, y = D.y0 + (Math.floor(k / D.nx) + 0.5) * D.step;
+      let best = null, bd = 150;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) (grid.get((Math.floor(x / 100) + di) + ':' + (Math.floor(y / 100) + dj)) || []).forEach(n => { const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } });
+      if (best) best.area += A;
+    }
+    // Oqim: har tugundan eng tik pastga ketadigan qoʻshniga; balanddan pastga yigʻiladi
+    arr.forEach(n => { let bs = 0; n.nb.forEach(q => { const sl = (n.z - q.n.z) / q.sg.len; if (sl > bs) { bs = sl; n.down = q.n; n.dseg = q.sg; } }); n.acc = n.area; });
+    arr.slice().sort((p, q) => q.z - p.z).forEach(n => { if (n.down) n.down.acc += n.acc; });
+    D._net = { list, nodes: arr, segs };
+    return D._net;
+  }
+  // N mm yomgʻir 1 soatda: koʻchalarda oqim chuqurligi (Manning) va past joylarda (chiqishi yoʻq tugun) toʻplanish
+  function streetScenario(D, list, rainMm, opt) {
+    const o = Object.assign({ drainMm: 10, runoff: 0.7, n: 0.016 }, opt || {});
+    const net = streetNet(D, list), eff = Math.max(0, rainMm - o.drainMm) / 1000 * o.runoff;
+    const depth = new Map();                                                  // segment → chuqurlik, m
+    const put = (sg, h) => { if (h > (depth.get(sg) || 0)) depth.set(sg, h); };
+    if (eff > 0) net.nodes.forEach(n => {
+      const Q = (eff * n.acc) / 3600;
+      if (n.dseg) {
+        const S = Math.max(0.003, (n.z - n.down.z) / n.dseg.len);
+        put(n.dseg, Math.min(1.2, Math.pow((Q * o.n) / (n.dseg.w * Math.sqrt(S)), 0.6)));
+      } else if (n.nb.length) {
+        // Past joy: suv hajmi atrofdagi koʻcha boʻlaklariga yoyiladi (1 soat ichida)
+        const V = eff * n.acc, areaS = n.nb.reduce((t, q) => t + q.sg.len * q.sg.w, 0);
+        const h = Math.min(1.2, V / Math.max(1, areaS) * 0.35);
+        n.nb.forEach(q => put(q.sg, h));
+      }
+    });
+    const segs = [], byName = new Map();
+    depth.forEach((h, sg) => {
+      if (h < 0.05) return;
+      const fromA = sg.a.z >= sg.b.z;                                         // chiziq oqim yoʻnalishida
+      segs.push({ c: fromA ? [[sg.a.lon, sg.a.lat], [sg.b.lon, sg.b.lat]] : [[sg.b.lon, sg.b.lat], [sg.a.lon, sg.a.lat]], d: +h.toFixed(2), w: sg.w });
+      if (h >= 0.1 && sg.name) { const v = byName.get(sg.name) || { name: sg.name, len: 0, max: 0, at: null }; v.len += sg.len; if (h > v.max) { v.max = h; v.at = [(sg.a.lat + sg.b.lat) / 2, (sg.a.lon + sg.b.lon) / 2]; } byName.set(sg.name, v); }
+    });
+    const streets = [...byName.values()].map(v => Object.assign(v, { len: Math.round(v.len), max: +v.max.toFixed(2) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
+    // Suv yetadigan binolar: 20 sm+ suvli koʻchadan 20 m gacha
+    const wetGrid = new Map(), k20 = (x, y) => Math.floor(x / 40) + ':' + Math.floor(y / 40);
+    depth.forEach((h, sg) => { if (h < 0.2) return; const steps = Math.max(1, Math.round(sg.len / 15)); for (let t = 0; t <= steps; t++) { const x = sg.a.x + (sg.b.x - sg.a.x) * t / steps, y = sg.a.y + (sg.b.y - sg.a.y) * t / steps; const k = k20(x, y); (wetGrid.get(k) || wetGrid.set(k, []).get(k)).push([x, y]); } });
+    const near = (x, y) => { for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const L = wetGrid.get((Math.floor(x / 40) + di) + ':' + (Math.floor(y / 40) + dj)); if (L && L.some(q => Math.hypot(q[0] - x, q[1] - y) < 20)) return true; } return false; };
+    const blds = (NX.buildings.get() || []).filter(b => { const [x, y] = G.xy(b.c[0], b.c[1]); return near(x, y); });
+    const len10 = [...depth.entries()].filter(([, h]) => h >= 0.1).reduce((t, [sg]) => t + sg.len, 0);
+    return { rain: rainMm, drain: o.drainMm, segs, streets, km: +(len10 / 1000).toFixed(1), buildings: blds.length, wetIds: new Set(blds.map(b => b.id)), critical: blds.filter(b => /school|kindergarten|hospital|clinic/.test(b.kind)).map(b => b.name || ({ school: 'maktab', kindergarten: 'bogʻcha', hospital: 'shifoxona', clinic: 'poliklinika' })[b.kind]).slice(0, 10), mode: 'street' };
+  }
+
   const cellPoly = (c, step) => { const [x, y] = G.xy(c.lat, c.lon), h = step / 2; return [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h], [x - h, y - h]].map(q => { const ll = G.ll(q[0], q[1]); return [ll[1], ll[0]]; }); };
 
   // ---------- Quyosh energiyasi: tomlar ----------
@@ -213,5 +306,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { dem, rain, solarYear, flood, scenario, hydro, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { dem, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();

@@ -62,7 +62,8 @@
         if (!S.reviewStarted) { S.reviewStarted = true; review(); }
         // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
         // Prognozdagi yomgʻir boʻyicha qaysi koʻchalarda suv toʻplanishi (relyef saqlangan boʻlsa)
-        const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = NX.twin.scenario(T.dem, S.model, T.rain.d24, { drainMm: NX.systems.get('sewer') ? 15 : 10 }); if (S.tab === 'map') renderKeepScroll(); };
+        const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = rainScen(T.rain.d24); if (S.tab === 'map') renderKeepScroll(); };
+        NX.bigStore.get('roads:v1').then(R => { if (R && R.list) { twinState().roads = R.list; alertScen(); } });
         NX.twin.rain().then(r => { twinState().rain = r; alertScen(); }).catch(() => {});
         NX.bigStore.get('dem:v2').then(D => { if (D && D.z && !twinState().flood) { twinState().dem = D; twinState().flood = NX.twin.flood(D, S.model); alertScen(); } });
       });
@@ -203,6 +204,8 @@
     draw();
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
+    // Butun shahar koʻchalari — suv koʻchalar boʻylab hisoblanadi va chiziladi
+    try { T.roads = await NX.twin.roads(step); } catch (e) { T.roadsErr = e.message; }
     await Promise.all(jobs);
     T.busy = null; T.loading = false;
     draw(); fin();
@@ -211,12 +214,16 @@
   function twinRain(mm) {
     const T = twinState();
     if (!T.dem) return null;
-    const drain = NX.systems.get('sewer') ? 15 : 10;
-    T.scen = NX.twin.scenario(T.dem, S.model, mm, { drainMm: drain });
+    T.scen = rainScen(mm);
     NX.map3d.setMode('flood'); NX.map3d.set({ scen: T.scen });
-    const deep = T.scen.cells.slice().sort((a, b) => b.depth - a.depth)[0];
-    if (deep) NX.map3d.flyTo(deep.lat, deep.lon, 15);
+    const top = T.scen.streets && T.scen.streets[0];
+    if (top && top.at) NX.map3d.flyTo(top.at[0], top.at[1], 15.5);
     return T.scen;
+  }
+  // Koʻchalar yuklangan boʻlsa — suv koʻchalar boʻylab; aks holda relyef kataklari boʻyicha
+  function rainScen(mm) {
+    const T = twinState(), drain = NX.systems.get('sewer') ? 15 : 10;
+    return T.roads ? NX.twin.streetScenario(T.dem, T.roads, mm, { drainMm: drain }) : NX.twin.scenario(T.dem, S.model, mm, { drainMm: drain });
   }
   function twinFacts(extra) {
     const T = twinState(), b = T.buildings || [], lv = n => b.filter(x => !x.est && x.levels >= n).length;
@@ -228,7 +235,7 @@
       kanalizatsiya_xaritasi: NX.systems.get('sewer') ? 'yuklangan' : 'yuklanmagan (sigʻim 10 mm deb olingan)',
     }, extra || {});
   }
-  const scenFacts = s => ({ yomgir_mm: s.rain, kanalizatsiya_olib_ketadi_mm: s.drain, suv_ostida_ga: s.areaHa, koʻchalar: s.streets.slice(0, 10).map(x => ({ koʻcha: x.name, chuqurlik_sm: Math.round(x.max * 100), uzunlik_m: x.len })), binolar_suv_ostida: s.buildings, maktab_shifoxona: s.critical });
+  const scenFacts = s => ({ yomgir_mm_1_soatda: s.rain, kanalizatsiya_olib_ketadi_mm_soat: s.drain, [s.mode === 'street' ? 'suv_10sm_dan_chuqur_koʻchalar_km' : 'suv_ostida_ga']: s.mode === 'street' ? s.km : s.areaHa, koʻchalar: s.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })), suv_yetadigan_binolar: s.buildings, maktab_shifoxona: s.critical, hisob: s.mode === 'street' ? 'koʻchalar boʻylab oqim (OSM koʻchalari + SRTM relyef, Manning)' : 'relyef kataklari' });
   async function twinAsk(q) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -245,10 +252,10 @@
     if (rainQ && twinState().dem) {
       const mm = mmM ? parseFloat(mmM[1].replace(',', '.')) : /sel|juda kuchli/.test(n) ? 80 : /kuchli|jala/.test(n) ? 50 : 30;
       C.busy = `${mm} mm yomgʻir hisoblanmoqda`; renderKeepScroll();
-      const variants = [...new Set([Math.round(mm / 2), mm, mm * 2])].filter(x => x > 0).map(x => scenFacts(NX.twin.scenario(twinState().dem, S.model, x, { drainMm: NX.systems.get('sewer') ? 15 : 10 })));
+      const variants = [...new Set([Math.round(mm / 2), mm, mm * 2])].filter(x => x > 0).map(x => scenFacts(rainScen(x)));
       const sc = twinRain(mm);
       extra = { savoldagi_stsenariy: scenFacts(sc), solishtirish_uchun: variants };
-      local = `**${mm} mm yomgʻirda** ~${sc.areaHa} ga suv ostida qoladi, ${sc.buildings} ta bino.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
+      local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
@@ -1192,7 +1199,7 @@
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;
-        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
+        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && !twinState().scen && twinState().dem) twinRain(30); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
         case 'twin-rain': { const sc = twinRain(+b.dataset.mm); if (sc) renderKeepScroll(); else toast('Relyef hali yuklanmadi.', 'warn'); break; }
         case 'twin-ask': twinAsk(b.dataset.q); break;

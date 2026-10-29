@@ -17,12 +17,13 @@
   const wetCells = () => (data.scen ? data.scen.cells : data.flood ? data.flood.hot : []);
   function buildingsGeo() {
     const ghi = data.ghi && data.ghi.kwh;
-    wetSet = mode === 'flood' ? new Set(wetCells().map(c => cellKey([c.lat, c.lon]))) : null;
+    const street = data.scen && data.scen.mode === 'street';
+    wetSet = mode === 'flood' && !street ? new Set(wetCells().map(c => cellKey([c.lat, c.lon]))) : null;
     return { type: 'FeatureCollection', features: data.buildings.map(b => {
       const kwh = ghi ? NX.twin.roofKwh(b, ghi) : 0;
       let col = colorHeight(b.levels);
       if (mode === 'solar') col = colorSolar(kwh);
-      if (mode === 'flood') col = wetSet && wetSet.has(cellKey(b.c)) ? '#1d4ed8' : '#e2e8f0';
+      if (mode === 'flood') col = street ? (data.scen.wetIds.has(b.id) ? '#60a5fa' : '#e2e8f0') : wetSet && wetSet.has(cellKey(b.c)) ? '#1d4ed8' : '#e2e8f0';
       if (mode === 'plan' && data.plan && data.plan.shaded.includes(b)) col = '#475569';
       if (mode === 'quake') col = /school|kindergarten|hospital|clinic/.test(b.kind) ? '#dc2626' : b.levels >= 5 ? '#f97316' : b.levels >= 3 ? '#fbbf24' : '#cbd5e1';
       return { type: 'Feature', properties: { h: b.height, col, id: b.id, kwh }, geometry: { type: 'Polygon', coordinates: [b.ring] } };
@@ -30,8 +31,13 @@
   }
   // Suv chuqurligi rangi: <30 sm och, 30–60 sm, >60 sm toʻq koʻk
   const depthCol = d => (d >= 0.6 ? '#1e3a8a' : d >= 0.3 ? '#2563eb' : '#60a5fa');
+  // Koʻchalardagi suv — chiziqlar (oqim yoʻnalishida), chuqurlik: d (m)
+  function waterGeo() {
+    if (mode !== 'flood' || !data.scen || data.scen.mode !== 'street') return { type: 'FeatureCollection', features: [] };
+    return { type: 'FeatureCollection', features: data.scen.segs.map(s => ({ type: 'Feature', properties: { d: s.d, w: s.w }, geometry: { type: 'LineString', coordinates: s.c } })) };
+  }
   function floodGeo() {
-    if (mode !== 'flood' || !(data.scen || data.flood)) return { type: 'FeatureCollection', features: [] };
+    if (mode !== 'flood' || !(data.scen || data.flood) || (data.scen && data.scen.mode === 'street')) return { type: 'FeatureCollection', features: [] };
     const step = (data.scen || data.flood).step;
     return { type: 'FeatureCollection', features: wetCells().map(c => ({ type: 'Feature', properties: { c: data.scen ? depthCol(c.depth) : '#3b82f6', o: data.scen ? 0.65 : 0.25 + 0.4 * (c.risk || 0) }, geometry: { type: 'Polygon', coordinates: [NX.twin.cellPoly(c, step)] } })) };
   }
@@ -57,6 +63,16 @@
       map.on('load', () => {
         map.addSource('flood', { type: 'geojson', data: floodGeo() });
         map.addLayer({ id: 'flood', type: 'fill', source: 'flood', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': ['get', 'o'] } });
+        // Koʻchalardagi suv: yorugʻ yoyilish + chuqurlik rangidagi oʻzak + oqim yoʻnalishida harakatlanuvchi yaltirash
+        map.addSource('water', { type: 'geojson', data: waterGeo() });
+        const wz = (k) => ['interpolate', ['linear'], ['zoom'], 13, ['*', k * 0.35, ['+', 1, ['*', 6, ['get', 'd']]]], 17, ['*', k, ['+', 1, ['*', 6, ['get', 'd']]]]];
+        map.addLayer({ id: 'water-glow', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#38bdf8', 'line-width': wz(5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 8], 'line-opacity': 0.45 } });
+        map.addLayer({ id: 'water', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['interpolate', ['linear'], ['get', 'd'], 0.05, '#7dd3fc', 0.3, '#2563eb', 0.6, '#1e3a8a'], 'line-width': wz(2.4), 'line-opacity': 0.9 } });
+        map.addLayer({ id: 'water-flow', type: 'line', source: 'water', paint: { 'line-color': '#e0f2fe', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.8, 17, 2.2], 'line-opacity': 0.75, 'line-dasharray': [0, 4, 3] } });
+        // Oqim effekti: shtrixlar oqim yoʻnalishida suriladi
+        const DASH = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
+        let di = 0;
+        setInterval(() => { if (mode === 'flood' && map.getLayer('water-flow') && !document.getElementById('map3d').hidden) { di = (di + 1) % DASH.length; map.setPaintProperty('water-flow', 'line-dasharray', DASH[di]); } }, 90);
         map.on('moveend', () => { if (data.onView && map.getZoom() >= 14.3) { const b = map.getBounds(); data.onView({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }); } });
         map.addSource('bld', { type: 'geojson', data: buildingsGeo() });
         map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: { 'fill-extrusion-color': ['get', 'col'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.88 } });
@@ -83,6 +99,7 @@
     if (!map || !map.getSource('bld')) return;
     map.getSource('bld').setData(buildingsGeo());
     map.getSource('flood').setData(floodGeo());
+    if (map.getSource('water')) map.getSource('water').setData(waterGeo());
     map.getSource('plan').setData(planGeo());
   }
   async function show(el, d) {
