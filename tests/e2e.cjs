@@ -703,6 +703,23 @@ async function clickStreet(page, name) {
   // Shahar tizimlari: xaritani yuklash (barcha xodimlarga), xaritada koʻrinadi, hudud tahliliga qoʻshiladi
   await p8.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
   await p8.click('.tabs [data-tab=systems]');
+  // Kamera devori (xarita ustida): Samarqand kameralari bor — namuna belgisi yoʻq
+  await p8.click('.tabs [data-tab=map]');
+  await p8.waitForFunction(() => NX.camwall.items().length > 0, null, { timeout: 15000 });
+  ok('Kamera devori xaritada: Samarqand kameralari, namuna belgisisiz', (await p8.isVisible('#camWall')) && (await p8.$$('#camWall .cw-cam')).length === 2 && !(await p8.$('#camWall .cw-sample')) && /SAMARQAND/.test(await p8.textContent('#camWall')));
+  if (process.env.SHOT12) await p8.screenshot({ path: process.env.SHOT12 });
+  await p8.click('.tabs [data-tab=ai]');
+  await p8.fill('#chat textarea[name=q]', 'yarim yozilgan savol');
+  await p8.evaluate(() => document.querySelector('.tabs [data-tab=ai]').click());
+  ok('Panel qayta chizilganda yozilayotgan matn oʻchmaydi', (await p8.inputValue('#chat textarea[name=q]')) === 'yarim yozilgan savol');
+  await p8.fill('#chat textarea[name=q]', '');
+  await p8.click('.tabs [data-tab=map]');
+  await p8.click('#camWall .cw-cam >> nth=0');
+  await p8.waitForSelector('#camDlg .cw-big', { timeout: 5000 });
+  ok('Kamera bosilsa kattalashadi, AI tahlil tugmasi bor', !!(await p8.$('#camDlg [data-cw=ai]')));
+  await p8.click('#camDlg [data-cw=close]');
+  await p8.click('.tabs [data-tab=systems]');
+  ok('Kamera devori boshqa boʻlimlarda yashiriladi', !(await p8.isVisible('#camWall')));
   // Ochiq vebkameralar (Windy) — avtomatik topiladi, xaritada, AI kadrni koʻradi
   await p8.waitForFunction(() => NX.state.webcams && NX.state.webcams.list && !NX.state.webcams.busy, null, { timeout: 15000 });
   await p8.waitForFunction(() => document.querySelectorAll('.leaflet-marker-icon.sysmk').length >= 2, null, { timeout: 5000 }).catch(() => {});
@@ -739,7 +756,7 @@ async function clickStreet(page, name) {
   const img0 = px.image.length;
   await p8.fill('#twinChat textarea[name=tq]', 'Shu koʻrinishda 50 mm yomgʻir yogʻsa qanday boʻlishini rasmini chiz');
   await p8.click('#twinChat form button');
-  await p8.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length >= 2, null, { timeout: 240000 });
+  await p8.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length >= 2, null, { timeout: 240000 }).catch(async e => { console.log('DBG', await p8.evaluate(() => JSON.stringify({ c: NX.state.twinChat, open: !!document.querySelector('dialog[open]'), dlg: [...document.querySelectorAll('dialog[open]')].map(d => d.id) }))); throw e; });
   const im = px.image.slice(img0)[0];
   ok('3D egizak chati: “rasm chiz” — 3D koʻrinish asosida AI rasm chatda', im && /^data:image\/png/.test(im.plan || '') && !!(await p8.$('#twinChat .vgen img')), im ? 'prompt: ' + String(im.prompt).slice(0, 60) : 'soʻrov yoʻq');
   await p8.click('.tabs [data-tab=map]');

@@ -60,6 +60,8 @@
       NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); }, () => {}).then(() => {
         // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta): Mapillary + AI
         if (!S.reviewStarted) { S.reviewStarted = true; review(); }
+        // Xarita ustidagi kamera devori
+        NX.camwall.init(); NX.camwall.show(S.tab === 'map');
         // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
         // Prognozdagi yomgʻir boʻyicha qaysi koʻchalarda suv toʻplanishi (relyef saqlangan boʻlsa)
         const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = rainScen(T.rain.d24); if (S.tab === 'map') renderKeepScroll(); };
@@ -111,7 +113,11 @@
     else html = V.report(S);
     // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
     const open = new Set([...panel.querySelectorAll('details[open] > summary')].map(x => x.textContent));
+    // Yozilayotgan savol qayta chizishda oʻchib ketmasin (matn va kursor saqlanadi)
+    const typed = {}, act = document.activeElement, focusName = act && act.tagName === 'TEXTAREA' && panel.contains(act) ? act.name : null;
+    panel.querySelectorAll('textarea[name]').forEach(t => { if (t.value) typed[t.name] = [t.value, t.selectionStart]; });
     panel.innerHTML = html;
+    Object.keys(typed).forEach(k => { const t = panel.querySelector(`textarea[name="${k}"]`); if (t && !t.value && !t.disabled) { t.value = typed[k][0]; if (k === focusName) { t.focus(); t.setSelectionRange(typed[k][1], typed[k][1]); } } });
     if (open.size) panel.querySelectorAll('details > summary').forEach(x => { if (open.has(x.textContent)) x.parentElement.open = true; });
   }
 
@@ -183,6 +189,7 @@
     el3.hidden = t !== 'twin';
     $('.map-wrap').classList.toggle('twin-on', t === 'twin');
     if (t === 'twin') loadTwin();
+    NX.camwall.show(t === 'map');
     if (t === 'systems' && !S.webcams && NX.ai.available()) camLoad();
     if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
