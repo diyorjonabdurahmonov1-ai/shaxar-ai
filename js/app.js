@@ -136,6 +136,18 @@
   }
 
   // ---------- Belgilangan hudud (mahalla) ----------
+  const DESTS = [{ name: 'Registon', ll: [39.6547, 66.9758] }, { name: 'Siyob bozori', ll: [39.6619, 66.9805] }, { name: 'Aeroport', ll: [39.7005, 66.9838] }];
+  // Real vaqt: hududdan asosiy joylargacha hozirgi tirbandlik bilan yoʻl vaqti (Yandex)
+  async function loadAreaLive(A) {
+    if (!NX.view.yandexActive() || NX.yandex.mode() !== 'api') return;
+    A.live = { busy: true };
+    let list = null;
+    try { list = await NX.yandex.routeTimes(A.st.center, DESTS); } catch (e) { list = null; }
+    if (S.area !== A) return;
+    A.live = { busy: false, list: list || [], ts: Date.now() };
+    if (S.tab === 'map') renderKeepScroll();
+  }
+  const areaExtra = () => ({ level: S.yandexState && S.yandexState.level, weather: S.weather });
   function drawArea() {
     if (!S.model) return;
     if (S.tab !== 'map') setTab('map');
@@ -152,6 +164,7 @@
       NX.view.clearDeltas();
       NX.view.drawArea(poly, null, true);
       render(); focusPanel();
+      loadAreaLive(S.area);
     });
   }
   function clearArea() {
@@ -203,7 +216,7 @@
     }
     A.qaBusy = 'AI javob yozmoqda…';
     renderKeepScroll();
-    const r = await NX.ai.areaAsk(q, A, prev);
+    const r = await NX.ai.areaAsk(q, A, prev, areaExtra());
     A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
     A.qaBusy = null;
     if (S.tab === 'map' && S.area === A) { renderKeepScroll(); const c = $('#areaChat'); if (c) c.scrollIntoView({ block: 'end' }); }
@@ -620,7 +633,7 @@
       S.chat.busy = 'Hudud tahlil qilinmoqda…'; renderChat();
       const pb = NX.area.parseBuild(q);
       if (pb) { if (pb.flats) S.area.spec.flats = pb.flats; if (pb.floors) S.area.spec.floors = pb.floors; await runBuild(); }
-      const r = await NX.ai.areaAsk(q, S.area, S.chat.msgs.slice(-3, -1));
+      const r = await NX.ai.areaAsk(q, S.area, S.chat.msgs.slice(-3, -1), areaExtra());
       S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
       S.chat.busy = null; renderChat();
       return;

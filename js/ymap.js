@@ -53,18 +53,20 @@
     showDeltas(res, pcs) {
       if (!Y() || !M) return;
       pieces = pcs;
+      NX.yandex.setTraffic(false);
+      NX.map.updateLegend();
       const c = coll('delta'), d = res.deltas, max = Math.max(1, res.maxAbsDelta);
       for (let k = 0; k < d.length; k += 2) {
         const [wi, i0, i1] = pcs[d[k]], v = d[k + 1];
         c.add(line(M.ways[wi].ll.slice(i0, i1 + 1), { strokeColor: v > 0 ? COL.red : COL.green, strokeWidth: 3 + (9 * Math.abs(v)) / max, strokeOpacity: 0.9 }));
       }
     },
-    clearDeltas() { drop('delta'); },
+    clearDeltas() { drop('delta'); NX.yandex.setTraffic(true); NX.map.updateLegend(); },
     drawArea(poly, pt, fit) {
       if (!Y()) return;
       if (!poly) { drop('area'); return; }
       const c = coll('area');
-      c.add(new window.ymaps.Polygon([poly], {}, { fillColor: '#6366f122', strokeColor: '#6366f1', strokeWidth: 3, interactivityModel: 'default#silent' }));
+      c.add(new window.ymaps.Polygon([poly], {}, { fillColor: '#6366f1', fillOpacity: 0.14, strokeColor: '#4f46e5', strokeOpacity: 0.95, strokeWidth: 4, strokeStyle: 'shortdash', interactivityModel: 'default#silent' }));
       if (pt) c.add(mark(pt[0], pt[1], '🏢', '#6366f1', '', 'Rejalashtirilgan bino', 36));
       if (fit) fitTo(poly, 17);
     },

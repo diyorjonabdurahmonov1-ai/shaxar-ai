@@ -186,7 +186,8 @@
     if (!legendEl) return;
     const sw = (c, t) => `<span><i style="background:${c}"></i>${t}</span>`;
     if (deltaLayer) {
-      legendEl.innerHTML = `<b>Stsenariy taʼsiri ${NX.badge('bashorat')}</b>${sw(COL.red, 'Yuklama oshadi')}${sw(COL.green, 'Yuklama kamayadi')}<small>Qalinlik — oʻzgarish hajmi</small>`;
+      const ya = NX.view && NX.view.yandexActive && NX.view.yandexActive();
+      legendEl.innerHTML = `<b>Hisob natijasi</b>${sw(COL.red, 'Mashina koʻpayadi')}${sw(COL.green, 'Mashina kamayadi')}<small>Qalinlik — oʻzgarish hajmi${ya && !NX.yandex.trafficOn() ? '. Yandex probkalari vaqtincha yashirildi.' : ''}</small>${ya ? `<button type="button" class="btn xs" data-yatraffic>🚦 ${NX.yandex.trafficOn() ? 'Probkalarni yashirish' : 'Real probkalarni koʻrsatish'}</button>` : ''}`;
     } else if (!vis.traffic) {
       legendEl.innerHTML = '';
     } else if (colorMode.mode === 'forecast') {
@@ -200,6 +201,12 @@
     }
     legendEl.style.display = legendEl.innerHTML ? '' : 'none';
   }
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('[data-yatraffic]')) return;
+    NX.yandex.setTraffic(!NX.yandex.trafficOn());
+    updateLegend();
+  });
 
   function setVisible(k, on) {
     vis[k] = on;

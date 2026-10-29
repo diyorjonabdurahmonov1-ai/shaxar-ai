@@ -328,11 +328,12 @@
     const groups = {};
     st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
     const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
-    const R = A.res, busy = A.busy;
-    const list = (ico, title, arr, cls) => arr.length ? `<div class="alist ${cls}"><h4>${ico} ${title}</h4><ul>${arr.map(x => `<li>${E(x)}</li>`).join('')}</ul></div>` : '';
     const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
       : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div></div></div>`).join('');
-    const sugg = ['Bu hududning asosiy muammolari nima va nimadan boshlash kerak?', `${A.spec.flats} xonadonli ${A.spec.floors} qavatli dom qursak nima boʻladi?`, 'Bu yerga maktab yoki bogʻcha kerakmi?'];
+    const sugg = ['Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?', 'Bu hududning asosiy muammolari nima, nimadan boshlash kerak?', 'Bu yerga maktab yoki bogʻcha kerakmi?'];
+    const L = A.live, min = s => Math.max(1, Math.round(s / 60));
+    const live = !L ? '' : L.busy ? '<p class="small muted"><span class="spinner sm"></span> Yandex’dan hozirgi yoʻl vaqtlari olinmoqda…</p>'
+      : L.list && L.list.length ? `<h4>🚦 Hozir bu yerdan ${B('yandex')}</h4><ul class="live-routes">${L.list.map(r => `<li><b>${E(r.name)}gacha</b> ${min(r.jams)} daq <small class="muted">(probkasiz ${min(r.free)} daq · ${F.km(r.len)})</small>${r.jams > r.free * 1.3 ? ' <span class="tag r">tirband</span>' : ''}</li>`).join('')}</ul>` : '';
     return `
     <button class="back" data-act="area-clear">← Hududni olib tashlash</button>
     <section class="card">
@@ -345,37 +346,24 @@
         ${tile(st.crossings, 'piyoda oʻtish')}
         ${tile(st.schoolsIn.length, 'maktab/bogʻcha')}
       </div>
-      ${Object.keys(groups).length ? `<h4>Hududdagi muammolar</h4><ul class="street-probs">${Object.keys(groups).sort((a, b) => NX.PROBLEM[b].weight - NX.PROBLEM[a].weight).map(t => `<li><button class="link" data-act="problem" data-id="${groups[t][0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)} — ${groups[t].length} ta</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`).join('')}</ul>` : '<p class="small ok-text">Hududda avtomatik topilgan muammo yoʻq.</p>'}
-      ${st.streets.filter(s => s.name).length ? `<p class="small muted">Koʻchalar: ${st.streets.filter(s => s.name).slice(0, 8).map(s => E(s.name)).join(', ')}</p>` : ''}
+      ${Object.keys(groups).length ? `<ul class="street-probs">${Object.keys(groups).sort((a, b) => NX.PROBLEM[b].weight - NX.PROBLEM[a].weight).map(t => `<li><button class="link" data-act="problem" data-id="${groups[t][0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)} — ${groups[t].length} ta</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`).join('')}</ul>` : '<p class="small ok-text">Hududda avtomatik topilgan muammo yoʻq.</p>'}
+      ${live}
       <button class="btn xs" data-act="area-redraw">✏️ Qayta chizish</button>
     </section>
-    <section class="card" id="areaBuild">
-      <h3>🏗 Bu yerga bino qursak? ${B('bashorat')}</h3>
-      <form data-form="build" class="build-form">
-        <label>Xonadon <input name="flats" type="number" min="10" max="5000" step="10" value="${A.spec.flats}"></label>
-        <label>Qavat <input name="floors" type="number" min="1" max="40" value="${A.spec.floors}"></label>
-        <button class="btn primary" ${busy ? 'disabled' : ''}>Hisoblash</button>
-      </form>
-      <details class="more"><summary>Farazlar (oʻrtacha qiymatlar — oʻzgartirish mumkin)</summary>
-        <div class="assume">${Object.keys(NX.area.ASSUME).map(k => `<label>${E(NX.area.ASSUME[k].uz)}${NX.area.ASSUME[k].unit ? ` (${NX.area.ASSUME[k].unit})` : ''} <input data-assume="${k}" type="number" step="any" value="${A.A[k]}"></label>`).join('')}</div>
-      </details>
-      ${busy ? progress(busy) : R ? `
-        <div class="atiles">
-          ${tile('+' + F.int(R.b.residents), 'aholi')}${tile('~' + F.int(R.b.cars), 'mashina')}${tile('~' + F.int(R.b.peak), 'ertalab, mashina/soat')}
-          ${tile('~' + F.int(R.b.pupils), 'oʻquvchi')}${tile('~' + F.int(R.b.kids), 'bogʻcha yoshida')}${tile('~' + F.int(R.b.footprint) + ' m²', 'bino osti maydoni')}
-        </div>
-        <p class="small muted">Xaritada: <span class="tag r">qizil</span> — yuklama oshadi, <span class="tag g">yashil</span> — kamayadi. 🏢 — bino joyi.</p>
-        ${list('✅', 'Yutuqlar', R.ev.pros, 'pro')}${list('⚠️', 'Muammolar', R.ev.cons, 'con')}${list('🛠', 'Nima qilish kerak', R.ev.todo, 'todo')}${list('🔮', 'Kelajakda (5 yil)', R.ev.future, 'fut')}
-        <p class="small muted">Hisob taxminiy: farazlar va soddalashtirilgan harakat modeliga asoslangan.</p>` : '<p class="small muted">Xonadon va qavatni kiriting — aholi, mashinalar, koʻchalarga yuklama va kelajak hisoblanadi.</p>'}
-    </section>
     <section class="card chat" id="areaChat">
-      <h3>🤖 AI bilan tahlil</h3>
+      <h3>🤖 AI tahlil</h3>
+      <p class="small muted">Nima qurmoqchisiz yoki nimani bilmoqchisiz — yozing. AI hisoblaydi, natija xaritada koʻrinadi.</p>
       <div class="chat-log">${qa}${A.qaBusy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(A.qaBusy)}</div></div>` : ''}</div>
+      ${A.res ? '<p class="small muted">Xaritada: <span class="tag r">qizil</span> — shu bino sabab mashina koʻpayadigan koʻchalar, <span class="tag g">yashil</span> — kamayadigan. 🏢 — bino joyi.</p>' : ''}
       <div class="chips">${sugg.map(q => `<button class="chip" data-act="area-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
       <form data-form="area-q" class="chat-form">
-        <textarea name="aq" rows="2" placeholder="Masalan: 300 xonadonli 12 qavatli dom qursak?" aria-label="Savol" ${A.qaBusy ? 'disabled' : ''}></textarea>
+        <textarea name="aq" rows="2" placeholder="Masalan: 300 xonadonli 12 qavatli dom qursam nima boʻladi?" aria-label="Savol" ${A.qaBusy ? 'disabled' : ''}></textarea>
         <button class="btn primary" ${A.qaBusy ? 'disabled' : ''}>Yuborish</button>
       </form>
+      <details class="more"><summary>Hisobda ishlatilgan raqamlar</summary>
+        <p class="small muted">Bino hali qurilmagan, shuning uchun uning taʼsiri shu raqamlar bilan hisoblanadi. Samarqand uchun aniq raqamingiz boʻlsa — almashtiring.</p>
+        <div class="assume">${Object.keys(NX.area.ASSUME).map(k => `<label>${E(NX.area.ASSUME[k].uz)}${NX.area.ASSUME[k].unit ? ` (${NX.area.ASSUME[k].unit})` : ''} <input data-assume="${k}" type="number" step="any" value="${A.A[k]}"></label>`).join('')}</div>
+      </details>
     </section>`;
   }
 

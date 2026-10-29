@@ -203,7 +203,7 @@ function NXSimFactory() {
     };
     for (let i = 0; i < Z; i++) {
       const o = zn[i];
-      if (o < 0) { for (let j = 0; j < Z; j++) unassigned += D * M[i * Z + j]; if (ex) unassigned += ex.inQ[i]; continue; }
+      if (o < 0) { for (let j = 0; j < Z; j++) unassigned += D * M[i * Z + j]; if (ex) ex.list.forEach(b => { unassigned += b.inQ[i]; }); continue; }
       const cnt = dijkstra(o, t, on);
       for (let j = 0; j < Z; j++) {
         if (i === j) continue;
@@ -213,43 +213,52 @@ function NXSimFactory() {
         flow[dd] += q;
       }
       // Yangi binoga keladigan safarlar
-      if (ex && ex.inQ[i] > 0) { if (dist[ex.node] === Infinity) unassigned += ex.inQ[i]; else if (ex.node !== o) flow[ex.node] += ex.inQ[i]; }
+      if (ex) ex.list.forEach(b => { if (b.inQ[i] <= 0) return; if (dist[b.node] === Infinity) unassigned += b.inQ[i]; else if (b.node !== o) flow[b.node] += b.inQ[i]; });
       back(o, cnt);
     }
     // Yangi binodan chiqadigan safarlar
-    if (ex) {
-      const cnt = dijkstra(ex.node, t, on);
+    if (ex) ex.list.forEach(b => {
+      const cnt = dijkstra(b.node, t, on);
       for (let j = 0; j < Z; j++) {
-        const q = ex.outQ[j], dd = zn[j]; if (q <= 0) continue;
+        const q = b.outQ[j], dd = zn[j]; if (q <= 0) continue;
         if (dd < 0 || dist[dd] === Infinity) { unassigned += q; continue; }
-        if (dd !== ex.node) flow[dd] += q;
+        if (dd !== b.node) flow[dd] += q;
       }
-      back(ex.node, cnt);
-    }
+      back(b.node, cnt);
+    });
     return unassigned;
   }
 
-  // Yangi bino: eng yaqin tugun va safarlarning zonalar boʻyicha taqsimoti (gravitatsiya)
+  // Yangi bino: atrofdagi yoʻl tugunlari (4 tagacha, 300 m ichida) va safarlarning zonalar boʻyicha taqsimoti (gravitatsiya)
   function buildExtra(sc, on, zn) {
     const { out, inn, nx, ny, zones, Z } = N;
     const has = (adj, v) => { for (let it = adj.start[v]; it < adj.start[v + 1]; it++) if (on[adj.list[it]]) return true; return false; };
-    let node = -1, bd = Infinity;
+    const cand = [];
     for (let v = 0; v < N.nN; v++) {
-      if (N.compId[v] !== N.compBest) continue;
-      const d = Math.hypot(nx[v] - sc.at[0], ny[v] - sc.at[1]);
-      if (d < bd && has(out, v) && has(inn, v)) { bd = d; node = v; }
+      if (N.compId[v] !== N.compBest || !has(out, v) || !has(inn, v)) continue;
+      cand.push([v, Math.hypot(nx[v] - sc.at[0], ny[v] - sc.at[1])]);
     }
-    if (node < 0) return null;
-    const trips = Math.max(0, sc.trips || 0), outShare = sc.outShare == null ? 0.7 : sc.outShare;
-    const wo = new Float64Array(Z), wi = new Float64Array(Z);
-    let so = 0, si = 0;
-    for (let j = 0; j < Z; j++) {
-      if (zn[j] < 0) continue;
-      const d = Math.max(250, Math.hypot(zones[j].cx - nx[node], zones[j].cy - ny[node])), k = Math.exp(-d / BETA);
-      wo[j] = zones[j].A * k; wi[j] = zones[j].P * k; so += wo[j]; si += wi[j];
+    if (!cand.length) return null;
+    cand.sort((a, b) => a[1] - b[1]);
+    // Bir-biridan kamida 60 m uzoq tugunlar — safarlar bir nechta chiqish yoʻliga boʻlinadi
+    const pick = [cand[0]];
+    for (const c of cand) {
+      if (pick.length >= 4 || c[1] > Math.max(300, cand[0][1] + 100)) break;
+      if (pick.every(p => Math.hypot(nx[p[0]] - nx[c[0]], ny[p[0]] - ny[c[0]]) >= 60)) pick.push(c);
     }
-    for (let j = 0; j < Z; j++) { wo[j] = so > 0 ? (wo[j] / so) * trips * outShare : 0; wi[j] = si > 0 ? (wi[j] / si) * trips * (1 - outShare) : 0; }
-    return { node, dist: bd, outQ: wo, inQ: wi, trips };
+    const trips = Math.max(0, sc.trips || 0), outShare = sc.outShare == null ? 0.7 : sc.outShare, share = trips / pick.length;
+    const list = pick.map(([node]) => {
+      const wo = new Float64Array(Z), wi = new Float64Array(Z);
+      let so = 0, si = 0;
+      for (let j = 0; j < Z; j++) {
+        if (zn[j] < 0) continue;
+        const d = Math.max(250, Math.hypot(zones[j].cx - nx[node], zones[j].cy - ny[node])), k = Math.exp(-d / BETA);
+        wo[j] = zones[j].A * k; wi[j] = zones[j].P * k; so += wo[j]; si += wi[j];
+      }
+      for (let j = 0; j < Z; j++) { wo[j] = so > 0 ? (wo[j] / so) * share * outShare : 0; wi[j] = si > 0 ? (wi[j] / si) * share * (1 - outShare) : 0; }
+      return { node, outQ: wo, inQ: wi };
+    });
+    return { list, node: pick[0][0], dist: cand[0][1], trips };
   }
 
   function times(t, x, cap, on) {
@@ -362,7 +371,8 @@ function NXSimFactory() {
     const deltas = [];
     for (let p = 0; p < N.P; p++) {
       const d = scen.x[2 * p] + scen.x[2 * p + 1] - (base.x[2 * p] + base.x[2 * p + 1]);
-      if (Math.abs(d) >= 25) { deltas.push(p, Math.round(d)); maxAbs = Math.max(maxAbs, Math.abs(d)); }
+      // Yangi bino safarlari mahalla koʻchalariga ham tarqaladi — kichik oʻzgarishlar ham koʻrsatiladi
+      if (Math.abs(d) >= (sc && sc.type === 'build' ? 4 : 25)) { deltas.push(p, Math.round(d)); maxAbs = Math.max(maxAbs, Math.abs(d)); }
     }
     const pctTT = base.TT > 0 ? ((scen.TT - base.TT) / base.TT) * 100 : 0;
     return {

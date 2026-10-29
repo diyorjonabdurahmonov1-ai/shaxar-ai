@@ -234,7 +234,7 @@ Qoidalar:
 
   // **qalin** va qatorlarni xavfsiz HTML ga aylantirish
   function render(text) {
-    return NX.esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+    return NX.esc(text).replace(/^\s*[-*] /gm, '• ').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
   }
 
   // ---------- Muammoni real surat bilan tekshirish ----------
@@ -327,18 +327,20 @@ Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.
   }
 
   // ---------- Belgilangan hudud (mahalla) va qurilish ----------
-  const AREA = `Sen Samarqand hokimiyati uchun shaharsozlik va transport tahlilchisisan. Senga xaritada belgilangan hudud maʼlumotlari (OpenStreetMap — real),
-rejalashtirilgan qurilish hisobi (farazlar asosida — taxmin) va harakat simulyatsiyasi natijasi (taxmin) beriladi.
+  const AREA = `Sen Samarqand hokimiyati uchun shaharsozlik va transport tahlilchisisan. Senga xaritada belgilangan hudud haqida maʼlumot beriladi:
+“hudud_osm” — OpenStreetMap (real), “hozirgi_harakat_yandex” — Yandex’ning hozirgi tirbandlik bilan yoʻl vaqtlari (real, hozir),
+“qurilish_hisobi” va “harakat_hisobi” — rejalashtirilgan bino uchun harakat modeli hisobi (bino hali yoʻq, shuning uchun bu oʻlchov emas, hisob).
 Qoidalar:
-- Oʻzbek tilida (lotin), sodda va qisqa yoz. Savolga aniq javob ber.
-- Faqat JSON’dagi raqam va nomlardan foydalan; yoʻq narsani oʻylab topma. Real (OSM) va taxminni farqla.
-- Qurilish soʻralsa tuzilma: **Xulosa** (1–2 gap), **Yutuqlar**, **Muammolar**, **Nima qilish kerak** (ustuvorlik bilan), **Kelajakda (5 yil)**. Har biri 2–4 nuqta.
+- Oʻzbek tilida (lotin), sodda va qisqa yoz. Savolga aniq javob ber. “Taxmin” soʻzini takrorlama; faqat bir marta qisqa ayt: hisob modelga asoslangan.
+- Faqat JSON’dagi raqam va nomlardan foydalan; yoʻq narsani oʻylab topma. Avval real holatni ayt (OSM va Yandex), keyin hisob natijasini.
+- Foydalanuvchi xonadon yoki qavat sonini aytmagan boʻlsa — hisobda qaysi raqam olinganini ayt.
+- Qurilish soʻralsa tuzilma: **Hozir** (real holat: koʻchalar, bekatlar, maktablar, yoʻl vaqtlari), **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk tushadi — ular xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak** (ustuvorlik bilan), **Kelajakda (5 yil)**. Har biri 2–4 nuqta.
 - Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.`;
 
-  function areaFacts(A) {
-    const st = A.st, R = A.res, g = {};
+  function areaFacts(A, extra) {
+    const st = A.st, R = A.res, g = {}, X = extra || {};
     st.problems.forEach(p => { const k = NX.PROBLEM[p.type].short; g[k] = (g[k] || 0) + 1; });
-    const sim = r => r ? { yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0).slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
+    const sim = r => r ? { shahar_boʻyicha_yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0 && x.name).slice(0, 6).map(x => ({ koʻcha: x.name, qoʻshimcha_mashina_soat: Math.round(x.dv), toʻlishi_foiz: Math.round(x.scenVC * 100) })), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
     return {
       hudud_osm: {
         maydon_ga: +st.areaHa.toFixed(1), koʻchalar: st.streets.filter(s => s.name).slice(0, 10).map(s => s.name), koʻcha_km: +st.streetKm.toFixed(1),
@@ -346,17 +348,24 @@ Qoidalar:
         eng_yaqin_bekat_m: st.nearestStop && st.nearestStop.d, avtobus_liniyalari_400m: st.lines.slice(0, 12),
         svetoforlar: st.signals, piyoda_otishlar: st.crossings, maktab_bogcha_ichida: st.schoolsIn.length, maktab_bogcha_500m: st.schoolsNear.length, registondan_m: st.distCenter,
       },
-      qurilish_taxmin: R ? Object.assign({ farazlar: A.A }, R.b) : null,
-      simulyatsiya_ertalab: R ? sim(R.sim) : null,
+      hozirgi_harakat_yandex: A.live && A.live.list && A.live.list.length ? A.live.list.map(r => ({ qayerga: r.name, hozir_daqiqa: Math.round(r.jams / 60), probkasiz_daqiqa: Math.round(r.free / 60), km: +(r.len / 1000).toFixed(1) })) : 'olinmadi',
+      shahar_tirbandligi_yandex_ball: X.level != null ? X.level : null,
+      qurilish_hisobi: R ? Object.assign({ ishlatilgan_raqamlar: A.A }, R.b) : 'hali hisoblanmagan',
+      harakat_hisobi_ertalab: R ? sim(R.sim) : null,
       kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
       sayt_bahosi: R ? R.ev : null,
     };
   }
 
-  async function areaAsk(q, A, history) {
-    const facts = areaFacts(A);
+  async function areaAsk(q, A, history, extra) {
+    const facts = areaFacts(A, extra);
     const local = () => {
-      if (!A.res) return 'Hudud: ' + JSON.stringify(facts.hudud_osm.muammolar) + '. Bino taʼsirini koʻrish uchun “Hisoblash” tugmasini bosing.';
+      if (!A.res) {
+        const h = facts.hudud_osm, m = Object.keys(h.muammolar);
+        return [`**Hozir:** ${h.maydon_ga} ga, ${h.koʻcha_km} km koʻcha, ${h.bekatlar_ichida} ta bekat, ${h.svetoforlar} ta svetofor, ${h.maktab_bogcha_ichida} ta maktab/bogʻcha.`,
+          m.length ? `**Muammolar:** ${m.map(k => `${k} — ${h.muammolar[k]} ta`).join('; ')}.` : 'Avtomatik topilgan muammo yoʻq.',
+          'Bino taʼsirini bilish uchun yozing, masalan: “500 xonadonli 9 qavatli dom qursam?”'].join('\n\n');
+      }
       const ev = A.res.ev, sec = (t, a) => (a.length ? `**${t}**\n${a.map(x => '- ' + x).join('\n')}` : '');
       return [sec('Yutuqlar', ev.pros), sec('Muammolar', ev.cons), sec('Nima qilish kerak', ev.todo), sec('Kelajakda (5 yil)', ev.future)].filter(Boolean).join('\n\n');
     };

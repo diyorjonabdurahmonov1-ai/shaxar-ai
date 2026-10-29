@@ -80,10 +80,28 @@
     hl.forEach(p => ymap.geoObjects.add(p));
   }
 
+  // Probkalar qatlamini vaqtincha yashirish (hisob natijasi bilan chalkashmasligi uchun)
+  let trafficOn = true;
+  function setTraffic(on) {
+    trafficOn = !!on;
+    if (provider && ymap) provider.setMap(trafficOn ? ymap : null);
+  }
+  const mode = () => (key() && !forceWidget ? 'api' : 'widget');
+  // Real vaqt: hozirgi tirbandlik bilan yoʻl vaqti (Yandex marshrutlari)
+  async function routeTimes(from, dests) {
+    if (!window.ymaps || !window.ymaps.route || mode() !== 'api' || !ymap) return null;
+    const one = d => Promise.race([
+      window.ymaps.route([from, d.ll], { avoidTrafficJams: true }).then(r => ({ name: d.name, jams: r.getJamsTime(), free: r.getTime(), len: r.getLength() })),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
+    ]).catch(() => null);
+    return (await Promise.all(dests.map(one))).filter(Boolean);
+  }
+
   NX.yandex = {
+    setTraffic, trafficOn: () => trafficOn, routeTimes,
     key, load, show, hide, highlight, state,
     getMap: () => (active && ymap ? ymap : null),
     setPicker: fn => { picker = fn; },
     // Bosish chiziq ustiga tushsa ham tanlov rejimi ishlasin
-    takePick: (lat, lon) => { if (!picker) return false; const f = picker; picker = null; f(lat, lon); return true; }, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
+    takePick: (lat, lon) => { if (!picker) return false; const f = picker; picker = null; f(lat, lon); return true; }, isActive: () => active, mode };
 })();
