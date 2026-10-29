@@ -23,7 +23,7 @@
       const kwh = ghi ? NX.twin.roofKwh(b, ghi) : 0;
       let col = colorHeight(b.levels);
       if (mode === 'solar') col = colorSolar(kwh);
-      if (mode === 'flood') col = street ? (data.scen.wetIds.has(b.id) ? '#60a5fa' : '#e2e8f0') : wetSet && wetSet.has(cellKey(b.c)) ? '#1d4ed8' : '#e2e8f0';
+      if (mode === 'flood') col = street && data.scen.wetIds.has(b.id) ? '#60a5fa' : '#e2e8f0';
       if (mode === 'plan' && data.plan && data.plan.shaded.includes(b)) col = '#475569';
       if (mode === 'quake') col = /school|kindergarten|hospital|clinic/.test(b.kind) ? '#dc2626' : b.levels >= 5 ? '#f97316' : b.levels >= 3 ? '#fbbf24' : '#cbd5e1';
       return { type: 'Feature', properties: { h: b.height, col, id: b.id, kwh }, geometry: { type: 'Polygon', coordinates: [b.ring] } };
@@ -37,7 +37,8 @@
     return { type: 'FeatureCollection', features: data.scen.segs.map(s => ({ type: 'Feature', properties: { d: s.d, w: s.w }, geometry: { type: 'LineString', coordinates: s.c } })) };
   }
   function floodGeo() {
-    if (mode !== 'flood' || !(data.scen || data.flood) || (data.scen && data.scen.mode === 'street')) return { type: 'FeatureCollection', features: [] };
+    // Kvadrat kataklar koʻrsatilmaydi — suv faqat koʻchalar boʻylab (stsenariy tanlanganda)
+    if (true) return { type: 'FeatureCollection', features: [] };
     const step = (data.scen || data.flood).step;
     return { type: 'FeatureCollection', features: wetCells().map(c => ({ type: 'Feature', properties: { c: data.scen ? depthCol(c.depth) : '#3b82f6', o: data.scen ? 0.65 : 0.25 + 0.4 * (c.risk || 0) }, geometry: { type: 'Polygon', coordinates: [NX.twin.cellPoly(c, step)] } })) };
   }

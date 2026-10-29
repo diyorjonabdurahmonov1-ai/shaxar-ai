@@ -146,7 +146,9 @@ async function clickStreet(page, name) {
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');
-  ok('Toshqin rejimi: koʻchalardagi suv xaritada (30 mm)', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length > 0));
+  ok('Toshqin rejimi: yomgʻir tanlanmaguncha xaritada kvadrat ham, suv ham yoʻq; koʻrsatma bor', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length === 0 && NX.map3d.map().getSource('flood')._data.features.length === 0) && /Yomgʻir miqdorini tanlang/.test(await page.textContent('#panel')));
+  const noNodes = await page.evaluate(() => { const T = NX.state.twin, R = T.roads.map(w => Object.assign({}, w, { nodes: w.ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)) })); const sc = NX.twin.streetScenario(T.dem, R, 80); return sc.segs.length; });
+  ok('Koʻchalar tarmogʻi tugun raqamlarisiz ham tuziladi (koordinata boʻyicha)', noNodes > 0, String(noNodes));
   // 2D fizik model (LISFLOOD-FP): vaqt boʻyicha, koʻchalar boʻylab
   await page.click('[data-act=twin-rain][data-mm="80"]');
   await page.waitForFunction(() => NX.state.twin.dyn && !NX.state.twin.dynBusy, null, { timeout: 180000 });

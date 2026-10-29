@@ -278,21 +278,35 @@
 
   // ---------- Koʻchalar boʻylab suv (shahar suvi asosan koʻchalar orqali oqadi) ----------
   const ROAD_W = { trunk: 22, primary: 20, secondary: 16, tertiary: 12, unclassified: 9, residential: 8, living_street: 6 };
+  // Butun shahar koʻchalari — 4 qismga boʻlib (katta soʻrov serverda vaqt tugashi bilan uzilmasin); “out body” — tugun raqamlari bilan (tarmoq uchun shart)
   async function roads(onStep) {
-    const hit = await NX.bigStore.get('roads:v1');
+    const hit = await NX.bigStore.get('roads:v2');
     if (hit && hit.list && hit.list.length && Date.now() - hit.ts < 30 * 86400e3) return hit.list;
-    onStep && onStep('Butun shahar koʻchalari yuklanmoqda (bir marta)');
-    const q = `[out:json][timeout:120];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${CITY.s},${CITY.w},${CITY.n},${CITY.e});out tags geom qt;`;
-    for (const url of NX.config.overpassMirrors) {
-      try {
-        const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 120000);
-        if (!r.ok || !r.data || !r.data.elements) continue;
-        const list = r.data.elements.filter(e => e.type === 'way' && e.geometry && e.geometry.length > 1).map(e => ({ id: e.id, hw: e.tags.highway, name: e.tags['name:uz'] || e.tags.name || '', nodes: e.nodes, ll: e.geometry.map(g => [+g.lat.toFixed(6), +g.lon.toFixed(6)]) }));
-        NX.bigStore.set('roads:v1', { ts: Date.now(), list });
-        return list;
-      } catch (e) { /* keyingi server */ }
+    const mlat = (CITY.s + CITY.n) / 2, mlon = (CITY.w + CITY.e) / 2, parts = [[CITY.s, CITY.w, mlat, mlon], [CITY.s, mlon, mlat, CITY.e], [mlat, CITY.w, CITY.n, mlon], [mlat, mlon, CITY.n, CITY.e]];
+    const seen = new Set(), list = [];
+    for (let k = 0; k < parts.length; k++) {
+      onStep && onStep(`Butun shahar koʻchalari yuklanmoqda (bir marta): ${k + 1}/4`);
+      const [s, w, n, e] = parts[k];
+      const q = `[out:json][timeout:90];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${s},${w},${n},${e});out body geom qt;`;
+      let got = null;
+      for (const url of NX.config.overpassMirrors) {
+        try {
+          const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 100000);
+          if (r.ok && r.data && r.data.elements) { got = r.data.elements; break; }
+        } catch (err) { /* keyingi server */ }
+      }
+      if (!got) throw new Error(`Shahar koʻchalari yuklanmadi (Overpass, ${k + 1}/4 qism). Keyinroq qayta urinib koʻring.`);
+      got.forEach(e => {
+        if (e.type !== 'way' || !e.geometry || e.geometry.length < 2 || seen.has(e.id)) return;
+        seen.add(e.id);
+        const ll = e.geometry.map(g => [+g.lat.toFixed(6), +g.lon.toFixed(6)]);
+        // Tugun raqami boʻlmasa — koordinatadan (chorrahalarda bir xil chiqadi)
+        const nodes = Array.isArray(e.nodes) && e.nodes.length === ll.length ? e.nodes : ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5));
+        list.push({ id: e.id, hw: e.tags && e.tags.highway, name: (e.tags && (e.tags['name:uz'] || e.tags.name)) || '', nodes, ll });
+      });
     }
-    throw new Error('Shahar koʻchalari yuklanmadi (Overpass).');
+    NX.bigStore.set('roads:v2', { ts: Date.now(), list });
+    return list;
   }
   // Relyef qiymati nuqtada (bilinear)
   function zAt(D, lat, lon) {

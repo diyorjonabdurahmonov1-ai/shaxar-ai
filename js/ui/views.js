@@ -56,6 +56,8 @@
       <h3>🌧 Suv toshqini xavfi ${B('meteo')}</h3>
       ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
       ${fl ? `<p class="small">Relyef boʻyicha katta maydondan suv oqib keladigan va sekin oqadigan <b>${fl.basins}</b> ta joy bor. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
+        ${T.roadsErr ? `<p class="small warn-line">⚠️ ${E(T.roadsErr)}</p>` : ''}
+        ${!T.dyn && !T.dynBusy ? '<p class="small"><b>👇 Yomgʻir miqdorini tanlang</b> — shundan keyin xaritada suv koʻchalar boʻylab koʻrinadi. Tanlamaguncha xaritada suv koʻrsatilmaydi.</p>' : ''}
         <h4>⏱ 2D fizik model — suv vaqt boʻyicha</h4>
         ${T.climate ? `<p class="small muted">Taqqoslash uchun: 1991-yildan beri Samarqanddagi eng kuchli kunlik yogʻin — <b>${T.climate.top[0].p} mm</b> (${T.climate.top[0].t}); 20 mm dan koʻp yomgʻirli kunlar yiliga oʻrtacha ${F.num(T.climate.years.reduce((t, o) => t + o.wet20, 0) / T.climate.years.length, 1)} ta (ERA5).</p>` : ''}
         <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa</b> (bosing — suv qanday tarqalishi soatma-soat hisoblanadi, ~10 soniya):</p>

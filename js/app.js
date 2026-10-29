@@ -63,7 +63,7 @@
         // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
         // Prognozdagi yomgʻir boʻyicha qaysi koʻchalarda suv toʻplanishi (relyef saqlangan boʻlsa)
         const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = rainScen(T.rain.d24); if (S.tab === 'map') renderKeepScroll(); };
-        NX.bigStore.get('roads:v1').then(R => { if (R && R.list) { twinState().roads = R.list; alertScen(); } });
+        NX.bigStore.get('roads:v2').then(R => { if (R && R.list) { twinState().roads = R.list; alertScen(); } });
         NX.twin.rain().then(r => { twinState().rain = r; alertScen(); }).catch(() => {});
         NX.bigStore.get('dem:v2').then(D => { if (D && D.z && !twinState().flood) { twinState().dem = D; twinState().flood = NX.twin.flood(D, S.model); alertScen(); } });
       });
@@ -218,7 +218,7 @@
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
     // Butun shahar koʻchalari — suv koʻchalar boʻylab hisoblanadi va chiziladi
-    try { T.roads = await NX.twin.roads(step); } catch (e) { T.roadsErr = e.message; }
+    try { T.roads = await NX.twin.roads(step); T.roadsErr = null; } catch (e) { T.roadsErr = e.message; }
     await Promise.all(jobs);
     T.busy = null; T.loading = false;
     draw(); fin();
@@ -227,6 +227,7 @@
   function twinRain(mm) {
     const T = twinState();
     if (!T.dem) return null;
+    if (!T.roads) { toast(T.roadsErr || 'Shahar koʻchalari hali yuklanmadi.', 'warn'); return null; }
     T.scen = rainScen(mm);
     NX.map3d.setMode('flood'); NX.map3d.set({ scen: T.scen });
     const top = T.scen.streets && T.scen.streets[0];
@@ -330,7 +331,7 @@
   // Koʻchalar yuklangan boʻlsa — suv koʻchalar boʻylab; aks holda relyef kataklari boʻyicha
   function rainScen(mm) {
     const T = twinState(), drain = NX.systems.get('sewer') ? 15 : 10;
-    return T.roads ? NX.twin.streetScenario(T.dem, T.roads, mm, { drainMm: drain }) : NX.twin.scenario(T.dem, S.model, mm, { drainMm: drain });
+    return NX.twin.streetScenario(T.dem, T.roads || [], mm, { drainMm: drain });
   }
   function twinFacts(extra) {
     const T = twinState(), b = T.buildings || [], lv = n => b.filter(x => !x.est && x.levels >= n).length;
@@ -1335,7 +1336,7 @@
           NX.ai.webcamCheck(cam).then(t => { W.ai[cam.id] = { text: t }; }, e => { W.ai[cam.id] = { err: e.message }; }).then(renderKeepScroll);
           break;
         }
-        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood') { if (twinState().dyn) twinShowFrame(twinState().dynFrame); else if (!twinState().scen && twinState().dem) twinRain(30); } if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
+        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
