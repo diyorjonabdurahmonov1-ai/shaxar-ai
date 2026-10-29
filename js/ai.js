@@ -213,7 +213,7 @@ Qoidalar:
   }
   // Ulangan va ulanmagan shahar tizimlari (kameralar, elektr, gaz, suv, kanalizatsiya)
   function systemsFacts(area) {
-    const out = { transport: 'ulangan (Yandex real vaqt, OSM, Mapillary)' };
+    const out = { transport: 'ulangan (Yandex real vaqt, OSM, Mapillary)', ochiq_vebkameralar_windy: NX.webcams.get() ? NX.webcams.get().length + ' ta' : 'yuklanmagan' };
     NX.systems.KEYS.forEach(k => {
       const d = NX.systems.get(k), T = NX.SYSTEMS[k];
       if (!d) { out[T.uz] = 'ulanmagan — maʼlumot yoʻq'; return; }
@@ -309,6 +309,20 @@ Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.
     const messages = [{ role: 'system', content: VISION.replace('${sana}', list[0].when || 'nomaʼlum sana') + '\nBir nechta surat boʻlsa — ular bitta joyning turli tomonlari; hammasiga qarab xulosa qil.' },
       { role: 'user', content: [{ type: 'text', text: 'Joy haqida maʼlumot (JSON):\n' + JSON.stringify(facts) }].concat(list.slice(0, n).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }))) }];
     const r = await callOpenAI(userKey(), null, null, null, messages);
+    return r.text;
+  }
+
+  // Ochiq vebkamera kadri: hozirgi holat
+  const CAM = `Senga shahar vebkamerasidan olingan HOZIRGI kadr beriladi (Samarqand yoki uning atrofi). Oʻzbek tilida (lotin), 3–5 qisqa qatorda, faqat KOʻRINGAN narsani yoz:
+**Harakat:** mashinalar kam / oʻrtacha / koʻp; tirbandlik bormi
+**Ob-havo va yoʻl:** quruq / hoʻl / qor / suv toʻplangan; koʻrinish
+**Odamlar:** kam / oʻrtacha / gavjum
+**Favqulodda:** avariya, yongʻin, suv bosishi, yoʻl yopilgan — koʻrinsa ayt, boʻlmasa “koʻrinmayapti”
+Agar kadrda shahar koʻchasi koʻrinmasa (masalan, togʻ manzarasi) — shuni ayt.`;
+  async function webcamCheck(cam) {
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const messages = [{ role: 'system', content: CAM }, { role: 'user', content: [{ type: 'text', text: `Kamera: ${cam.title}${cam.city ? ', ' + cam.city : ''}. Vaqt: ${new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' })}.` }, { type: 'image_url', image_url: { url: cam.preview, detail: 'low' } }] }];
+    const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiLight, 'webcam');
     return r.text;
   }
 
@@ -531,5 +545,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

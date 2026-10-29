@@ -597,6 +597,7 @@ async function clickStreet(page, name) {
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 4 }) });
+    if (path === '/webcams') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ total: 2, source: 'Windy.com', items: [{ id: 101, title: 'Samarkand - Registan', city: 'Samarkand', lat: 39.6547, lon: 66.9757, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/101.jpg', detail: 'https://www.windy.com/webcams/101' }, { id: 102, title: 'Samarkand - Siab', city: 'Samarkand', lat: 39.6620, lon: 66.9810, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/102.jpg', detail: 'https://www.windy.com/webcams/102' }] }) });
     if (path.startsWith('/layers')) {
       const sys = path.split('/')[2];
       if (req.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify(sys ? lay.data[sys] : { items: lay.meta }) });
@@ -697,6 +698,15 @@ async function clickStreet(page, name) {
   // Shahar tizimlari: xaritani yuklash (barcha xodimlarga), xaritada koʻrinadi, hudud tahliliga qoʻshiladi
   await p8.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
   await p8.click('.tabs [data-tab=systems]');
+  // Ochiq vebkameralar (Windy) — avtomatik topiladi, xaritada, AI kadrni koʻradi
+  await p8.waitForFunction(() => NX.state.webcams && NX.state.webcams.list && !NX.state.webcams.busy, null, { timeout: 15000 });
+  await p8.waitForFunction(() => document.querySelectorAll('.leaflet-marker-icon.sysmk').length >= 2, null, { timeout: 5000 }).catch(() => {});
+  ok('Ochiq vebkameralar (Windy): topiladi, xaritada, Windy.com havolasi bilan', (await p8.$$('.cam img')).length === 2 && /Windy\.com/.test(await p8.textContent('.cams')) && (await p8.$$('.leaflet-marker-icon.sysmk')).length >= 2);
+  const camChat0 = px.chat.length;
+  await p8.click('[data-act=cam-ai] >> nth=0');
+  await p8.waitForFunction(() => NX.state.webcams.ai && NX.state.webcams.ai[101] && !NX.state.webcams.ai[101].busy, null, { timeout: 15000 });
+  const camReq = px.chat.slice(camChat0).find(b => /vebkamera/.test(b.messages[0].content));
+  ok('🤖 Vebkamera kadri AI’ga yuboriladi (arzon model)', camReq && camReq.model === 'gpt-6-luna' && camReq.messages[1].content.some(x => x.type === 'image_url' && /windy\.com/.test(x.image_url.url)));
   const c0 = await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center);
   const gas = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Gaz quvuri 1', diametr: '159 mm' }, geometry: { type: 'LineString', coordinates: [[c0[1] - 0.003, c0[0]], [c0[1] + 0.003, c0[0]]] } }] };
   await p8.setInputFiles('[data-sysfile=gas]', { name: 'gaz.geojson', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(gas)) });
@@ -706,8 +716,8 @@ async function clickStreet(page, name) {
   await p8.setInputFiles('[data-sysfile=camera]', { name: 'kameralar.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await p8.waitForFunction(() => NX.systems.get('camera'), null, { timeout: 10000 });
   if (process.env.SHOT5) await p8.screenshot({ path: process.env.SHOT5 });
-  await p8.waitForFunction(() => document.querySelectorAll('.leaflet-marker-icon.sysmk').length === 2, null, { timeout: 5000 }).catch(() => {});
-  ok('Kameralar CSV’dan yuklandi va xaritada koʻrinadi', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 2);
+  await p8.waitForFunction(() => document.querySelectorAll('.leaflet-marker-icon.sysmk').length === 4, null, { timeout: 5000 }).catch(() => {});
+  ok('Kameralar CSV’dan yuklandi va xaritada koʻrinadi', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 4);
   await p8.setInputFiles('[data-sysfile=water]', { name: 'suv.geojson', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [500000, 4400000] } }] })) });
   await p8.waitForFunction(() => /WGS84/.test(document.getElementById('toast').textContent), null, { timeout: 5000 });
   ok('Notoʻgʻri koordinatali fayl — tushunarli xato', !(await p8.evaluate(() => NX.systems.get('water'))));

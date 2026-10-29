@@ -4,6 +4,7 @@
    /photo-check — muammo joyining real suratini (Mapillary) AI koʻradi: svetofor / piyoda oʻtish bormi. Natija KV’da saqlanadi —
                   har bir joy faqat bir marta tekshiriladi (pul bir marta sarflanadi), natijani hamma foydalanuvchi koʻradi.
    /photo-checks — saqlangan barcha natijalar (GET).
+   /webcams — ochiq vebkameralar (Windy Webcams API; kalit — WINDY_KEY maxfiy oʻzgaruvchisida). Faqat egalari hammaga eʼlon qilgan kameralar.
    /layers — shahar tizimlari xaritalari (kameralar, elektr, gaz, suv, kanalizatsiya; GeoJSON). Oʻqish — hamma xodimlar,
              yuklash/oʻchirish — xodim kodi bilan (ADMIN_PIN maxfiy oʻzgaruvchisi).
    Muhim: bu xizmat hokimiyat xodimlari uchun. Sayt va Worker’ni Cloudflare Access (kirish faqat xodimlar emaili bilan) ortiga qoʻyish tavsiya etiladi.
@@ -23,7 +24,7 @@ const MAX_BODY_CHARS = 30000;
 const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
 const IMAGE_MODELS = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
 // Faqat Mapillary suratlari (Meta CDN) AI’ga koʻrsatiladi
-const PHOTO_OK = u => { try { const h = new URL(u); return h.protocol === 'https:' && /(^|\.)(fbcdn\.net|mapillary\.com)$/.test(h.hostname); } catch (e) { return false; } };
+const PHOTO_OK = u => { try { const h = new URL(u); return h.protocol === 'https:' && /(^|\.)(fbcdn\.net|mapillary\.com|windy\.com)$/.test(h.hostname); } catch (e) { return false; } };
 const limit = (key, max) => { const k = key + ':' + Math.floor(Date.now() / 3600000); const n = (hits.get(k) || 0) + 1; hits.set(k, n); if (hits.size > 5000) hits.clear(); return n > max; };
 // Xabar matni yoki [matn, surat] qismlari
 function cleanContent(c) {
@@ -53,7 +54,8 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
-    if (path === '/version') return json({ v: 6, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/webcams') return webcams(req, env, cors);
+    if (path === '/version') return json({ v: 7, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -298,4 +300,29 @@ async function layers(req, env, cors, okOrigin, path) {
   meta[sys] = { name: String(b.name || sys).slice(0, 120), n: b.geojson.features.length, ts: Date.now() };
   await env.CORRECTIONS.put('layers:meta', JSON.stringify(meta));
   return json({ items: meta }, 200, cors);
+}
+
+// ---------- Ochiq vebkameralar (Windy Webcams API v3) ----------
+let camCache = { ts: 0, key: '', body: null };
+async function webcams(req, env, cors) {
+  if (!env.WINDY_KEY) return json({ error: { code: 'no_windy_key', message: 'Serverda Windy kaliti (WINDY_KEY) sozlanmagan' } }, 501, cors);
+  const u = new URL(req.url), lat = +u.searchParams.get('lat') || 39.6547, lon = +u.searchParams.get('lon') || 66.9757, r = Math.min(250, +u.searchParams.get('r') || 60);
+  if (Math.abs(lat - 39.65) > 3 || Math.abs(lon - 66.97) > 3) return json({ error: { code: 'bad_item', message: 'Faqat Samarqand atrofi' } }, 400, cors);
+  const key = lat.toFixed(2) + ',' + lon.toFixed(2) + ',' + r;
+  // Windy bepul tarifida rasm havolalari ~10 daqiqa amal qiladi — 5 daqiqa kesh
+  if (camCache.body && camCache.key === key && Date.now() - camCache.ts < 5 * 60e3) return json(camCache.body, 200, cors);
+  const api = `https://api.windy.com/webcams/api/v3/webcams?nearby=${lat},${lon},${r}&include=location,images,urls,player&limit=50&lang=en`;
+  const w = await fetch(api, { headers: { 'x-windy-api-key': env.WINDY_KEY } });
+  const d = await w.json().catch(() => null);
+  if (!w.ok || !d) return json({ error: { code: 'windy_error', message: 'Windy javob bermadi (HTTP ' + w.status + ')' } }, 502, cors);
+  const list = (d.webcams || []).map(c => ({
+    id: c.webcamId, title: c.title, status: c.status, updated: c.lastUpdatedOn,
+    lat: c.location && c.location.latitude, lon: c.location && c.location.longitude, city: c.location && c.location.city,
+    preview: c.images && c.images.current && (c.images.current.preview || c.images.current.thumbnail),
+    detail: (c.urls && c.urls.detail) || ('https://www.windy.com/webcams/' + c.webcamId),
+    live: c.player && (c.player.live || c.player.day) || null,
+  })).filter(c => isFinite(c.lat) && isFinite(c.lon));
+  const body = { total: d.total || list.length, items: list, source: 'Windy.com' };
+  camCache = { ts: Date.now(), key, body };
+  return json(body, 200, cors);
 }

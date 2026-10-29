@@ -403,7 +403,7 @@
       const c = NX.SYSTEMS[sys].color, ico = NX.SYSTEMS[sys].icon;
       L.geoJSON(gj, {
         style: () => ({ color: c, weight: 3, opacity: 0.85, fillOpacity: 0.12 }),
-        pointToLayer: (f, ll) => sys === 'camera' || sys === 'power'
+        pointToLayer: (f, ll) => sys === 'camera' || sys === 'power' || sys === 'webcam'
           ? L.marker(ll, { icon: L.divIcon({ className: 'pmk sysmk', html: `<span style="--c:${c}">${ico}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
           : L.circleMarker(ll, { renderer, radius: 5, color: c, weight: 2, fillOpacity: 0.7 }),
         onEachFeature: (f, l) => l.bindPopup(sysPopup(sys, f), { maxWidth: 280 }),

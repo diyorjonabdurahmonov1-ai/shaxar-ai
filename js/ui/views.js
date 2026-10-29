@@ -172,12 +172,29 @@
       <ul class="alist2">${a.map(x => `<li class="al-${x.l}">${x.act ? `<button class="link" data-act="tab" data-tab="${x.act}">${E(x.t)}</button>` : E(x.t)} <small class="muted">· ${E(x.s)}</small></li>`).join('') || '<li class="al-i">Hodisa yoʻq.</li>'}</ul>
     </section>`;
   }
-  const sysState = k => (k === 'transport' ? ['on', 'Ulangan · real vaqt'] : NX.systems.get(k) ? ['map', `Xarita: ${NX.systems.get(k).stats.features} ta obyekt`] : ['off', 'Ulanmagan']);
+  const sysTiles = () => Object.keys(NX.SYSTEMS).filter(k => !NX.SYSTEMS[k].hidden);
+  const sysState = k => (k === 'camera' && !NX.systems.get(k) && NX.webcams.get() && NX.webcams.get().length ? ['map', `${NX.webcams.get().length} ta ochiq vebkamera`] : k === 'transport' ? ['on', 'Ulangan · real vaqt'] : NX.systems.get(k) ? ['map', `Xarita: ${NX.systems.get(k).stats.features} ta obyekt`] : ['off', 'Ulanmagan']);
   function systemsGrid() {
-    return `<section class="card"><h3>🏙 Shahar tizimlari</h3><div class="sys-grid">${Object.keys(NX.SYSTEMS).map(k => {
+    return `<section class="card"><h3>🏙 Shahar tizimlari</h3><div class="sys-grid">${sysTiles().map(k => {
       const S = NX.SYSTEMS[k], st = sysState(k);
       return `<button class="sys-tile ${st[0]}" data-act="tab" data-tab="systems" style="--c:${S.color}"><span class="sys-ico">${S.icon}</span><b>${E(S.uz)}</b><small>${st[1]}</small></button>`;
     }).join('')}</div></section>`;
+  }
+
+  // Ochiq vebkameralar (Windy): suratlar va AI tahlili
+  function webcamBox(S) {
+    const W = S.webcams || {}, list = W.list || [];
+    return `<div class="vpart"><b>🌐 Ochiq vebkameralar (Windy.com)</b>
+      ${W.busy ? '<p class="small muted"><span class="spinner sm"></span> Qidirilmoqda…</p>' : W.err ? `<p class="small bad-text">⚠️ ${E(W.err)}</p>` : W.list ? (list.length ? '' : '<p class="small">Samarqand atrofida (60 km) ochiq vebkamera topilmadi.</p>') : ''}
+      ${list.length ? `<p class="small">${list.length} ta kamera topildi (Samarqanddan 60 km gacha).</p><div class="cams">${list.map(c => { const a = (W.ai || {})[c.id] || {}; return `<div class="cam">
+        ${c.preview ? `<a href="${E(c.detail)}" target="_blank" rel="noopener"><img src="${E(c.preview)}" alt="${E(c.title)}" loading="lazy"></a>` : ''}
+        <div class="small"><b>${E(c.title)}</b>${c.city ? ` · ${E(c.city)}` : ''}<br><a href="${E(c.detail)}" target="_blank" rel="noopener">Windy.com ↗</a>${c.updated ? ` · <span class="muted">${E(new Date(c.updated).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }))}</span>` : ''}</div>
+        <div class="row-btns"><button class="btn xs" data-act="cam-fly" data-lat="${c.lat}" data-lon="${c.lon}">🗺 Xaritada</button>${c.preview ? `<button class="btn xs" data-act="cam-ai" data-id="${E(String(c.id))}" ${a.busy ? 'disabled' : ''}>🤖 Hozirgi kadrni tahlil qil</button>` : ''}</div>
+        ${a.busy ? '<p class="small muted"><span class="spinner sm"></span> AI koʻrmoqda…</p>' : a.err ? `<p class="small bad-text">⚠️ ${E(a.err)}</p>` : a.text ? `<div class="ai-text small">${NX.ai.render(a.text)}</div>` : ''}
+      </div>`; }).join('')}</div>` : ''}
+      <button class="btn xs" data-act="cam-load" ${W.busy ? 'disabled' : ''}>${W.list ? '🔄 Yangilash' : '🔍 Ochiq vebkameralarni topish'}</button>
+      <p class="small muted">Faqat egalari hammaga eʼlon qilgan kameralar (Windy katalogi). “Xavfsiz shahar” kameralari — rasmiy ruxsat bilan ulanadi.</p>
+    </div>`;
   }
 
   // ---------- Tizimlar boʻlimi ----------
@@ -188,7 +205,7 @@
       <h2>🏙 Shahar tizimlari</h2>
       <p class="small muted">Har bir tizim xaritasini bir marta yuklang (GeoJSON, KML yoki CSV) — u xaritada koʻrinadi, AI hudud tahlilida va savollarga javobda foydalanadi. Xodim kodi kiritilgan boʻlsa — barcha xodimlarga koʻrinadi.</p>
     </section>
-    ${Object.keys(NX.SYSTEMS).map(k => {
+    ${sysTiles().map(k => {
       const T = NX.SYSTEMS[k], d = NX.systems.get(k), st = sysState(k);
       if (k === 'transport') return `<section class="card sys-card" style="--c:${T.color}"><div class="prob-h"><span class="prob-ico">${T.icon}</span><div><b>${E(T.uz)}</b><small class="ok-text">✅ ${st[1]}</small></div></div>
         <p class="small"><b>Manbalar:</b> ${E(T.sources)}</p><p class="small"><b>AI nima qiladi:</b> ${E(T.ai)}</p></section>`;
@@ -200,6 +217,7 @@
           <label class="btn xs primary file-btn">📂 ${d ? 'Yangilash' : 'Xaritani yuklash'}<input type="file" data-sysfile="${k}" accept=".geojson,.json,.kml,.csv" hidden></label>
           ${d ? `<button class="btn xs" data-act="sys-show" data-sys="${k}">🗺 Xaritada koʻrsatish</button><button class="btn xs" data-act="sys-remove" data-sys="${k}">🗑 Oʻchirish</button>` : ''}</div>`}
         <p class="small muted">Real vaqt (datchiklar, ${k === 'camera' ? 'video oqimi' : 'oʻchishlar, bosim'}): tashkilot API bergach ulanadi.</p>
+        ${k === 'camera' ? webcamBox(S) : ''}
       </section>`;
     }).join('')}`;
   }

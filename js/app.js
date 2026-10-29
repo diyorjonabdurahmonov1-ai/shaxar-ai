@@ -138,7 +138,18 @@
   // Xaritada foydalanuvchi qoʻygan belgilar; Muammolar boʻlimida — faqat muammolar, avtomatik tekshiruv belgilari hech qachon
   const shownFixes = () => (S.tab === 'problems' ? [] : NX.fixes.list().filter(x => x.id[0] !== 'a'));
   // Shahar tizimlari xaritada (Muammolar boʻlimida yashiriladi)
-  function drawSys() { NX.view.drawSystems(S.tab === 'problems' ? [] : NX.systems.loaded().filter(k => !(S.sysOff || {})[k]).map(k => ({ sys: k, gj: NX.systems.get(k).gj }))); }
+  function drawSys() {
+    if (S.tab === 'problems') return NX.view.drawSystems([]);
+    const list = NX.systems.loaded().filter(k => !(S.sysOff || {})[k]).map(k => ({ sys: k, gj: NX.systems.get(k).gj }));
+    if (NX.webcams.get() && NX.webcams.get().length) list.push({ sys: 'webcam', gj: NX.webcams.geo() });
+    NX.view.drawSystems(list);
+  }
+  async function camLoad() {
+    const W = S.webcams = S.webcams || {};
+    W.busy = true; W.err = null; renderKeepScroll();
+    try { W.list = await NX.webcams.load(60); drawSys(); } catch (e) { W.err = e.message; }
+    W.busy = false; renderKeepScroll();
+  }
   async function sysUpload(sys, file) {
     S.sysBusy = sys; render();
     try {
@@ -172,6 +183,7 @@
     el3.hidden = t !== 'twin';
     $('.map-wrap').classList.toggle('twin-on', t === 'twin');
     if (t === 'twin') loadTwin();
+    if (t === 'systems' && !S.webcams && NX.ai.available()) camLoad();
     if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
     render();
@@ -1308,6 +1320,15 @@
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;
+        case 'cam-load': camLoad(); break;
+        case 'cam-fly': NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 16); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+        case 'cam-ai': {
+          const W = S.webcams || {}, cam = (W.list || []).find(c => String(c.id) === b.dataset.id);
+          if (!cam) break;
+          W.ai = W.ai || {}; W.ai[cam.id] = { busy: true }; renderKeepScroll();
+          NX.ai.webcamCheck(cam).then(t => { W.ai[cam.id] = { text: t }; }, e => { W.ai[cam.id] = { err: e.message }; }).then(renderKeepScroll);
+          break;
+        }
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood') { if (twinState().dyn) twinShowFrame(twinState().dynFrame); else if (!twinState().scen && twinState().dem) twinRain(30); } if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;

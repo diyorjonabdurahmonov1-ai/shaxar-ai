@@ -27,7 +27,8 @@
       need: 'Kollektorlar va nasos stansiyalari xaritasi; toʻlish datchiklari (API)',
       ai: 'Toʻlib ketish xavfi, yomgʻirda suv bosishi' },
   };
-  const KEYS = Object.keys(NX.SYSTEMS).filter(k => k !== 'transport');
+  NX.SYSTEMS.webcam = { icon: '🎥', uz: 'Ochiq vebkameralar', color: '#0284c7', hidden: true };   // Windy katalogi (Tizimlar → Kameralar ichida)
+  const KEYS = Object.keys(NX.SYSTEMS).filter(k => k !== 'transport' && k !== 'webcam');
 
   // ---------- Fayllarni oʻqish: GeoJSON, KML, CSV ----------
   function fromKML(text) {
