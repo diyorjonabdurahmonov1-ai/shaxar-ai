@@ -567,3 +567,9 @@ details.pgroup .pill { margin-left: auto; }
 .sat-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .plan-leg .lg-yd { border-radius: 0; border: 0; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 12px solid #dc2626; }
 .plan-leg .lg-m { border-radius: 2px; transform: rotate(45deg); background: #facc15; width: 10px; height: 10px; }
+
+/* 3D egizak */
+#map3d { position: absolute; inset: 0; z-index: 1050; background: #0f172a; }
+#map3d[hidden] { display: none; }
+.map-wrap.twin-on .map-draw, .map-wrap.twin-on .map-toggle { display: none; }
+.chip.on { background: var(--accent, #0f766e); color: #fff; border-color: transparent; }

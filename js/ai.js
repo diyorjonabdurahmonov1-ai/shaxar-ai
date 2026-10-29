@@ -446,6 +446,8 @@ Qoidalar:
       harakat_hisobi_ertalab: R ? sim(R.sim) : null,
       kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
       sayt_bahosi: R ? R.ev : null,
+      soya_qishda: R && R.shadow ? { soyada_qoladigan_binolar: R.shadow.shaded.length, quyosh: R.shadow.list.filter(s => s.sun.alt > 2).map(s => `${s.label} ${s.hour}:00 — ${Math.round(s.sun.alt)}°`) } : null,
+      hududdagi_binolar_osm: R && R.blds ? R.blds : null,
       shahar_tizimlari: systemsFacts(st),
     };
   }

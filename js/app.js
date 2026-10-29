@@ -60,6 +60,9 @@
       NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); }, () => {}).then(() => {
         // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta): Mapillary + AI
         if (!S.reviewStarted) { S.reviewStarted = true; review(); }
+        // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
+        NX.twin.rain().then(r => { twinState().rain = r; if (S.tab === 'map') renderKeepScroll(); }).catch(() => {});
+        NX.bigStore.get('dem:v1').then(D => { if (D && D.cells) { twinState().flood = NX.twin.flood(D, S.model); if (S.tab === 'map') renderKeepScroll(); } });
       });
       // Asosiy xarita — Yandex (real tirbandlik + tahlil). Ishlamasa — zaxira xarita va probkalar tugmasi
       if (S.yandexOn == null) setYandex(true);
@@ -100,6 +103,7 @@
     }
     else if (S.tab === 'ai') html = V.aiChat(S);
     else if (S.tab === 'systems') html = V.systems(S);
+    else if (S.tab === 'twin') html = V.twin(S);
     else if (S.tab === 'routes') html = V.routes(S);
     else html = V.report(S);
     // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
@@ -160,6 +164,11 @@
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     const wasProblems = S.tab === 'problems';
     S.tab = t;
+    // 3D egizak — xarita oʻrnida MapLibre 3D koʻrinishi
+    const el3 = $('#map3d');
+    el3.hidden = t !== 'twin';
+    $('.map-wrap').classList.toggle('twin-on', t === 'twin');
+    if (t === 'twin') loadTwin();
     if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
     render();
@@ -169,6 +178,28 @@
   function focusPanel() {
     if (window.matchMedia('(max-width: 820px)').matches) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else panel.scrollTop = 0;
+  }
+
+  // ---------- 3D raqamli egizak: binolar, relyef (toshqin), quyosh, soya ----------
+  const twinState = () => (S.twin = S.twin || {});
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('vaqt tugadi')), ms))]);
+  async function loadTwin() {
+    const T = twinState();
+    const draw = () => { if (S.tab === 'twin') { NX.map3d.show($('#map3d'), { buildings: T.buildings || [], ghi: T.ghi, flood: T.flood }).catch(e => { T.err = e.message; renderKeepScroll(); }); renderKeepScroll(); } };
+    draw();
+    if (T.loading) return;
+    T.loading = true; T.err = null;
+    const step = t => { T.busy = t; if (S.tab === 'twin') renderKeepScroll(); };
+    const jobs = [
+      NX.twin.solarYear().then(g => { T.ghi = g; }).catch(e => { T.err = e.message; }),
+      NX.twin.rain().then(r => { T.rain = r; }).catch(() => {}),
+      NX.twin.dem(step).then(D => { T.flood = NX.twin.flood(D, S.model); }).catch(e => { T.err = e.message; }),
+    ];
+    try { T.buildings = await NX.buildings.load(step); } catch (e) { T.err = e.message; }
+    draw();
+    await Promise.all(jobs);
+    T.busy = null; T.loading = false;
+    draw();
   }
 
   // ---------- Belgilangan hudud (mahalla) ----------
@@ -226,6 +257,17 @@
       const fut = await NX.sim.run({ demand: S.demand, scenario: Object.assign({ growth: 1.15 }, sc), iters: 10 }, prog(0.5, '5 yildan keyin'));
       if (S.area !== A) return;
       A.res = { b, sim, fut, ev: NX.area.assess(A.st, b, sim, fut) };
+      // Yangi bino soyasi (qishda qaysi binolar soyada qoladi) — binolar xaritasi boʻyicha
+      try {
+        const bl = await withTimeout(NX.buildings.load(t => { A.busy = { p: 1, label: t }; }), 25000);
+        const sh = NX.twin.shadows(A.st.center, b.footprint, A.spec.floors, bl);
+        A.res.shadow = sh;
+        if (sh.shaded.length) A.res.ev.cons.push(`Qishda (21-dekabr, 9:00–15:00) ${sh.shaded.length} ta qoʻshni bino ${A.spec.floors} qavatli bino soyasida qoladi — “3D egizak”da koʻring.`);
+        else A.res.ev.pros.push('Qishda ham qoʻshni binolarga soya tushmaydi.');
+        const inA = bl.filter(x => NX.area.inside(A.st.poly, x.c[0], x.c[1]));
+        A.res.blds = { n: inA.length, area: Math.round(inA.reduce((t, x) => t + x.area, 0)), maxLv: inA.reduce((m, x) => Math.max(m, x.est ? 0 : x.levels), 0) };
+        NX.map3d.set({ plan: sh });
+      } catch (e) { /* binolar yuklanmadi — soya hisoblanmaydi */ }
       ensureLeaflet();
       NX.view.showDeltas(sim, S.simInfo.pieces);
       NX.view.drawArea(A.st.poly, A.st.center, false);
@@ -1093,6 +1135,9 @@
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;
+        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
+        case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
+        case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
         case 'review-undo': reviewUndo(b.dataset.fid); break;
         case 'review-share': reviewShare(); break;

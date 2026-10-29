@@ -33,6 +33,47 @@
   const riskWord = v => (v < 35 ? 'past' : v < 60 ? 'oʻrtacha' : 'yuqori');
   const plural = (n, w) => `${F.int(n)} ta ${w}`;
 
+  // ---------- 3D raqamli egizak ----------
+  function twin(S) {
+    const T = S.twin || {}, b = T.buildings || [], est = b.length ? Math.round((b.filter(x => x.est).length / b.length) * 100) : 0;
+    const mode = NX.map3d.mode(), chip = (m, t) => `<button class="chip${mode === m ? ' on' : ''}" data-act="twin-mode" data-mode="${m}">${t}</button>`;
+    const ghi = T.ghi && T.ghi.kwh, fl = T.flood, rain = T.rain;
+    const solarTotal = ghi ? b.reduce((t, x) => t + NX.twin.roofKwh(x, ghi), 0) : 0;
+    const big = ghi ? b.filter(x => /school|kindergarten|university|hospital|public|government|commercial|retail|office/.test(x.kind) || x.area > 1500).map(x => ({ x, k: NX.twin.roofKwh(x, ghi) })).sort((p, q) => q.k - p.k).slice(0, 8) : [];
+    const K = { school: 'Maktab', kindergarten: 'Bogʻcha', university: 'Universitet', hospital: 'Shifoxona', public: 'Jamoat binosi', government: 'Davlat idorasi', commercial: 'Savdo', retail: 'Doʻkon', office: 'Ofis', apartments: 'Koʻp qavatli uy' };
+    return `
+    <section class="card">
+      <h2>🏙 Raqamli egizak — 3D shahar</h2>
+      <p class="small muted">Binolar OpenStreetMap’dan, balandligi qavatlar soni boʻyicha. Sichqoncha: oʻng tugma — aylantirish, gʻildirak — yaqinlashtirish.</p>
+      ${T.busy ? `<p class="small"><span class="spinner sm"></span> ${E(T.busy)}…</p>` : ''}
+      ${T.err ? `<p class="small bad-text">⚠️ ${E(T.err)}</p>` : ''}
+      ${b.length ? `<div class="atiles">${[[F.int(b.length), 'bino'], [est + '%', 'qavati nomaʼlum'], [ghi ? F.int(ghi) : '—', 'kVt·soat/m² yiliga quyosh'], [rain ? rain.d24 + ' mm' : '—', 'yomgʻir, 24 soat']].map(([v, l]) => `<div class="atile"><b>${v}</b><small>${l}</small></div>`).join('')}</div>` : ''}
+      <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('plan', '🏗 Yangi bino va soya')}</div>
+      <div class="row-btns"><button class="btn xs" data-act="twin-base" data-base="sat">🛰 Sunʼiy yoʻldosh</button><button class="btn xs" data-act="twin-base" data-base="street">🗺 Xarita</button></div>
+    </section>
+    <section class="card">
+      <h3>🌧 Suv toshqini xavfi ${B('meteo')}</h3>
+      ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
+      ${fl ? `<p class="small">Relyef boʻyicha atrofidan past (suv oqib kelib toʻplanadigan) <b>${fl.hot.length}</b> ta joy topildi. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
+        ${fl.streets.length ? `<p class="small"><b>Yomgʻirda suv toʻplanishi mumkin boʻlgan koʻchalar:</b> ${fl.streets.slice(0, 8).map(x => E(x.name)).join(', ')}</p>` : ''}
+        <p class="small muted">Relyef: Copernicus DEM (~90 m), Open-Meteo. Kanalizatsiya xaritasi “Tizimlar”da yuklansa, AI kollektorlar bilan solishtiradi.</p>` : ''}
+    </section>
+    <section class="card">
+      <h3>☀️ Tomlardagi quyosh energiyasi ${B('meteo')}</h3>
+      ${ghi ? `<p>Samarqandda ${T.ghi.year}-yilda 1 m² ga <b>${F.int(ghi)} kVt·soat</b> quyosh nuri tushgan (oʻlchov arxivi).</p>
+        <p>Barcha tomlarga panel qoʻyilsa: <b>~${F.num(solarTotal / 1e6, 1)} mln kVt·soat/yil</b> (${F.int(solarTotal / 2500)} ta xonadonning yillik isteʼmoli, 2 500 kVt·soat deb).</p>
+        ${big.length ? `<h4>Eng katta tomlar (davlat va jamoat binolari)</h4><ul class="locs">${big.map(({ x, k }) => `<li class="locrow"><button class="loc" data-act="twin-fly" data-lat="${x.c[0]}" data-lon="${x.c[1]}">☀️ ${E(x.name || K[x.kind] || 'Bino')} <small class="muted">— ~${F.int(k)} kVt·soat/yil, ${F.int(x.area)} m²</small></button></li>`).join('')}</ul>` : ''}
+        <p class="small muted">Hisob: tomning 60% i foydali, panel FIK 18%, yoʻqotishlar 20%. Tom qiyaligi va soyasi hisobga olinmagan.</p>` : '<p class="small muted">Quyosh nurlanishi maʼlumoti olinmoqda…</p>'}
+    </section>
+    <section class="card">
+      <h3>🏗 Yangi bino va uning soyasi</h3>
+      ${S.area && S.area.res && S.area.res.shadow ? `<p>Rejadagi bino: ${S.area.spec.flats} xonadon, ${S.area.spec.floors} qavat (~${Math.round(S.area.spec.floors * 3.2)} m). Qishda (21-dekabr, 9:00–15:00) <b>${S.area.res.shadow.shaded.length}</b> ta qoʻshni bino soyada qoladi.</p>
+        <ul class="small">${S.area.res.shadow.list.filter(s => s.sun.alt > 2).map(s => `<li>${E(s.label)}, ${s.hour}:00 — quyosh ${Math.round(s.sun.alt)}°, soya ~${Math.round(Math.min(400, S.area.spec.floors * 3.2 / Math.tan(s.sun.alt * Math.PI / 180)))} m</li>`).join('')}</ul>
+        <p class="small muted">Binafsha — rejadagi bino, kulrang — qishki soya va soyada qoladigan binolar (“🏗 Yangi bino va soya” rejimi).</p>`
+        : '<p class="small muted">Xarita boʻlimida “✏️ Hudud belgilash” → AI’ga “… xonadonli … qavatli dom qursam?” deb yozing — bino va soyasi shu yerda 3D koʻrinadi.</p>'}
+    </section>`;
+  }
+
   // ---------- Hodisalar (real vaqt) ----------
   function alerts(S) {
     const M = S.model, out = [], W = S.weather && S.weather.data, lvl = S.yandexState && S.yandexState.level;
@@ -40,6 +81,8 @@
     if (W) NX.weather.roadAdvice(W).filter(a => !/xalal bermaydi/.test(a)).slice(0, 1).forEach(a => out.push({ l: 'a', t: a, s: 'Open-Meteo' }));
     const sc = M.problems.filter(p => p.type === 'school').length, jn = M.problems.filter(p => p.type === 'junction').length;
     const conf = M.problems.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'bad').length;
+    const R = S.twin && S.twin.rain;
+    if (R && R.d24 >= 8) out.push({ l: R.d24 >= 20 ? 'r' : 'a', t: `24 soatda ${R.d24} mm yomgʻir kutilmoqda — past joylarda suv toʻplanishi mumkin${S.twin.flood ? ` (${S.twin.flood.hot.length} ta joy)` : ''}`, s: 'Open-Meteo', act: 'twin' });
     if (sc) out.push({ l: 'r', t: `${sc} ta maktab/bogʻcha oldida xavfsiz oʻtish yoʻq`, s: 'OSM', act: 'problems' });
     if (jn) out.push({ l: 'a', t: `${jn} ta yirik chorrahada svetofor yoʻq${conf ? ` (${conf} tasi suratda tasdiqlandi)` : ''}`, s: conf ? 'Mapillary + AI' : 'OSM', act: 'problems' });
     if (S.review && S.review.fixed.length) out.push({ l: 'i', t: `${S.review.fixed.length} ta joy suratda tekshirildi — muammo emas, roʻyxatdan olindi`, s: 'Mapillary + AI' });
@@ -704,5 +747,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, alertsCard, systems, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, twin, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

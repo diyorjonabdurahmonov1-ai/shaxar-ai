@@ -10,6 +10,8 @@ Loyiha **Samarqand shahar hokimiyati xodimlari** uchun “virtual shahar” (raq
 
 Tizimlar: 🚦 transport (ulangan, real vaqt) · 📹 kameralar · ⚡ elektr · 🔥 gaz · 💧 ichimlik suvi · 🚰 kanalizatsiya — “Tizimlar” boʻlimida har birining xaritasi (GeoJSON / KML / CSV) yuklanadi; real vaqt datchik va video maʼlumotlari tashkilotlar API bergach ulanadi.
 
+**3D egizak** (Virtual Singapore yoʻnalishida): binolar 3D (OpenStreetMap), tomlardagi quyosh energiyasi salohiyati (Open-Meteo yillik nurlanish arxivi), suv toshqini xavfi (Copernicus DEM relyefi + 48 soatlik yogʻin prognozi), rejadagi yangi binoning qish/yoz soyasi va soyada qoladigan qoʻshni binolar. 3D — MapLibre GL (vendor/maplibre, BSD).
+
 **Xavfsizlik:** kameralar va yer osti tarmoqlari maxfiy maʼlumot. Ularni ulashdan oldin sayt va Worker faqat xodimlar kira oladigan joyda boʻlishi kerak (masalan, Cloudflare Pages + Cloudflare Access — xodimlar emaili bilan kirish) yoki hokimiyat serverida.
 
 | Boʻlim | Nima qiladi |

@@ -6,6 +6,15 @@ const { build } = require('./fixture.cjs');
 
 const BASE = process.env.BASE || 'http://127.0.0.1:8765/index.html';
 const FX = build();
+// Sintetik binolar (faqat test): markaz atrofida 12×12 kvadrat, baʼzilarida qavatlar soni bor
+const BLD = { elements: [] };
+for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
+  const la = 39.6460 + i * 0.0012, lo = 66.9600 + j * 0.0016, d = 0.00012;
+  const geometry = [[la, lo], [la, lo + d * 1.3], [la + d, lo + d * 1.3], [la + d, lo], [la, lo]].map(([lat, lon]) => ({ lat, lon }));
+  const tags = { building: (i + j) % 7 === 0 ? 'school' : (i + j) % 3 === 0 ? 'apartments' : 'house' };
+  if ((i + j) % 3 === 0) tags['building:levels'] = String(4 + (i % 5));
+  BLD.elements.push({ type: 'way', id: 800000 + i * 100 + j, geometry, tags });
+}
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 const results = [];
 const ok = (name, cond, extra) => { results.push([cond ? 'OK  ' : 'FAIL', name, extra || '']); if (!cond) process.exitCode = 1; };
@@ -19,11 +28,23 @@ async function setupRoutes(ctx, opts = {}) {
     if (opts.overpassDown) return route.abort('failed');
     const body = decodeURIComponent((route.request().postData() || '').replace(/\+/g, ' '));
     const isRoutes = /relation\["type"="route"\]/.test(body);
+    if (/way\["building"\]/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(BLD) });
     if (opts.routesDown && isRoutes) return route.fulfill({ status: 504, body: 'timeout' });
     await new Promise(r => setTimeout(r, 150));
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(isRoutes ? FX.routes : FX.streets) });
   });
-  await ctx.route(/api\.open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ current: { time: '2026-10-26T12:00', temperature_2m: 17.4, apparent_temperature: 16.1, precipitation: 0.6, rain: 0.6, snowfall: 0, weather_code: 61, wind_speed_10m: 12, visibility: 9000 } }) }));
+  // Relyef: sintetik — markazdan janubi-sharqda botiq joy; quyosh arxivi; soatlik yogʻin
+  await ctx.route(/archive-api\.open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time: [], shortwave_radiation_sum: Array(365).fill(18) } }) }));
+  await ctx.route(/api\.open-meteo\.com\/v1\/elevation/, route => {
+    const u = new URL(route.request().url()), la = u.searchParams.get('latitude').split(',').map(Number), lo = u.searchParams.get('longitude').split(',').map(Number);
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elevation: la.map((a, i) => 700 + (a - 39.64) * 2000 - 8 * Math.exp(-(((a - 39.650) / 0.002) ** 2 + ((lo[i] - 66.980) / 0.003) ** 2))) }) });
+  });
+  await ctx.route(/api\.open-meteo\.com\/v1\/forecast.*hourly=precipitation/, route => {
+    const t0 = Date.now(), time = [], precipitation = [];
+    for (let h = 0; h < 72; h++) { const d = new Date(t0 + h * 3600e3 + 5 * 3600e3); time.push(d.toISOString().slice(0, 13) + ':00'); precipitation.push(h > 2 && h < 10 ? 2.5 : 0); }
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ hourly: { time, precipitation } }) });
+  });
+  await ctx.route(/api\.open-meteo\.com\/v1\/forecast(?!.*hourly=precipitation)/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ current: { time: '2026-10-26T12:00', temperature_2m: 17.4, apparent_temperature: 16.1, precipitation: 0.6, rain: 0.6, snowfall: 0, weather_code: 61, wind_speed_10m: 12, visibility: 9000 } }) }));
   await ctx.route(/api\.tomtom\.com\/traffic\/map/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   await ctx.route(/api\.tomtom\.com\/traffic\/services\/5\/incidentDetails/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ incidents: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: [[66.9690, 39.6550], [66.9730, 39.6550]] }, properties: { iconCategory: 9, magnitudeOfDelay: 2, from: 'Registon koʻchasi', to: 'Sinov tor koʻchasi 6', delay: 240, length: 340, startTime: '2026-10-26T06:00:00Z' } }] }) }));
   await ctx.route(/api\.tomtom\.com\/traffic\/services\/4/, route => {
@@ -84,8 +105,20 @@ async function clickStreet(page, name) {
   const homeTxt = await page.textContent('#panel');
   ok('Bosh panel qisqa: holat, asosiy muammolar, yoʻriqnoma', /Tirbandlik/.test(homeTxt) && /Asosiy muammolar/.test(homeTxt) && /Nima qilsak/.test(homeTxt) && !(await page.$('.kpi')) && !(await page.$('.index-card')));
   const tabs = await page.$$eval('.tabs [data-tab]', e => e.map(x => x.textContent));
-  ok('5 ta boʻlim: Xarita, Muammolar, Tizimlar, AI yordamchi, Hisobot', tabs.join(',') === 'Xarita,Muammolar,Tizimlar,AI yordamchi,Hisobot', tabs.join(','));
+  ok('6 ta boʻlim: Xarita, Muammolar, Tizimlar, 3D egizak, AI yordamchi, Hisobot', tabs.join(',') === 'Xarita,Muammolar,Tizimlar,3D egizak,AI yordamchi,Hisobot', tabs.join(','));
   if (process.env.SHOT4) await page.screenshot({ path: process.env.SHOT4 });
+  // 3D egizak: binolar 3D da, quyosh salohiyati, suv toshqini (relyef + yogʻin)
+  await page.click('.tabs [data-tab=twin]');
+  await page.waitForFunction(() => NX.state.twin && !NX.state.twin.loading && NX.state.twin.buildings && NX.state.twin.flood && NX.state.twin.ghi, null, { timeout: 30000 });
+  await page.waitForFunction(() => NX.map3d.map() && NX.map3d.map().getSource('bld'), null, { timeout: 20000 });
+  const tw = await page.evaluate(() => ({ n: NX.state.twin.buildings.length, est: NX.state.twin.buildings.filter(b => b.est).length, ghi: NX.state.twin.ghi.kwh, hot: NX.state.twin.flood.hot.length, rain: NX.state.twin.rain && NX.state.twin.rain.d24, vis: !document.getElementById('map3d').hidden }));
+  ok('3D egizak: binolar (OSM) 3D xaritada, qavati yoʻqlari belgilanadi', tw.n === 144 && tw.est > 0 && tw.vis, JSON.stringify(tw));
+  ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
+  ok('Suv toshqini: relyefdagi botiq joylar va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')));
+  await page.click('[data-act=twin-mode][data-mode=flood]');
+  ok('Toshqin rejimi: xavfli kataklar xaritada', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('flood')._data.features.length > 0));
+  await page.click('.tabs [data-tab=map]');
+  ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
   ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
   ok('Keraksiz funksiyalar yoʻq (Belgilash, tirbandlik xabari)', !(await page.$('.nx-mark')) && !(await page.$('#reportCard')));
   await page.waitForFunction(() => /17°C/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
@@ -652,6 +685,15 @@ async function clickStreet(page, name) {
   ok('500 xonadon: aholi, mashinalar, yuklama xaritada', r9.res === 2000 && r9.trips === 150 && r9.deltas, JSON.stringify(r9));
   const aTxt = await p9.textContent('#areaChat .chat-msg.ai .ai-text');
   ok('Javob: yutuqlar, muammolar, tavsiyalar va kelajak (5 yil)', /Yutuqlar/.test(aTxt) && /Muammolar/.test(aTxt) && /Nima qilish kerak/.test(aTxt) && /5 yildan keyin/.test(aTxt));
+  const sh9 = await p9.evaluate(() => NX.state.area.res.shadow && { n: NX.state.area.res.shadow.shaded.length, rings: NX.state.area.res.shadow.list.filter(x => x.ring).length });
+  ok('Yangi bino soyasi: qish/yoz, 9–15 soat; soyada qoladigan binolar hisoblanadi', sh9 && sh9.rings >= 5, JSON.stringify(sh9));
+  await p9.click('.tabs [data-tab=twin]');
+  await p9.waitForFunction(() => NX.map3d.map() && NX.map3d.map().getSource('plan'), null, { timeout: 30000 });
+  await p9.click('[data-act=twin-mode][data-mode=plan]');
+  await p9.waitForTimeout(1500);
+  ok('3D: rejadagi bino va qishki soya', await p9.evaluate(() => NX.map3d.map().getSource('plan')._data.features.some(f => f.properties.kind === 'plan')) && /soyada qoladi/.test(await p9.textContent('#panel')));
+  if (process.env.SHOT8) await p9.screenshot({ path: process.env.SHOT8 });
+  await p9.click('.tabs [data-tab=map]');
   ok('Bino safarlari mahalla koʻchalariga ham tarqaladi (bir nechta chiqish)', await p9.evaluate(() => NX.state.area.res.sim.deltas.length / 2 >= 6), await p9.evaluate(() => String(NX.state.area.res.sim.deltas.length / 2)));
   if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }
   await p9.click('.tabs [data-tab=ai]');
