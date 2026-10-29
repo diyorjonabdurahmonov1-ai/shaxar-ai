@@ -521,6 +521,46 @@ async function clickStreet(page, name) {
   if (process.env.SHOT) { await p8.evaluate(s => document.querySelector(s + ' .vbox').scrollIntoView(), jCard); await p8.screenshot({ path: process.env.SHOT }); }
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
+  // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------
+  const ctx9 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await setupRoutes(ctx9);
+  const p9 = await ctx9.newPage();
+  const e9 = watchErrors(p9);
+  await p9.goto(BASE);
+  await p9.waitForSelector('#panel .live', { timeout: 20000 });
+  await p9.evaluate(() => { if (NX.state.widgetOn) document.getElementById('btnYandex').click(); });
+  ok('parseBuild: “300 xonadonli 12 etajli dom”', await p9.evaluate(() => { const r = NX.area.parseBuild('300 xonadonli 12 etajli dom qursak'); return r.flats === 300 && r.floors === 12; }));
+  await p9.click('#btnDraw');
+  await p9.waitForSelector('.draw-ov svg', { timeout: 5000 });
+  const c9 = await p9.evaluate(() => { const M = NX.state.model, s = M.streets.find(x => x.name === 'Registon koʻchasi'); const map = NX.map.leaflet(); map.setView(s.center, 16, { animate: false }); const r = document.getElementById('map').getBoundingClientRect(); const p = map.latLngToContainerPoint(s.center); return { x: r.left + p.x, y: r.top + p.y }; });
+  await p9.mouse.move(c9.x + 160, c9.y);
+  await p9.mouse.down();
+  for (let k = 1; k <= 40; k++) { const t = (k / 40) * Math.PI * 2; await p9.mouse.move(c9.x + 160 * Math.cos(t), c9.y + 130 * Math.sin(t)); }
+  await p9.mouse.up();
+  await p9.waitForFunction(() => NX.state.area, null, { timeout: 5000 });
+  const st9 = await p9.evaluate(() => ({ ha: NX.state.area.st.areaHa, streets: NX.state.area.st.streets.length, probs: NX.state.area.st.problems.length }));
+  ok('Sichqoncha bilan erkin chizilgan hudud tahlil qilinadi', st9.ha > 1 && st9.streets > 0 && /Belgilangan hudud/.test(await p9.textContent('#panel h2')) && !(await p9.$('.draw-ov')), JSON.stringify(st9));
+  await p9.fill('#areaBuild input[name=flats]', '500');
+  await p9.fill('#areaBuild input[name=floors]', '9');
+  await p9.click('#areaBuild form button');
+  await p9.waitForFunction(() => NX.state.area.res && !NX.state.area.busy, null, { timeout: 90000 });
+  const r9 = await p9.evaluate(() => ({ res: NX.state.area.res.b.residents, trips: NX.state.area.res.sim.build && NX.state.area.res.sim.build.trips, deltas: NX.map.hasDeltas() }));
+  ok('500 xonadon: aholi, mashinalar, yuklama xaritada', r9.res === 2000 && r9.trips === 150 && r9.deltas, JSON.stringify(r9));
+  ok('Yutuqlar, muammolar, tavsiyalar va kelajak (5 yil)', (await p9.isVisible('.alist.pro')) && (await p9.isVisible('.alist.con')) && (await p9.isVisible('.alist.todo')) && /5 yildan keyin/.test(await p9.textContent('.alist.fut')));
+  if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaBuild').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }
+  await p9.click('#areaChat [data-act=area-ask] >> nth=1');
+  await p9.waitForFunction(() => NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 90000 });
+  ok('Hudud boʻyicha AI savol (kalitsiz — sayt hisobi)', /Yutuqlar/.test(await p9.textContent('#areaChat .chat-msg.ai .ai-text')));
+  await p9.click('.tabs [data-tab=ai]');
+  await p9.fill('#chat textarea[name=q]', 'Bu hududga 300 xonadonli 12 qavatli dom qursak nima boʻladi?');
+  await p9.click('#chat form button');
+  await p9.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 90000 });
+  ok('AI yordamchi chatida ham hudud va qurilish tahlili', await p9.evaluate(() => NX.state.area.spec.flats === 300 && NX.state.area.spec.floors === 12 && NX.state.area.res.b.residents === 1200));
+  await p9.click('.tabs [data-tab=map]');
+  await p9.click('[data-act=area-clear]');
+  ok('Hududni olib tashlash', await p9.evaluate(() => NX.state.area === null && !NX.map.hasDeltas()));
+  ok('Konsolda xato yoʻq (hudud)', e9.length === 0, e9.join(' || '));
+
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));
   console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`);

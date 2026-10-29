@@ -15,6 +15,7 @@ Loyiha **hokimiyat va shahar xizmatlari** uchun: shahar transportini boshqarish 
 | **AI yordamchi** | Chat: xaritada koʻchani belgilang va soʻrang (“yopsak nima boʻladi?”, “nima qilish kerak?”). Simulyatsiya avtomatik ishlaydi — yuklama oshadigan yoʻllar xaritada qizil, yengillashadiganlari yashil boʻladi; AI kelajakdagi xavflarni aytadi. “✂️ Bir qismini tanlash” — koʻchada ikki nuqtani bosib, faqat shu qismini (chorrahadan chorrahagacha) tahlil qilish. |
 | **📷 Real koʻrinish** | Koʻcha yoki muammo yonidagi tugma — oʻsha joyning Yandex panoramasi (360° real fotosurat). Surat boʻlmasa yoki Yandex ishlamasa — Yandex Xaritalarda ochish havolasi. |
 | **🔎 Tekshirish** | Muammolar boʻlimida: joyning ochiq koʻcha surati (Mapillary) va undan avtomatik topilgan svetofor/zebra — ✅ bor, ❌ koʻrinmadi, ❔ surat yoʻq. “🤖 AI suratni tahlil qilsin”, “🌐 Internetdan qidirish” (manbalar bilan), “🎨 Yechim rasmi” (AI rasm — haqiqiy emas). Oxirgi uchtasi uchun Worker yangi versiyasi kerak. |
+| **✏️ Hudud belgilash** | Xaritada sichqoncha bilan mahallani erkin chizing: hududdagi muammolar, bekatlar, svetofor, maktablar (OSM). “Bu yerga bino qursak?” — xonadon va qavat kiriting: aholi, mashinalar, koʻchalarga yuklama (xaritada qizil/yashil), yutuqlar, muammolar, tavsiyalar va 5 yildan keyingi holat (taxmin). AI bilan hudud haqida savol-javob. |
 | **Hisobot** | Koʻrsatkichlar, tavsiyalar (soʻmda, taxminiy), JSON eksport. |
 | **AI savol** | Oʻzbekcha savolga sayt maʼlumotlari asosida qisqa javob (OpenAI, Cloudflare Worker orqali, kalit yashirin). |
 

@@ -80,6 +80,7 @@ function NXSimFactory() {
 
     // 3. Eng katta kuchli bogʻlangan komponent (Kosaraju)
     const comp = scc(eOn);
+    N.compId = comp.id; N.compBest = comp.best;
     // 4. Zonalar (500×500 m) va talab
     const b = net.bounds, zx = Math.max(1, Math.ceil((b.x1 - b.x0) / ZONE)), zy = Math.max(1, Math.ceil((b.y1 - b.y0) / ZONE));
     const cellOf = (x, y) => { const i = Math.floor((x - b.x0) / ZONE), j = Math.floor((y - b.y0) / ZONE); return i < 0 || j < 0 || i >= zx || j >= zy ? -1 : j * zx + i; };
@@ -188,13 +189,21 @@ function NXSimFactory() {
   }
 
   // Hammasi-yoki-hech narsa (all-or-nothing) taqsimoti
-  function aon(t, on, zn, D, y) {
+  function aon(t, on, zn, D, y, ex) {
     y.fill(0);
     const { Z, M, dist, pred, order, flow, eFrom } = N;
     let unassigned = 0;
+    const back = (o, cnt) => {
+      for (let k = cnt - 1; k > 0; k--) {
+        const v = order[k], f = flow[v];
+        if (f > 0) { const e = pred[v]; y[e] += f; flow[eFrom[e]] += f; }
+        flow[v] = 0;
+      }
+      flow[o] = 0;
+    };
     for (let i = 0; i < Z; i++) {
       const o = zn[i];
-      if (o < 0) { for (let j = 0; j < Z; j++) unassigned += D * M[i * Z + j]; continue; }
+      if (o < 0) { for (let j = 0; j < Z; j++) unassigned += D * M[i * Z + j]; if (ex) unassigned += ex.inQ[i]; continue; }
       const cnt = dijkstra(o, t, on);
       for (let j = 0; j < Z; j++) {
         if (i === j) continue;
@@ -203,14 +212,44 @@ function NXSimFactory() {
         if (dd < 0 || dist[dd] === Infinity) { unassigned += q; continue; }
         flow[dd] += q;
       }
-      for (let k = cnt - 1; k > 0; k--) {
-        const v = order[k], f = flow[v];
-        if (f > 0) { const e = pred[v]; y[e] += f; flow[eFrom[e]] += f; }
-        flow[v] = 0;
+      // Yangi binoga keladigan safarlar
+      if (ex && ex.inQ[i] > 0) { if (dist[ex.node] === Infinity) unassigned += ex.inQ[i]; else if (ex.node !== o) flow[ex.node] += ex.inQ[i]; }
+      back(o, cnt);
+    }
+    // Yangi binodan chiqadigan safarlar
+    if (ex) {
+      const cnt = dijkstra(ex.node, t, on);
+      for (let j = 0; j < Z; j++) {
+        const q = ex.outQ[j], dd = zn[j]; if (q <= 0) continue;
+        if (dd < 0 || dist[dd] === Infinity) { unassigned += q; continue; }
+        if (dd !== ex.node) flow[dd] += q;
       }
-      flow[o] = 0;
+      back(ex.node, cnt);
     }
     return unassigned;
+  }
+
+  // Yangi bino: eng yaqin tugun va safarlarning zonalar boʻyicha taqsimoti (gravitatsiya)
+  function buildExtra(sc, on, zn) {
+    const { out, inn, nx, ny, zones, Z } = N;
+    const has = (adj, v) => { for (let it = adj.start[v]; it < adj.start[v + 1]; it++) if (on[adj.list[it]]) return true; return false; };
+    let node = -1, bd = Infinity;
+    for (let v = 0; v < N.nN; v++) {
+      if (N.compId[v] !== N.compBest) continue;
+      const d = Math.hypot(nx[v] - sc.at[0], ny[v] - sc.at[1]);
+      if (d < bd && has(out, v) && has(inn, v)) { bd = d; node = v; }
+    }
+    if (node < 0) return null;
+    const trips = Math.max(0, sc.trips || 0), outShare = sc.outShare == null ? 0.7 : sc.outShare;
+    const wo = new Float64Array(Z), wi = new Float64Array(Z);
+    let so = 0, si = 0;
+    for (let j = 0; j < Z; j++) {
+      if (zn[j] < 0) continue;
+      const d = Math.max(250, Math.hypot(zones[j].cx - nx[node], zones[j].cy - ny[node])), k = Math.exp(-d / BETA);
+      wo[j] = zones[j].A * k; wi[j] = zones[j].P * k; so += wo[j]; si += wi[j];
+    }
+    for (let j = 0; j < Z; j++) { wo[j] = so > 0 ? (wo[j] / so) * trips * outShare : 0; wi[j] = si > 0 ? (wi[j] / si) * trips * (1 - outShare) : 0; }
+    return { node, dist: bd, outQ: wo, inQ: wi, trips };
   }
 
   function times(t, x, cap, on) {
@@ -222,6 +261,7 @@ function NXSimFactory() {
     const notes = [];
     if (!sc || sc.type === 'none') return { factor: 1, notes };
     if (sc.type === 'demand') return { factor: sc.factor || 1.2, notes };
+    if (sc.type === 'build') return { factor: sc.growth || 1, notes };
     // sc.pieces — koʻchaning faqat tanlangan qismi
     const ps = sc.pieces ? sc.pieces.filter(p => p >= 0 && p < N.P && N.pStreet[p] === sc.street) : N.streetPieces.get(sc.street) || [];
     const { pieces, nx, ny, eOn } = N;
@@ -256,14 +296,15 @@ function NXSimFactory() {
     const ap = applyScenario(sc, on, cap);
     const D = demand * ap.factor;
     const zn = zoneNodes(on);
+    const ex = sc && sc.type === 'build' ? buildExtra(sc, on, zn) : null;
     const E = N.E, x = new Float64Array(E), y = new Float64Array(E), t = new Float64Array(E);
     times(t, x, cap, on);
-    let un = aon(t, on, zn, D, y);
+    let un = aon(t, on, zn, D, y, ex);
     x.set(y);
     let gap = null;
     for (let k = 1; k < iters; k++) {
       times(t, x, cap, on);
-      un = aon(t, on, zn, D, y);
+      un = aon(t, on, zn, D, y, ex);
       let cx = 0, cy = 0;
       for (let e = 0; e < E; e++) if (on[e]) { cx += x[e] * t[e]; cy += y[e] * t[e]; }
       gap = cx > 0 ? (cx - cy) / cx : 0;
@@ -274,7 +315,7 @@ function NXSimFactory() {
     times(t, x, cap, on);
     let TT = 0, VKT = 0, TT0 = 0;
     for (let e = 0; e < E; e++) if (on[e] && x[e] > 0) { TT += x[e] * t[e]; TT0 += x[e] * N.eT0[e]; VKT += (x[e] * N.eLen[e]) / 1000; }
-    return { x, t, cap, on, D, TT, TT0, VKT, unassigned: un, gap, notes: ap.notes };
+    return { x, t, cap, on, D, TT, TT0, VKT, unassigned: un, gap, notes: ap.notes, build: ex ? { dist: Math.round(ex.dist), trips: ex.trips, x: N.nx[ex.node], y: N.ny[ex.node] } : null };
   }
 
   function baseline(demand, iters, progress) {
@@ -327,7 +368,7 @@ function NXSimFactory() {
     return {
       base: summary(base), scen: summary(scen), ttChangePct: pctTT,
       target, affected, overloaded: overloaded.slice(0, 12), overloadedCount: overloaded.length, relievedCount: relieved.length,
-      deltas: Int32Array.from(deltas), maxAbsDelta: maxAbs, notes: scen.notes,
+      deltas: Int32Array.from(deltas), maxAbsDelta: maxAbs, notes: scen.notes, build: scen.build,
     };
   }
   const summary = r => ({ demand: r.D, TT: r.TT, TT0: r.TT0, VKT: r.VKT, avgSpeed: r.TT > 0 ? r.VKT / r.TT : null, unassigned: r.unassigned, gap: r.gap });

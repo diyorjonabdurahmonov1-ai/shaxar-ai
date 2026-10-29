@@ -326,5 +326,46 @@ Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.
     throw new Error(r.status === 429 ? ((e && e.message) || 'Rasm limiti tugadi.') : 'Rasm chizilmadi: ' + ((e && e.message) || 'HTTP ' + r.status));
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webSearch, solutionImage, _core: core };
+  // ---------- Belgilangan hudud (mahalla) va qurilish ----------
+  const AREA = `Sen Samarqand hokimiyati uchun shaharsozlik va transport tahlilchisisan. Senga xaritada belgilangan hudud maʼlumotlari (OpenStreetMap — real),
+rejalashtirilgan qurilish hisobi (farazlar asosida — taxmin) va harakat simulyatsiyasi natijasi (taxmin) beriladi.
+Qoidalar:
+- Oʻzbek tilida (lotin), sodda va qisqa yoz. Savolga aniq javob ber.
+- Faqat JSON’dagi raqam va nomlardan foydalan; yoʻq narsani oʻylab topma. Real (OSM) va taxminni farqla.
+- Qurilish soʻralsa tuzilma: **Xulosa** (1–2 gap), **Yutuqlar**, **Muammolar**, **Nima qilish kerak** (ustuvorlik bilan), **Kelajakda (5 yil)**. Har biri 2–4 nuqta.
+- Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.`;
+
+  function areaFacts(A) {
+    const st = A.st, R = A.res, g = {};
+    st.problems.forEach(p => { const k = NX.PROBLEM[p.type].short; g[k] = (g[k] || 0) + 1; });
+    const sim = r => r ? { yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0).slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
+    return {
+      hudud_osm: {
+        maydon_ga: +st.areaHa.toFixed(1), koʻchalar: st.streets.filter(s => s.name).slice(0, 10).map(s => s.name), koʻcha_km: +st.streetKm.toFixed(1),
+        muammolar: g, bekatlar_ichida: st.stops, bekat_400m_qamrovi_foiz: st.coverage != null ? Math.round(st.coverage) : null,
+        eng_yaqin_bekat_m: st.nearestStop && st.nearestStop.d, avtobus_liniyalari_400m: st.lines.slice(0, 12),
+        svetoforlar: st.signals, piyoda_otishlar: st.crossings, maktab_bogcha_ichida: st.schoolsIn.length, maktab_bogcha_500m: st.schoolsNear.length, registondan_m: st.distCenter,
+      },
+      qurilish_taxmin: R ? Object.assign({ farazlar: A.A }, R.b) : null,
+      simulyatsiya_ertalab: R ? sim(R.sim) : null,
+      kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
+      sayt_bahosi: R ? R.ev : null,
+    };
+  }
+
+  async function areaAsk(q, A, history) {
+    const facts = areaFacts(A);
+    const local = () => {
+      if (!A.res) return 'Hudud: ' + JSON.stringify(facts.hudud_osm.muammolar) + '. Bino taʼsirini koʻrish uchun “Hisoblash” tugmasini bosing.';
+      const ev = A.res.ev, sec = (t, a) => (a.length ? `**${t}**\n${a.map(x => '- ' + x).join('\n')}` : '');
+      return [sec('Yutuqlar', ev.pros), sec('Muammolar', ev.cons), sec('Nima qilish kerak', ev.todo), sec('Kelajakda (5 yil)', ev.future)].filter(Boolean).join('\n\n');
+    };
+    if (!aiAvailable()) return { text: local(), src: 'hisob', error: 'AI ulanmagan.' };
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
+    const messages = [{ role: 'system', content: AREA }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
+    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai' }; }
+    catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
+  }
+
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
 })();

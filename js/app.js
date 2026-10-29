@@ -14,7 +14,7 @@
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
     chat: { msgs: [], busy: null }, chatStreet: null, segment: null, segPick: null,
-    verify: {}, verifyOpen: null, verifyBatch: null,
+    verify: {}, verifyOpen: null, verifyBatch: null, area: null,
     calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
@@ -88,7 +88,7 @@
     const M = S.model;
     let html;
     NX.view.showProblems(S.tab === 'problems');
-    if (S.tab === 'map') html = S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
+    if (S.tab === 'map') html = S.area ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') html = V.problems(S);
     else if (S.tab === 'ai') html = V.aiChat(S);
     else if (S.tab === 'routes') html = V.routes(S);
@@ -133,6 +133,80 @@
   function focusPanel() {
     if (window.matchMedia('(max-width: 820px)').matches) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else panel.scrollTop = 0;
+  }
+
+  // ---------- Belgilangan hudud (mahalla) ----------
+  function drawArea() {
+    if (!S.model) return;
+    if (S.tab !== 'map') setTab('map');
+    NX.view.cancelPick();
+    if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    NX.draw.start(poly => {
+      const st = NX.area.stats(S.model, poly);
+      if (st.areaHa < 0.2) { toast('Hudud juda kichik — kattaroq chizing.', 'warn'); return; }
+      const A0 = {};
+      Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; });
+      const prev = S.area;
+      S.area = { st, spec: prev ? prev.spec : { flats: 500, floors: 9 }, A: prev ? prev.A : A0, res: null, busy: null, qa: [], qaBusy: null };
+      S.street = null; NX.view.selectStreet(null); setSegment(null);
+      NX.view.clearDeltas();
+      NX.view.drawArea(poly, null, true);
+      render(); focusPanel();
+    });
+  }
+  function clearArea() {
+    NX.draw.stop();
+    S.area = null;
+    NX.view.drawArea(null);
+    NX.view.clearDeltas();
+    render();
+  }
+  async function runBuild() {
+    const A = S.area;
+    if (!A || A.busy) return;
+    A.busy = { p: 0, label: 'Tarmoq tayyorlanmoqda' }; A.res = null;
+    renderKeepScroll();
+    try {
+      await NX.sim.whenReady();
+      S.simInfo = NX.sim.info();
+      const b = NX.area.buildFacts(A.spec, A.A);
+      const sc = { type: 'build', at: NX.geo.xy(A.st.center[0], A.st.center[1]), trips: b.peak, outShare: 0.7 };
+      const prog = (o, l) => (p, lab) => { if (S.area !== A) return; A.busy = { p: o + p / 2, label: l || lab }; const el = panel.querySelector('#areaBuild .progress'); if (el) el.outerHTML = V.progress(A.busy); };
+      const sim = await NX.sim.run({ demand: S.demand, scenario: sc, iters: 10 }, prog(0, 'Bugungi holat'));
+      const fut = await NX.sim.run({ demand: S.demand, scenario: Object.assign({ growth: 1.15 }, sc), iters: 10 }, prog(0.5, '5 yildan keyin'));
+      if (S.area !== A) return;
+      A.res = { b, sim, fut, ev: NX.area.assess(A.st, b, sim, fut) };
+      ensureLeaflet();
+      NX.view.showDeltas(sim, S.simInfo.pieces);
+      NX.view.drawArea(A.st.poly, A.st.center, false);
+    } catch (e) {
+      console.error(e);
+      toast('Hisob xatosi: ' + e.message, 'bad');
+    }
+    A.busy = null;
+    if (S.tab === 'map' && S.area === A) renderKeepScroll();
+  }
+  async function areaAsk(q) {
+    const A = S.area;
+    q = (q || '').trim();
+    if (!A || !q || A.qaBusy) return;
+    const prev = A.qa.slice(-2);
+    A.qa.push({ role: 'user', text: q });
+    // Savolda xonadon/qavat boʻlsa — avval qurilish hisoblanadi
+    const pb = NX.area.parseBuild(q);
+    if (pb && (pb.flats || pb.floors || !A.res)) {
+      if (pb.flats) A.spec.flats = pb.flats;
+      if (pb.floors) A.spec.floors = pb.floors;
+      A.qaBusy = 'Qurilish taʼsiri hisoblanmoqda — natija xaritada…';
+      renderKeepScroll();
+      await runBuild();
+    }
+    A.qaBusy = 'AI javob yozmoqda…';
+    renderKeepScroll();
+    const r = await NX.ai.areaAsk(q, A, prev);
+    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+    A.qaBusy = null;
+    if (S.tab === 'map' && S.area === A) { renderKeepScroll(); const c = $('#areaChat'); if (c) c.scrollIntoView({ block: 'end' }); }
   }
 
   // ---------- Muammoni real surat bilan tekshirish ----------
@@ -388,6 +462,8 @@
       renderChat();
       return;
     }
+    // Hudud panelida xaritani bosish hududni yopib yubormaydi
+    if (S.tab === 'map' && S.area) return;
     // Muammolar boʻlimida — eng yaqin muammo ochiladi, boshqa boʻlimga oʻtib ketmaydi
     if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) focusProblem(p); return; }
     const id = streetId != null ? streetId : nearestStreet(lat, lon);
@@ -538,6 +614,17 @@
   async function chatSend(q) {
     q = (q || '').trim();
     if (!q || S.chat.busy || !S.model) return;
+    // Belgilangan hudud bor va savol hudud yoki qurilish haqida — hudud tahliliga
+    if (S.area && S.chatStreet == null && (NX.area.parseBuild(q) || /hudud|mahalla|bu yer/i.test(q))) {
+      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.busy = 'Hudud tahlil qilinmoqda…'; renderChat();
+      const pb = NX.area.parseBuild(q);
+      if (pb) { if (pb.flats) S.area.spec.flats = pb.flats; if (pb.floors) S.area.spec.floors = pb.floors; await runBuild(); }
+      const r = await NX.ai.areaAsk(q, S.area, S.chat.msgs.slice(-3, -1));
+      S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+      S.chat.busy = null; renderChat();
+      return;
+    }
     const prev = S.chat.msgs.slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
     S.chat.msgs.push({ role: 'user', text: q });
     S.chat.busy = 'Oʻylayapman…';
@@ -643,6 +730,7 @@
   function bind() {
     document.querySelectorAll('.tabs [data-tab]').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
     $('#btnRefresh').addEventListener('click', () => loadData(true));
+    $('#btnDraw').addEventListener('click', drawArea);
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnTheme').addEventListener('click', () => {
       const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -707,6 +795,9 @@
           if (S.verifyOpen && !(S.verify[p.id] && S.verify[p.id].res)) verifyCheck(p);
           break;
         }
+        case 'area-clear': clearArea(); break;
+        case 'area-redraw': drawArea(); break;
+        case 'area-ask': areaAsk(b.dataset.q); break;
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'verify-ai': verifyPart(b.dataset.pid, 'ai', async (p, r) => ({ text: await NX.ai.vision(p, S.model, r) })); break;
         case 'verify-web': verifyPart(b.dataset.pid, 'web', (p, r) => NX.ai.webSearch(p, S.model, r)); break;
@@ -749,8 +840,14 @@
       e.preventDefault();
       if (f.dataset.form === 'ai') askAI(f.q.value);
       else if (f.dataset.form === 'chat') chatSend(f.q.value);
+      else if (f.dataset.form === 'area-q') areaAsk(f.aq.value);
+      else if (f.dataset.form === 'build' && S.area) {
+        S.area.spec = { flats: Math.max(10, Math.min(5000, +f.flats.value || 500)), floors: Math.max(1, Math.min(40, +f.floors.value || 9)) };
+        runBuild();
+      }
     });
     panel.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'aq') { e.preventDefault(); areaAsk(e.target.value); return; }
       if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q') {
         e.preventDefault();
         if (e.target.closest('#chat')) chatSend(e.target.value); else askAI(e.target.value);
@@ -759,6 +856,7 @@
 
     panel.addEventListener('input', e => {
       const t = e.target;
+      if (t.dataset.assume && S.area) { const v = parseFloat(t.value); if (isFinite(v) && v >= 0) S.area.A[t.dataset.assume] = v; return; }
       if (t.name === 'demand') {
         S.demand = clampDemand(t.value); NX.store.set('demand', S.demand);
         panel.querySelectorAll('[data-out=demand]').forEach(o => (o.textContent = F.int(S.demand)));

@@ -322,6 +322,63 @@
     }).join('') || '<section class="card"><p>Muammo topilmadi.</p></section>'}`;
   }
 
+  // ---------- Belgilangan hudud (mahalla) ----------
+  function area(S) {
+    const A = S.area, st = A.st;
+    const groups = {};
+    st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
+    const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
+    const R = A.res, busy = A.busy;
+    const list = (ico, title, arr, cls) => arr.length ? `<div class="alist ${cls}"><h4>${ico} ${title}</h4><ul>${arr.map(x => `<li>${E(x)}</li>`).join('')}</ul></div>` : '';
+    const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div></div></div>`).join('');
+    const sugg = ['Bu hududning asosiy muammolari nima va nimadan boshlash kerak?', `${A.spec.flats} xonadonli ${A.spec.floors} qavatli dom qursak nima boʻladi?`, 'Bu yerga maktab yoki bogʻcha kerakmi?'];
+    return `
+    <button class="back" data-act="area-clear">← Hududni olib tashlash</button>
+    <section class="card">
+      <h2>📐 Belgilangan hudud ${B('osm')}</h2>
+      <p class="muted small">${F.num(st.areaHa, 1)} ga · ${F.num(st.streetKm, 1)} km koʻcha · Registondan ${F.km(st.distCenter)}</p>
+      <div class="atiles">
+        ${tile(st.problems.length, 'muammo', st.problems.length > 0)}
+        ${tile(st.stops, `bekat${st.coverage != null ? ` · qamrov ${F.pct(st.coverage)}` : ''}`, st.coverage != null && st.coverage < 70)}
+        ${tile(st.signals, 'svetofor')}
+        ${tile(st.crossings, 'piyoda oʻtish')}
+        ${tile(st.schoolsIn.length, 'maktab/bogʻcha')}
+      </div>
+      ${Object.keys(groups).length ? `<h4>Hududdagi muammolar</h4><ul class="street-probs">${Object.keys(groups).sort((a, b) => NX.PROBLEM[b].weight - NX.PROBLEM[a].weight).map(t => `<li><button class="link" data-act="problem" data-id="${groups[t][0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)} — ${groups[t].length} ta</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`).join('')}</ul>` : '<p class="small ok-text">Hududda avtomatik topilgan muammo yoʻq.</p>'}
+      ${st.streets.filter(s => s.name).length ? `<p class="small muted">Koʻchalar: ${st.streets.filter(s => s.name).slice(0, 8).map(s => E(s.name)).join(', ')}</p>` : ''}
+      <button class="btn xs" data-act="area-redraw">✏️ Qayta chizish</button>
+    </section>
+    <section class="card" id="areaBuild">
+      <h3>🏗 Bu yerga bino qursak? ${B('bashorat')}</h3>
+      <form data-form="build" class="build-form">
+        <label>Xonadon <input name="flats" type="number" min="10" max="5000" step="10" value="${A.spec.flats}"></label>
+        <label>Qavat <input name="floors" type="number" min="1" max="40" value="${A.spec.floors}"></label>
+        <button class="btn primary" ${busy ? 'disabled' : ''}>Hisoblash</button>
+      </form>
+      <details class="more"><summary>Farazlar (oʻrtacha qiymatlar — oʻzgartirish mumkin)</summary>
+        <div class="assume">${Object.keys(NX.area.ASSUME).map(k => `<label>${E(NX.area.ASSUME[k].uz)}${NX.area.ASSUME[k].unit ? ` (${NX.area.ASSUME[k].unit})` : ''} <input data-assume="${k}" type="number" step="any" value="${A.A[k]}"></label>`).join('')}</div>
+      </details>
+      ${busy ? progress(busy) : R ? `
+        <div class="atiles">
+          ${tile('+' + F.int(R.b.residents), 'aholi')}${tile('~' + F.int(R.b.cars), 'mashina')}${tile('~' + F.int(R.b.peak), 'ertalab, mashina/soat')}
+          ${tile('~' + F.int(R.b.pupils), 'oʻquvchi')}${tile('~' + F.int(R.b.kids), 'bogʻcha yoshida')}${tile('~' + F.int(R.b.footprint) + ' m²', 'bino osti maydoni')}
+        </div>
+        <p class="small muted">Xaritada: <span class="tag r">qizil</span> — yuklama oshadi, <span class="tag g">yashil</span> — kamayadi. 🏢 — bino joyi.</p>
+        ${list('✅', 'Yutuqlar', R.ev.pros, 'pro')}${list('⚠️', 'Muammolar', R.ev.cons, 'con')}${list('🛠', 'Nima qilish kerak', R.ev.todo, 'todo')}${list('🔮', 'Kelajakda (5 yil)', R.ev.future, 'fut')}
+        <p class="small muted">Hisob taxminiy: farazlar va soddalashtirilgan harakat modeliga asoslangan.</p>` : '<p class="small muted">Xonadon va qavatni kiriting — aholi, mashinalar, koʻchalarga yuklama va kelajak hisoblanadi.</p>'}
+    </section>
+    <section class="card chat" id="areaChat">
+      <h3>🤖 AI bilan tahlil</h3>
+      <div class="chat-log">${qa}${A.qaBusy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(A.qaBusy)}</div></div>` : ''}</div>
+      <div class="chips">${sugg.map(q => `<button class="chip" data-act="area-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
+      <form data-form="area-q" class="chat-form">
+        <textarea name="aq" rows="2" placeholder="Masalan: 300 xonadonli 12 qavatli dom qursak?" aria-label="Savol" ${A.qaBusy ? 'disabled' : ''}></textarea>
+        <button class="btn primary" ${A.qaBusy ? 'disabled' : ''}>Yuborish</button>
+      </form>
+    </section>`;
+  }
+
   // ---------- AI yordamchi (chat) ----------
   function chatSuggestions(S) {
     const M = S.model, s = S.chatStreet != null ? M.streets[S.chatStreet] : null;
@@ -499,5 +556,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, problems, locRow, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, area, problems, locRow, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

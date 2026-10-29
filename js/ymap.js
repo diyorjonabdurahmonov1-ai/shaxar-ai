@@ -6,7 +6,7 @@
   const NX = window.NX;
   const COL = { green: '#16a34a', amber: '#f59e0b', red: '#dc2626' };
   let M = null, colorMode = { mode: 'now' }, showProb = false, pieces = null;
-  const G = { seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
+  const G = { area: null, seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
   const Y = () => NX.yandex && NX.yandex.getMap && NX.yandex.getMap();
   let layoutCache = null;
 
@@ -60,6 +60,19 @@
       }
     },
     clearDeltas() { drop('delta'); },
+    drawArea(poly, pt, fit) {
+      if (!Y()) return;
+      if (!poly) { drop('area'); return; }
+      const c = coll('area');
+      c.add(new window.ymaps.Polygon([poly], {}, { fillColor: '#6366f122', strokeColor: '#6366f1', strokeWidth: 3, interactivityModel: 'default#silent' }));
+      if (pt) c.add(mark(pt[0], pt[1], '🏢', '#6366f1', '', 'Rejalashtirilgan bino', 36));
+      if (fit) fitTo(poly, 17);
+    },
+    pxToLL(cx, cy) {
+      const map = Y(); if (!map) return null;
+      const gp = map.converter.pageToGlobal([cx + window.scrollX, cy + window.scrollY]);
+      return map.options.get('projection').fromGlobalPixels(gp, map.getZoom());
+    },
     selectSegment(lines) {
       if (!Y()) return;
       if (!lines) { drop('seg'); return; }
@@ -144,7 +157,7 @@
   const ONLY_ACTIVE = { pickPoint: 1, cancelPick: 1 };
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
-  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawProblems', 'showProblems',
+  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawProblems', 'showProblems',
     'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;
@@ -155,5 +168,6 @@
     };
   });
   NX.view.hasDeltas = () => NX.map.hasDeltas();
+  NX.view.pxToLL = (x, y) => (yOn() ? Ymap.pxToLL(x, y) : NX.map.pxToLL(x, y));
   NX.view.syncYandex = (model, fixes) => { Ymap.setModel(model); Ymap.drawFixes(fixes);  };
 })();

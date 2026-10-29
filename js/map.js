@@ -49,6 +49,7 @@
     L_.hover = L.layerGroup().addTo(map);
     L_.hl = L.layerGroup().addTo(map);
     L_.seg = L.layerGroup().addTo(map);
+    L_.area = L.layerGroup().addTo(map);
     addSearch();
     addLayerControl();
     addLegend();
@@ -365,6 +366,19 @@
     if (fit) map.fitBounds(s.bounds, { padding: [40, 40], maxZoom: 17 });
   }
 
+  // Belgilangan hudud (mahalla) va rejalashtirilgan bino
+  function drawArea(poly, pt, fit) {
+    L_.area.clearLayers();
+    if (!poly) return;
+    L.polygon(poly, { renderer, color: '#6366f1', weight: 3, fillColor: '#6366f1', fillOpacity: 0.12, interactive: false }).addTo(L_.area);
+    if (pt) L.marker(pt, { icon: L.divIcon({ className: 'pmk', html: '<span style="--c:#6366f1">🏢</span>', iconSize: [36, 36], iconAnchor: [18, 18] }), interactive: false }).addTo(L_.area);
+    if (fit) map.fitBounds(poly, { padding: [40, 40], maxZoom: 17 });
+  }
+  function pxToLL(cx, cy) {
+    const r = map.getContainer().getBoundingClientRect(), ll = map.containerPointToLatLng([cx - r.left, cy - r.top]);
+    return [ll.lat, ll.lng];
+  }
+
   // Koʻchaning tanlangan qismi (toʻq sariq)
   function selectSegment(lines) {
     L_.seg.clearLayers();
@@ -403,7 +417,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, pxToLL, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,
