@@ -6,7 +6,7 @@
   const NX = window.NX;
   const COL = { green: '#16a34a', amber: '#f59e0b', red: '#dc2626' };
   let M = null, colorMode = { mode: 'now' }, showProb = false, pieces = null;
-  const G = { area: null, seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
+  const G = { sys: null, area: null, seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
   const Y = () => NX.yandex && NX.yandex.getMap && NX.yandex.getMap();
   let layoutCache = null;
 
@@ -62,6 +62,21 @@
       }
     },
     clearDeltas() { drop('delta'); NX.yandex.setTraffic(true); NX.map.updateLegend(); },
+    drawSystems(list) {
+      if (!Y()) return;
+      if (!list || !list.length) { drop('sys'); return; }
+      const c = coll('sys');
+      list.forEach(({ sys, gj }) => {
+        const col = NX.SYSTEMS[sys].color, ico = NX.SYSTEMS[sys].icon;
+        gj.features.forEach(f => {
+          const g = f.geometry, html = NX.map.sysPopup(sys, f), sw = (a) => a.map(q => [q[1], q[0]]);
+          if (g.type === 'Point') c.add(mark(g.coordinates[1], g.coordinates[0], ico, col, html, NX.SYSTEMS[sys].uz, 24));
+          else if (g.type === 'LineString') c.add(new window.ymaps.Polyline(sw(g.coordinates), { balloonContent: html }, { strokeColor: col, strokeWidth: 3, strokeOpacity: 0.85 }));
+          else if (g.type === 'MultiLineString') g.coordinates.forEach(l => c.add(new window.ymaps.Polyline(sw(l), { balloonContent: html }, { strokeColor: col, strokeWidth: 3, strokeOpacity: 0.85 })));
+          else if (g.type === 'Polygon') c.add(new window.ymaps.Polygon(g.coordinates.map(sw), { balloonContent: html }, { strokeColor: col, strokeWidth: 2, fillColor: col, fillOpacity: 0.12 }));
+        });
+      });
+    },
     drawArea(poly, pt, fit) {
       if (!Y()) return;
       if (!poly) { drop('area'); return; }
@@ -159,7 +174,7 @@
   const ONLY_ACTIVE = { pickPoint: 1, cancelPick: 1 };
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
-  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawProblems', 'showProblems',
+  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'drawProblems', 'showProblems',
     'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;

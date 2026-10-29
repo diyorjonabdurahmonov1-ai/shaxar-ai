@@ -117,6 +117,14 @@
       if (sim.overloadedCount) { cons.push(`${sim.overloadedCount} ta koʻchaga mashinalar sigʻmay qoladi: ${sim.overloaded.slice(0, 4).map(x => x.name || 'nomsiz yoʻl').join(', ')}.`); todo.push('Bino chiqishini katta koʻchaga emas, ikkinchi darajali yoʻlga qaratish; chorrahada svetofor.'); }
       if (sim.build && sim.build.dist > 150) cons.push(`Eng yaqin yoʻl ${sim.build.dist} m uzoqda — kirish yoʻli qurish kerak.`);
     }
+    // Yer osti va havo tarmoqlari (yuklangan xaritalar boʻyicha)
+    (st.systems || []).forEach(x => {
+      const T = NX.SYSTEMS[x.sys];
+      if (x.sys === 'camera') { if (!x.points) todo.push('Hududda kamera yoʻq — kirish yoʻllariga kamera qoʻyish.'); return; }
+      if (x.km > 0.01) { cons.push(`Hududdan ${fmt.num(x.km, 2)} km ${T.uz.toLowerCase()} liniyasi oʻtadi — qurilishda himoya zonasi; tegishli tashkilot bilan kelishish kerak.`); todo.push(`${T.uz}: liniyalarni koʻchirish yoki himoya zonasini loyihaga kiritish.`); }
+      else if (isFinite(x.nearest) && x.nearest < 400) pros.push(`${T.uz}: eng yaqin liniya ${Math.round(x.nearest)} m da — ulanish oson.`);
+      else if (isFinite(x.nearest)) cons.push(`${T.uz}: eng yaqin liniya ${fmt.km(x.nearest)} uzoqda — yangi tarmoq tortish kerak.`);
+    });
     const jn = st.problems.filter(p => p.type === 'junction').length, sc = st.problems.filter(p => p.type === 'school').length;
     if (jn) { cons.push(`Hududda ${jn} ta svetoforsiz katta chorraha bor — yangi mashinalar shu yerlardan oʻtadi.`); todo.push('Svetoforsiz chorrahalarda oqimni sanash va svetofor qoʻyish.'); }
     if (sc) { cons.push(`${sc} ta maktab/bogʻcha oldida xavfsiz oʻtish yoʻq — bolalar soni ortadi.`); todo.push('Maktab oldiga koʻtarilgan piyoda oʻtish joyi va 30 km/soat belgisi.'); }

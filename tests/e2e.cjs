@@ -84,7 +84,9 @@ async function clickStreet(page, name) {
   const homeTxt = await page.textContent('#panel');
   ok('Bosh panel qisqa: holat, asosiy muammolar, yoʻriqnoma', /Tirbandlik/.test(homeTxt) && /Asosiy muammolar/.test(homeTxt) && /Nima qilsak/.test(homeTxt) && !(await page.$('.kpi')) && !(await page.$('.index-card')));
   const tabs = await page.$$eval('.tabs [data-tab]', e => e.map(x => x.textContent));
-  ok('4 ta boʻlim: Xarita, Muammolar, AI yordamchi, Hisobot', tabs.join(',') === 'Xarita,Muammolar,AI yordamchi,Hisobot', tabs.join(','));
+  ok('5 ta boʻlim: Xarita, Muammolar, Tizimlar, AI yordamchi, Hisobot', tabs.join(',') === 'Xarita,Muammolar,Tizimlar,AI yordamchi,Hisobot', tabs.join(','));
+  if (process.env.SHOT4) await page.screenshot({ path: process.env.SHOT4 });
+  ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
   ok('Keraksiz funksiyalar yoʻq (Belgilash, tirbandlik xabari)', !(await page.$('.nx-mark')) && !(await page.$('#reportCard')));
   await page.waitForFunction(() => /17°C/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('Ob-havo va yoʻlga taʼsiri qisqa', /Yoʻl hoʻl/.test(await page.textContent('.live')));
@@ -333,6 +335,7 @@ async function clickStreet(page, name) {
   await ctx5.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '', aiProxy: 'https://cityjam-ai.example.workers.dev/' };" }));
   const proxyReqs = [];
   await ctx5.route(/cityjam-ai\.example\.workers\.dev/, route => {
+    if (route.request().method() !== 'POST') return route.fulfill({ status: 404, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{}' });
     proxyReqs.push({ auth: route.request().headers()['authorization'] || null, body: JSON.parse(route.request().postData()) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nProksi javobi.' } }] }) });
   });
@@ -490,9 +493,17 @@ async function clickStreet(page, name) {
   await ctx8.route(/fbcdn\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   const px = { chat: [], search: 0, image: [] };
   const pc = { store: {}, posts: 0 };
+  const lay = { meta: {}, data: {} };
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 4 }) });
+    if (path.startsWith('/layers')) {
+      const sys = path.split('/')[2];
+      if (req.method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify(sys ? lay.data[sys] : { items: lay.meta }) });
+      if (req.headers()['x-staff-code'] !== '4321') return route.fulfill({ status: 403, contentType: 'application/json', headers: H, body: JSON.stringify({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }) });
+      const q = JSON.parse(req.postData()); lay.data[sys] = q.geojson; lay.meta[sys] = { name: q.name, n: q.geojson.features.length, ts: Date.now() };
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ items: lay.meta }) });
+    }
     if (path === '/photo-checks') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ items: pc.store }) });
     if (path === '/photo-check') {
       const q = JSON.parse(req.postData()); pc.posts++;
@@ -562,6 +573,26 @@ async function clickStreet(page, name) {
   await p8b.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.review.ts, null, { timeout: 60000 });
   ok('AI natijasi umumiy: boshqa foydalanuvchida qayta soʻralmaydi', pc.posts === postsBefore && (await p8b.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `yangi soʻrovlar: ${pc.posts - postsBefore}`);
   await p8b.close();
+  // Shahar tizimlari: xaritani yuklash (barcha xodimlarga), xaritada koʻrinadi, hudud tahliliga qoʻshiladi
+  await p8.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
+  await p8.click('.tabs [data-tab=systems]');
+  const c0 = await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center);
+  const gas = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Gaz quvuri 1', diametr: '159 mm' }, geometry: { type: 'LineString', coordinates: [[c0[1] - 0.003, c0[0]], [c0[1] + 0.003, c0[0]]] } }] };
+  await p8.setInputFiles('[data-sysfile=gas]', { name: 'gaz.geojson', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(gas)) });
+  await p8.waitForFunction(() => NX.systems.get('gas'), null, { timeout: 10000 });
+  ok('Gaz xaritasi yuklandi va barcha xodimlarga saqlandi', lay.meta.gas && (await p8.evaluate(() => NX.systems.get('gas').shared)) && /barcha xodimlarga/.test(await p8.textContent('#panel')));
+  const csv = 'nomi,lat,lon,url\nKamera 1,' + c0[0] + ',' + c0[1] + ',https://example.com/cam1\nKamera 2,' + (c0[0] + 0.001) + ',' + c0[1] + ',https://example.com/cam2';
+  await p8.setInputFiles('[data-sysfile=camera]', { name: 'kameralar.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await p8.waitForFunction(() => NX.systems.get('camera'), null, { timeout: 10000 });
+  if (process.env.SHOT5) await p8.screenshot({ path: process.env.SHOT5 });
+  ok('Kameralar CSV’dan yuklandi va xaritada koʻrinadi', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 2);
+  await p8.setInputFiles('[data-sysfile=water]', { name: 'suv.geojson', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [500000, 4400000] } }] })) });
+  await p8.waitForFunction(() => /WGS84/.test(document.getElementById('toast').textContent), null, { timeout: 5000 });
+  ok('Notoʻgʻri koordinatali fayl — tushunarli xato', !(await p8.evaluate(() => NX.systems.get('water'))));
+  const ar = await p8.evaluate(c => { const poly = [[c[0] - 0.001, c[1] - 0.001], [c[0] - 0.001, c[1] + 0.001], [c[0] + 0.001, c[1] + 0.001], [c[0] + 0.001, c[1] - 0.001]]; return NX.systems.inArea(NX.systems.get('gas').gj, poly); }, c0);
+  ok('Hudud tahlili: hududdan oʻtadigan quvur uzunligi', ar.km > 0.1 && ar.km < 0.3, JSON.stringify(ar));
+  await p8.click('.tabs [data-tab=problems]');
+  ok('Muammolar xaritasida tizimlar koʻrinmaydi (faqat muammolar)', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 0);
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
   // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------

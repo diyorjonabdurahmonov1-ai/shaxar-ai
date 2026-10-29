@@ -50,6 +50,7 @@
     L_.hl = L.layerGroup().addTo(map);
     L_.seg = L.layerGroup().addTo(map);
     L_.area = L.layerGroup().addTo(map);
+    L_.sys = L.layerGroup().addTo(map);
     addSearch();
     addLayerControl();
     addLegend();
@@ -298,7 +299,7 @@
   }
   function fixPopup(x) {
     const k = NX.fixes.KIND[x.kind];
-    return `<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu brauzerda (PIN-kod kiritilmagan).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`;
+    return `<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu kompyuterda (xodim kodi kiritilmagan).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`;
   }
 
   function drawProblems() {
@@ -373,6 +374,27 @@
     if (fit) map.fitBounds(s.bounds, { padding: [40, 40], maxZoom: 17 });
   }
 
+  // Shahar tizimlari (kameralar, elektr, gaz, suv, kanalizatsiya) — yuklangan xaritalar
+  function sysPopup(sys, f) {
+    const S = NX.SYSTEMS[sys], p = f.properties || {};
+    const url = p.url || p.stream || p.link || p.video || p.hls || '';
+    const rows = Object.keys(p).filter(k => !/^(url|stream|link|video|hls)$/i.test(k)).slice(0, 8).map(k => `<tr><td>${NX.esc(k)}</td><td>${NX.esc(String(p[k]).slice(0, 120))}</td></tr>`).join('');
+    return `<div class="ppop"><b>${S.icon} ${NX.esc(p.name || p.nomi || S.uz)}</b>${rows ? `<table class="sys-tbl">${rows}</table>` : ''}${url && /^https?:/i.test(url) ? `<p><a href="${NX.esc(url)}" target="_blank" rel="noopener">▶ Videoni ochish</a></p>` : ''}</div>`;
+  }
+  function drawSystems(list) {
+    L_.sys.clearLayers();
+    (list || []).forEach(({ sys, gj }) => {
+      const c = NX.SYSTEMS[sys].color, ico = NX.SYSTEMS[sys].icon;
+      L.geoJSON(gj, {
+        style: () => ({ color: c, weight: 3, opacity: 0.85, fillOpacity: 0.12 }),
+        pointToLayer: (f, ll) => sys === 'camera' || sys === 'power'
+          ? L.marker(ll, { icon: L.divIcon({ className: 'pmk sysmk', html: `<span style="--c:${c}">${ico}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
+          : L.circleMarker(ll, { renderer, radius: 5, color: c, weight: 2, fillOpacity: 0.7 }),
+        onEachFeature: (f, l) => l.bindPopup(sysPopup(sys, f), { maxWidth: 280 }),
+      }).addTo(L_.sys);
+    });
+  }
+
   // Belgilangan hudud (mahalla) va rejalashtirilgan bino
   function drawArea(poly, pt, fit) {
     L_.area.clearLayers();
@@ -424,7 +446,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, pxToLL, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

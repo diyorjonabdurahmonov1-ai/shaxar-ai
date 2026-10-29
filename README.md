@@ -1,4 +1,4 @@
-# City Jam — Samarqand
+# City Jam — Samarqand shahar boshqaruv markazi
 
 Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transportini **tahlil qiluvchi va bashorat qiluvchi** xaritaga asoslangan veb-ilova. Barcha maʼlumot ochiq manbalardan brauzerning oʻzida yuklanadi. Ilova uchun server yoki pullik xizmat kerak emas.
 
@@ -6,7 +6,11 @@ Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transportini **tahlil
 
 ## Imkoniyatlar
 
-Loyiha **hokimiyat va shahar xizmatlari** uchun: shahar transportini boshqarish vositasi.
+Loyiha **Samarqand shahar hokimiyati xodimlari** uchun “virtual shahar” (raqamli egizak): shahar ustidan nazoratni kuchaytirish, muammolarni AI bilan topish va tez hal qilish. Oddiy aholi uchun emas.
+
+Tizimlar: 🚦 transport (ulangan, real vaqt) · 📹 kameralar · ⚡ elektr · 🔥 gaz · 💧 ichimlik suvi · 🚰 kanalizatsiya — “Tizimlar” boʻlimida har birining xaritasi (GeoJSON / KML / CSV) yuklanadi; real vaqt datchik va video maʼlumotlari tashkilotlar API bergach ulanadi.
+
+**Xavfsizlik:** kameralar va yer osti tarmoqlari maxfiy maʼlumot. Ularni ulashdan oldin sayt va Worker faqat xodimlar kira oladigan joyda boʻlishi kerak (masalan, Cloudflare Pages + Cloudflare Access — xodimlar emaili bilan kirish) yoki hokimiyat serverida.
 
 | Boʻlim | Nima qiladi |
 |---|---|

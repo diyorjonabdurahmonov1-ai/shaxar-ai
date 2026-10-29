@@ -45,7 +45,7 @@
     it.lat = +(+it.lat).toFixed(6); it.lon = +(+it.lon).toFixed(6);
     const local = NX.store.get(LOCAL, []);
     local.push(it); NX.store.set(LOCAL, local);
-    if (!pin() || !base()) return { item: it, shared: false, reason: !base() ? 'server yoʻq' : 'PIN kiritilmagan' };
+    if (!pin() || !base()) return { item: it, shared: false, reason: !base() ? 'server yoʻq' : 'xodim kodi kiritilmagan' };
     try {
       await post({ action: 'add', item: it });
       NX.store.set(LOCAL, NX.store.get(LOCAL, []).filter(x => x.id !== it.id));
@@ -64,7 +64,7 @@
   async function remove(id) {
     NX.store.set(LOCAL, NX.store.get(LOCAL, []).filter(x => x.id !== id));
     if (shared.some(x => x.id === id)) {
-      if (!pin()) throw new Error('Hamma uchun saqlangan tuzatishni oʻchirish uchun PIN-kod kerak (Sozlamalar).');
+      if (!pin()) throw new Error('Hamma uchun saqlangan tuzatishni oʻchirish uchun xodim kodi kerak (Sozlamalar).');
       await post({ action: 'remove', id });
     }
   }

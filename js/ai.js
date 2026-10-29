@@ -202,7 +202,20 @@ Qoidalar:
       muammolar: Object.keys(groups).map(t => ({ turi: NX.PROBLEM[t].short, soni: groups[t].length, misollar: groups[t].slice(0, 3), yechim: NX.PROBLEM[t].fix })),
       avtobus_liniyalari: [...lines.values()].slice(0, 25),
       umumiy: { liniyalar_soni: M.kpi.lines, bekat_400m_qamrovi_foiz: M.kpi.coverage != null ? Math.round(M.kpi.coverage) : null, svetoforsiz_katta_chorrahalar: M.kpi.unsignalised, maktab_bogcha: M.kpi.schools },
+      shahar_tizimlari: systemsFacts(),
     };
+  }
+  // Ulangan va ulanmagan shahar tizimlari (kameralar, elektr, gaz, suv, kanalizatsiya)
+  function systemsFacts(area) {
+    const out = { transport: 'ulangan (Yandex real vaqt, OSM, Mapillary)' };
+    NX.systems.KEYS.forEach(k => {
+      const d = NX.systems.get(k), T = NX.SYSTEMS[k];
+      if (!d) { out[T.uz] = 'ulanmagan — maʼlumot yoʻq'; return; }
+      const a = area && area.systems && area.systems.find(x => x.sys === k);
+      out[T.uz] = Object.assign({ xarita: d.name, obyektlar: d.stats.features, liniyalar_km: +d.stats.km.toFixed(1), real_vaqt: 'ulanmagan (faqat xarita)' },
+        a ? { hududda_obyekt: a.points, hududda_liniya_km: +a.km.toFixed(2), markazdan_eng_yaqin_m: isFinite(a.nearest) ? Math.round(a.nearest) : null } : {});
+    });
+    return out;
   }
 
   async function ask(q, M, opts) {
@@ -411,6 +424,7 @@ Qoidalar:
       harakat_hisobi_ertalab: R ? sim(R.sim) : null,
       kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
       sayt_bahosi: R ? R.ev : null,
+      shahar_tizimlari: systemsFacts(st),
     };
   }
 

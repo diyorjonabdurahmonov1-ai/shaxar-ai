@@ -58,12 +58,13 @@
       startLive();
       // Boshqa foydalanuvchilar saqlagan tuzatishlar (svetofor bor, muammo emas…) serverdan olinadi
       NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); }, () => {}).then(() => {
-        // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta); AI koʻrigi — sayt egasi brauzerida (PIN bor)
+        // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta): Mapillary + AI
         if (!S.reviewStarted) { S.reviewStarted = true; review(); }
       });
       // Asosiy xarita — Yandex (real tirbandlik + tahlil). Ishlamasa — zaxira xarita va probkalar tugmasi
       if (S.yandexOn == null) setYandex(true);
-      else if (S.yandexMain) NX.view.syncYandex(M, shownFixes());
+      else if (S.yandexMain) { NX.view.syncYandex(M, shownFixes()); drawSys(); }
+      NX.systems.load().then(() => { drawSys(); if (S.tab === 'map' || S.tab === 'systems') render(); });
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -98,6 +99,7 @@
       html = op ? V.problem(S, op) : V.problems(S);
     }
     else if (S.tab === 'ai') html = V.aiChat(S);
+    else if (S.tab === 'systems') html = V.systems(S);
     else if (S.tab === 'routes') html = V.routes(S);
     else html = V.report(S);
     // Qayta chizishda foydalanuvchi ochgan “Batafsil” boʻlimlari ochiq qoladi
@@ -128,6 +130,29 @@
 
   // Xaritada foydalanuvchi qoʻygan belgilar; Muammolar boʻlimida — faqat muammolar, avtomatik tekshiruv belgilari hech qachon
   const shownFixes = () => (S.tab === 'problems' ? [] : NX.fixes.list().filter(x => x.id[0] !== 'a'));
+  // Shahar tizimlari xaritada (Muammolar boʻlimida yashiriladi)
+  function drawSys() { NX.view.drawSystems(S.tab === 'problems' ? [] : NX.systems.loaded().filter(k => !(S.sysOff || {})[k]).map(k => ({ sys: k, gj: NX.systems.get(k).gj }))); }
+  async function sysUpload(sys, file) {
+    S.sysBusy = sys; render();
+    try {
+      if (file.size > 24 * 1024 * 1024) throw new Error('Fayl 24 MB dan katta.');
+      const gj = NX.systems.parse(file.name, await file.text());
+      if (!gj.features.length) throw new Error('Faylda obyekt topilmadi.');
+      const r = await NX.systems.save(sys, file.name, gj);
+      drawSys();
+      toast(`${NX.SYSTEMS[sys].uz}: ${gj.features.length} ta obyekt yuklandi. ${r.shared ? 'Barcha xodimlarga koʻrinadi.' : 'Faqat shu kompyuterda (' + r.reason + ').'}`, r.shared ? 'ok' : 'warn');
+    } catch (e) { toast(e.message, 'bad'); }
+    S.sysBusy = null; render();
+  }
+  function sysShow(sys) {
+    const d = NX.systems.get(sys); if (!d) return;
+    (S.sysOff || {})[sys] = false; drawSys();
+    let s = 90, w = 180, n = -90, e = -180;
+    const walk = c => { if (typeof c[0] === 'number') { s = Math.min(s, c[1]); n = Math.max(n, c[1]); w = Math.min(w, c[0]); e = Math.max(e, c[0]); } else c.forEach(walk); };
+    d.gj.features.forEach(f => walk(f.geometry.coordinates));
+    NX.view.flyTo((s + n) / 2, (w + e) / 2, n - s > 0.05 ? 13 : n - s > 0.01 ? 15 : 16);
+    if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   function setTab(t) {
     if (t !== 'map') ensureLeaflet();
     if (S.segPick) { NX.view.cancelPick(); S.segPick = null; }
@@ -135,7 +160,7 @@
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     const wasProblems = S.tab === 'problems';
     S.tab = t;
-    if (wasProblems !== (t === 'problems')) NX.view.drawFixes(shownFixes());
+    if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
     render();
     panel.scrollTop = 0;
@@ -166,6 +191,7 @@
     if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
     NX.draw.start(poly => {
       const st = NX.area.stats(S.model, poly);
+      st.systems = NX.systems.loaded().map(k => { const gj = NX.systems.get(k).gj; return Object.assign({ sys: k, nearest: NX.systems.nearest(gj, ...st.center) }, NX.systems.inArea(gj, poly)); });
       if (st.areaHa < 0.2) { toast('Hudud juda kichik — kattaroq chizing.', 'warn'); return; }
       const A0 = {};
       Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; });
@@ -655,7 +681,7 @@
         S.yandexMain = true;
         $('.map-wrap').classList.add('ya-on');
         btn.hidden = true;
-        NX.view.syncYandex(S.model, shownFixes());
+        NX.view.syncYandex(S.model, shownFixes()); drawSys();
         NX.view.showProblems(S.tab === 'problems');
         if (S.street != null) NX.view.selectStreet(S.street, false);
         NX.map.updateLegend();
@@ -842,7 +868,7 @@
     const fl = NX.fixes.list();
     $('#fixInfo').textContent = `Xaritaga ${fl.length} ta tuzatish kiritilgan (${fl.filter(x => x.shared).length} tasi hamma uchun).` + (NX.fixes.status() === false ? ' Server ombori hali ulanmagan.' : '');
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
-    (focus === 'tomtom' ? $('#keyTomtom') : $('#keyTomtom')).focus();
+    $('#fixPin').focus();
   }
   function closeSettings() { if (dlg.open) dlg.close ? dlg.close() : dlg.removeAttribute('open'); }
 
@@ -927,6 +953,8 @@
         case 'area-ask': areaAsk(b.dataset.q); break;
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
+        case 'sys-show': sysShow(b.dataset.sys); break;
+        case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
         case 'review-undo': reviewUndo(b.dataset.fid); break;
         case 'review-share': reviewShare(); break;
         case 'verify-ai': verifyPart(b.dataset.pid, 'ai', async (p, r) => ({ text: await NX.ai.vision(p, S.model, r) })); break;
@@ -1001,6 +1029,7 @@
     });
     panel.addEventListener('change', e => {
       const t = e.target;
+      if (t.dataset.sysfile && t.files && t.files[0]) { sysUpload(t.dataset.sysfile, t.files[0]); return; }
       if (t.dataset.input === 'fc-street') { S.fc.street = +t.value; NX.view.selectStreet(S.fc.street); render(); }
       else if (t.dataset.input === 'fc-day') { S.fc.d = +t.value; render(); }
       else if (t.dataset.input === 'fc-hour') { render(); }

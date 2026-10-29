@@ -4,6 +4,9 @@
    /photo-check — muammo joyining real suratini (Mapillary) AI koʻradi: svetofor / piyoda oʻtish bormi. Natija KV’da saqlanadi —
                   har bir joy faqat bir marta tekshiriladi (pul bir marta sarflanadi), natijani hamma foydalanuvchi koʻradi.
    /photo-checks — saqlangan barcha natijalar (GET).
+   /layers — shahar tizimlari xaritalari (kameralar, elektr, gaz, suv, kanalizatsiya; GeoJSON). Oʻqish — hamma xodimlar,
+             yuklash/oʻchirish — xodim kodi bilan (ADMIN_PIN maxfiy oʻzgaruvchisi).
+   Muhim: bu xizmat hokimiyat xodimlari uchun. Sayt va Worker’ni Cloudflare Access (kirish faqat xodimlar emaili bilan) ortiga qoʻyish tavsiya etiladi.
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
    Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
@@ -41,14 +44,15 @@ export default {
     const okOrigin = ALLOWED_ORIGINS.includes(origin);
     const cors = {
       'Access-Control-Allow-Origin': okOrigin ? origin : ALLOWED_ORIGINS[0],
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Staff-Code',
       'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
-    if (path === '/version') return json({ v: 4, features: ['vision', 'search', 'image', 'photo-check', 'image-multi'] }, 200, cors);
+    if (path === '/version') return json({ v: 5, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
@@ -256,4 +260,36 @@ async function photoChecks(req, env, cors, okOrigin, path) {
     return json(item, 200, cors);
   }
   return json({ error: (last && last.d && last.d.error) || { message: 'Tekshiruv ishlamadi' } }, (last && last.status) || 500, cors);
+}
+
+// ---------- Shahar tizimlari xaritalari (GeoJSON) ----------
+const SYSTEMS = ['camera', 'power', 'gas', 'water', 'sewer'];
+async function layers(req, env, cors, okOrigin, path) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  const meta = JSON.parse((await env.CORRECTIONS.get('layers:meta')) || '{}');
+  const sys = path.split('/')[2] || '';
+  if (req.method === 'GET') {
+    if (!sys) return json({ items: meta }, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
+    if (!SYSTEMS.includes(sys) || !meta[sys]) return json({ error: { code: 'not_found', message: 'Topilmadi' } }, 404, cors);
+    return new Response((await env.CORRECTIONS.get('layer:' + sys)) || '{"type":"FeatureCollection","features":[]}', { status: 200, headers: Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cors) });
+  }
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+  if (!SYSTEMS.includes(sys)) return json({ error: { code: 'bad_item', message: 'Nomaʼlum tizim' } }, 400, cors);
+  if (req.method === 'DELETE') {
+    delete meta[sys];
+    await env.CORRECTIONS.delete('layer:' + sys);
+    await env.CORRECTIONS.put('layers:meta', JSON.stringify(meta));
+    return json({ items: meta }, 200, cors);
+  }
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET, POST yoki DELETE' } }, 405, cors);
+  const raw = await req.text();
+  if (raw.length > 24 * 1024 * 1024) return json({ error: { code: 'too_large', message: 'Fayl 24 MB dan katta' } }, 413, cors);
+  let b;
+  try { b = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
+  if (!b.geojson || !Array.isArray(b.geojson.features)) return json({ error: { code: 'bad_item', message: 'GeoJSON emas' } }, 400, cors);
+  await env.CORRECTIONS.put('layer:' + sys, JSON.stringify(b.geojson));
+  meta[sys] = { name: String(b.name || sys).slice(0, 120), n: b.geojson.features.length, ts: Date.now() };
+  await env.CORRECTIONS.put('layers:meta', JSON.stringify(meta));
+  return json({ items: meta }, 200, cors);
 }

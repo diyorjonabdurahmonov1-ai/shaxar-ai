@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>City Jam — Samarqand</title>
+  <title>City Jam — Samarqand boshqaruv markazi</title>
   <meta name="description" content="Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transporti tahlili hamda bashorati: OpenStreetMap, TomTom, “Agar…?” simulyatsiyasi.">
   <meta name="theme-color" content="#0f766e">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M22.5 10.5a8 8 0 1 0 0 11' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -14,11 +14,12 @@
   <header class="topbar">
     <div class="brand">
       <span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" width="30" height="30"><rect width="32" height="32" rx="8" fill="currentColor"/><path d="M22.5 10.5a8 8 0 1 0 0 11" stroke="#fff" stroke-width="3.4" fill="none" stroke-linecap="round"/></svg></span>
-      <div class="brand-t"><b>City Jam</b><small>Samarqand · tarixiy markaz</small></div>
+      <div class="brand-t"><b>City Jam</b><small>Samarqand · shahar boshqaruv markazi</small></div>
     </div>
     <nav class="tabs" role="tablist" aria-label="Boʻlimlar">
       <button role="tab" data-tab="map" aria-selected="true">Xarita</button>
       <button role="tab" data-tab="problems" aria-selected="false">Muammolar</button>
+      <button role="tab" data-tab="systems" aria-selected="false">Tizimlar</button>
       <button role="tab" data-tab="ai" aria-selected="false">AI yordamchi</button>
       <button role="tab" data-tab="report" aria-selected="false">Hisobot</button>
     </nav>
@@ -44,14 +45,16 @@
   <dialog id="settingsDlg" aria-labelledby="settingsTitle">
     <form id="settingsForm" method="dialog">
       <h2 id="settingsTitle">Sozlamalar</h2>
-      <p class="muted small">Kalitlar faqat shu brauzerda (localStorage) saqlanadi va faqat TomTom/OpenAI serverlariga yuboriladi.</p>
+      <label class="field"><span>Xodim kodi (hokimiyat xodimlari uchun umumiy) — tuzatish va xaritalar hamma xodimlarga saqlanishi uchun</span>
+        <span class="pass"><input id="fixPin" type="password" autocomplete="off" inputmode="numeric" placeholder="Xodim kodi"><button type="button" class="btn sm" data-toggle-pass="#fixPin">Koʻrsatish</button></span>
+        <small class="muted" id="fixInfo"></small></label>
+      <details class="more"><summary>Texnik sozlamalar (odatda kerak emas)</summary>
+      <p class="muted small">AI va xaritalar sayt serveri orqali ishlaydi — bu kalitlar kerak emas. Faqat sinov uchun.</p>
       <label class="field"><span>TomTom API kaliti <a href="https://developer.tomtom.com/" target="_blank" rel="noopener">(bepul olish)</a></span>
         <span class="pass"><input id="keyTomtom" type="password" autocomplete="off" spellcheck="false" placeholder="Traffic Flow API kaliti"><button type="button" class="btn sm" data-toggle-pass="#keyTomtom">Koʻrsatish</button></span></label>
       <label class="field"><span>OpenAI API kaliti (ixtiyoriy)</span>
         <span class="pass"><input id="keyOpenai" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"><button type="button" class="btn sm" data-toggle-pass="#keyOpenai">Koʻrsatish</button></span></label>
-      <label class="field"><span>Xarita tuzatishlari uchun PIN-kod (sayt egasi beradi)</span>
-        <span class="pass"><input id="fixPin" type="password" autocomplete="off" inputmode="numeric" placeholder="PIN"><button type="button" class="btn sm" data-toggle-pass="#fixPin">Koʻrsatish</button></span>
-        <small class="muted" id="fixInfo"></small></label>
+      </details>
       <div class="row-btns">
         <button class="btn primary" type="submit">Saqlash</button>
         <button class="btn" type="button" id="btnCloseSettings">Yopish</button>
@@ -75,6 +78,7 @@
   <script src="js/data/panorama.js"></script>
   <script src="js/data/mapillary.js"></script>
   <script src="js/data/fixes.js"></script>
+  <script src="js/data/systems.js"></script>
   <script src="js/analysis/forecast.js"></script>
   <script src="js/data/osm.js"></script>
   <script src="js/data/tomtom.js"></script>

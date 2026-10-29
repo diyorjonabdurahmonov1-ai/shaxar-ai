@@ -33,6 +33,57 @@
   const riskWord = v => (v < 35 ? 'past' : v < 60 ? 'oʻrtacha' : 'yuqori');
   const plural = (n, w) => `${F.int(n)} ta ${w}`;
 
+  // ---------- Hodisalar (real vaqt) ----------
+  function alerts(S) {
+    const M = S.model, out = [], W = S.weather && S.weather.data, lvl = S.yandexState && S.yandexState.level;
+    if (lvl != null) out.push(lvl >= 7 ? { l: 'r', t: `Shaharda kuchli tirbandlik — ${lvl} ball`, s: 'Yandex' } : lvl >= 5 ? { l: 'a', t: `Tirbandlik oshgan — ${lvl} ball`, s: 'Yandex' } : { l: 'i', t: `Harakat normal — ${lvl} ball`, s: 'Yandex' });
+    if (W) NX.weather.roadAdvice(W).filter(a => !/xalal bermaydi/.test(a)).slice(0, 1).forEach(a => out.push({ l: 'a', t: a, s: 'Open-Meteo' }));
+    const sc = M.problems.filter(p => p.type === 'school').length, jn = M.problems.filter(p => p.type === 'junction').length;
+    const conf = M.problems.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'bad').length;
+    if (sc) out.push({ l: 'r', t: `${sc} ta maktab/bogʻcha oldida xavfsiz oʻtish yoʻq`, s: 'OSM', act: 'problems' });
+    if (jn) out.push({ l: 'a', t: `${jn} ta yirik chorrahada svetofor yoʻq${conf ? ` (${conf} tasi suratda tasdiqlandi)` : ''}`, s: conf ? 'Mapillary + AI' : 'OSM', act: 'problems' });
+    if (S.review && S.review.fixed.length) out.push({ l: 'i', t: `${S.review.fixed.length} ta joy suratda tekshirildi — muammo emas, roʻyxatdan olindi`, s: 'Mapillary + AI' });
+    NX.systems.loaded().forEach(k => { const d = NX.systems.get(k); out.push({ l: 'i', t: `${NX.SYSTEMS[k].icon} ${NX.SYSTEMS[k].uz}: ${d.stats.features} ta obyekt xaritada`, s: d.shared ? 'umumiy' : 'shu kompyuter' }); });
+    return out;
+  }
+  function alertsCard(S) {
+    const a = alerts(S);
+    return `<section class="card alerts" id="alerts"><h3>🔔 Hozirgi holat <small class="muted">${S.live && S.live.last ? NX.fmt.time(S.live.last).slice(-5) : ''}</small></h3>
+      <ul class="alist2">${a.map(x => `<li class="al-${x.l}">${x.act ? `<button class="link" data-act="tab" data-tab="${x.act}">${E(x.t)}</button>` : E(x.t)} <small class="muted">· ${E(x.s)}</small></li>`).join('') || '<li class="al-i">Hodisa yoʻq.</li>'}</ul>
+    </section>`;
+  }
+  const sysState = k => (k === 'transport' ? ['on', 'Ulangan · real vaqt'] : NX.systems.get(k) ? ['map', `Xarita: ${NX.systems.get(k).stats.features} ta obyekt`] : ['off', 'Ulanmagan']);
+  function systemsGrid() {
+    return `<section class="card"><h3>🏙 Shahar tizimlari</h3><div class="sys-grid">${Object.keys(NX.SYSTEMS).map(k => {
+      const S = NX.SYSTEMS[k], st = sysState(k);
+      return `<button class="sys-tile ${st[0]}" data-act="tab" data-tab="systems" style="--c:${S.color}"><span class="sys-ico">${S.icon}</span><b>${E(S.uz)}</b><small>${st[1]}</small></button>`;
+    }).join('')}</div></section>`;
+  }
+
+  // ---------- Tizimlar boʻlimi ----------
+  function systems(S) {
+    const busy = S.sysBusy;
+    return `
+    <section class="card">
+      <h2>🏙 Shahar tizimlari</h2>
+      <p class="small muted">Har bir tizim xaritasini bir marta yuklang (GeoJSON, KML yoki CSV) — u xaritada koʻrinadi, AI hudud tahlilida va savollarga javobda foydalanadi. Xodim kodi kiritilgan boʻlsa — barcha xodimlarga koʻrinadi.</p>
+    </section>
+    ${Object.keys(NX.SYSTEMS).map(k => {
+      const T = NX.SYSTEMS[k], d = NX.systems.get(k), st = sysState(k);
+      if (k === 'transport') return `<section class="card sys-card" style="--c:${T.color}"><div class="prob-h"><span class="prob-ico">${T.icon}</span><div><b>${E(T.uz)}</b><small class="ok-text">✅ ${st[1]}</small></div></div>
+        <p class="small"><b>Manbalar:</b> ${E(T.sources)}</p><p class="small"><b>AI nima qiladi:</b> ${E(T.ai)}</p></section>`;
+      return `<section class="card sys-card" style="--c:${T.color}">
+        <div class="prob-h"><span class="prob-ico">${T.icon}</span><div><b>${E(T.uz)}</b><small class="${d ? 'ok-text' : 'muted'}">${d ? `🗺 ${E(d.name)} · ${d.stats.features} ta obyekt${d.stats.km ? ` · ${F.num(d.stats.km, 1)} km` : ''} · ${d.shared ? 'barcha xodimlarga' : 'faqat shu kompyuterda'}` : '⏳ Maʼlumot ulanmagan'}</small></div></div>
+        <p class="small"><b>Kerak:</b> ${E(T.need)}</p>
+        <p class="small"><b>AI nima qiladi:</b> ${E(T.ai)}</p>
+        ${busy === k ? '<p class="small muted"><span class="spinner sm"></span> Yuklanmoqda…</p>' : `<div class="row-btns">
+          <label class="btn xs primary file-btn">📂 ${d ? 'Yangilash' : 'Xaritani yuklash'}<input type="file" data-sysfile="${k}" accept=".geojson,.json,.kml,.csv" hidden></label>
+          ${d ? `<button class="btn xs" data-act="sys-show" data-sys="${k}">🗺 Xaritada koʻrsatish</button><button class="btn xs" data-act="sys-remove" data-sys="${k}">🗑 Oʻchirish</button>` : ''}</div>`}
+        <p class="small muted">Real vaqt (datchiklar, ${k === 'camera' ? 'video oqimi' : 'oʻchishlar, bosim'}): tashkilot API bergach ulanadi.</p>
+      </section>`;
+    }).join('')}`;
+  }
+
   // ---------- Umumiy koʻrinish (Xarita) ----------
   function home(S) {
     const M = S.model;
@@ -40,6 +91,8 @@
       .sort((a, b) => NX.PROBLEM[b.t].weight - NX.PROBLEM[a.t].weight);
     return `
     ${nowCard(S)}
+    ${alertsCard(S)}
+    ${systemsGrid()}
     <section class="card">
       <h3>Asosiy muammolar</h3>
       ${groups.length ? `<ul class="top-probs">${groups.slice(0, 4).map(g => `<li><span>${NX.PROBLEM[g.t].icon} ${E(NX.PROBLEM[g.t].short)}</span><b>${g.items.length}</b></li>`).join('')}</ul>
@@ -245,14 +298,12 @@
     const lvl = yst && yst.level != null ? yst.level : null;
     const lvlTxt = lvl == null ? 'xaritada' : `${lvl} ball`;
     const wx = W ? `${NX.weather.codeText(W.code)[1]} ${F.num(W.temp, 0)}°C` : '—';
-    const adv = W ? NX.weather.roadAdvice(W).filter(a => !/xalal bermaydi/.test(a)) : [];
     return `<section class="card live">
       <div class="now-row">
         <div><small>Tirbandlik</small><b>${lvlTxt}</b></div>
         <div><small>Ob-havo</small><b>${wx}</b></div>
         <div><small>Muammolar</small><b>${M.problems.length}</b></div>
       </div>
-      ${adv.length ? `<p class="small warn-line">⚠️ ${E(adv[0])}</p>` : ''}
     </section>`;
   }
 
@@ -419,6 +470,9 @@
       </div>
       ${Object.keys(groups).length ? `<ul class="street-probs">${Object.keys(groups).sort((a, b) => NX.PROBLEM[b].weight - NX.PROBLEM[a].weight).map(t => `<li><button class="link" data-act="problem" data-id="${groups[t][0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)} — ${groups[t].length} ta</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`).join('')}</ul>` : '<p class="small ok-text">Hududda avtomatik topilgan muammo yoʻq.</p>'}
       ${live}
+      <h4>🏙 Shahar tizimlari</h4>
+      <ul class="sys-area">${NX.systems.KEYS.map(k => { const T = NX.SYSTEMS[k], x = (st.systems || []).find(y => y.sys === k);
+        return `<li>${T.icon} ${E(T.uz)}: ${!x ? '<span class="muted">maʼlumot ulanmagan</span>' : k === 'camera' ? `<b>${x.points}</b> ta kamera` : `${x.km > 0.01 ? `<b>${F.num(x.km, 2)} km</b> liniya` : 'hududda liniya yoʻq'}${x.points ? `, ${x.points} ta obyekt` : ''}${isFinite(x.nearest) && !(x.km > 0.01) ? ` · eng yaqini ${F.km(x.nearest)}` : ''}`}</li>`; }).join('')}</ul>
       <button class="btn xs" data-act="area-redraw">✏️ Qayta chizish</button>
     </section>
     <section class="card chat" id="areaChat">
@@ -615,5 +669,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, area, problems, problem, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, area, problems, problem, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();
