@@ -444,6 +444,14 @@
     }).join('') || '<section class="card"><p>Muammo topilmadi.</p></section>'}`;
   }
 
+  // Chuqur tahlil variantlari: raqamlar (sayt hisobi) va xaritada koʻrsatish tugmasi
+  function deepOpts(A, m) {
+    if (!m.opts || !m.opts.length) return '';
+    const shown = A.deep && A.deep.shown != null ? A.deep.shown : (m.opts.find(o => o.best) || {}).i;
+    return `<div class="deep-opts"><b class="small">Variantlar (hisob) — bosing, xaritada koʻrinadi:</b>${m.opts.map(o => `<button class="dopt${o.i === shown ? ' on' : ''} lv${o.level}" data-act="area-opt" data-i="${o.i}">${o.best ? '⭐ ' : ''}${E(o.label.replace(/^[^:]*:\s*/, ''))}<small>yoʻl vaqti ${F.signed(o.tt, 1)}%${o.vc ? ` · koʻcha toʻlishi ${Math.round(o.vc[0] * 100)}→${Math.round(o.vc[1] * 100)}%` : ''}${o.over ? ` · ${o.over} koʻcha sigʻmaydi` : ''}</small></button>`).join('')}</div>
+      ${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}`;
+  }
+
   // ---------- Belgilangan hudud (mahalla) ----------
   function area(S) {
     const A = S.area, st = A.st;
@@ -451,8 +459,8 @@
     st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
     const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
     const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
-      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div></div></div>`).join('');
-    const sugg = ['Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?', 'Bu hududning asosiy muammolari nima, nimadan boshlash kerak?', 'Bu yerga maktab yoki bogʻcha kerakmi?'];
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${deepOpts(A, m)}</div></div>`).join('');
+    const sugg = ['Bu yerda doim tirbandlik — nima qilsak boʻladi?', 'Soatbay bir tomonlama qilsak-chi?', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'];
     const L = A.live, min = s => Math.max(1, Math.round(s / 60));
     const live = !L ? '' : L.busy ? '<p class="small muted"><span class="spinner sm"></span> Yandex’dan hozirgi yoʻl vaqtlari olinmoqda…</p>'
       : L.list && L.list.length ? `<h4>🚦 Hozir bu yerdan ${B('yandex')}</h4><ul class="live-routes">${L.list.map(r => `<li><b>${E(r.name)}gacha</b> ${min(r.jams)} daq <small class="muted">(probkasiz ${min(r.free)} daq · ${F.km(r.len)})</small>${r.jams > r.free * 1.3 ? ' <span class="tag r">tirband</span>' : ''}</li>`).join('')}</ul>` : '';

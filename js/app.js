@@ -236,6 +236,89 @@
     A.busy = null;
     if (S.tab === 'map' && S.area === A) renderKeepScroll();
   }
+  // ---------- Chuqur tahlil: hudud/koʻcha boʻyicha tirbandlik savollari ----------
+  const TRAFFIC_Q = /prop|probk|tirban|tiqil|oqim|nima qils|yechim|hal qil|qanday qil|bir tomon|yops|svetofor|polosa|yoʻlak|yolak/i;
+  // Koʻchaning hudud ichidagi qismi: boʻlaklar va ikki uchi (oʻq boʻyicha)
+  function streetPart(sid, poly) {
+    const M = S.model, s = M.streets[sid], pcs = [], pts = [];
+    S.simInfo.pieces.forEach(([wi, i0, i1], idx) => {
+      const w = M.ways[wi];
+      if (w.street !== sid) return;
+      const mid = w.ll[Math.floor((i0 + i1) / 2)];
+      if (!poly || NX.area.inside(poly, mid[0], mid[1])) { pcs.push(idx); for (let k = i0; k <= i1; k++) pts.push(w.ll[k]); }
+    });
+    if (!pts.length) return null;
+    const pr = ll => { const [x, y] = NX.geo.xy(ll[0], ll[1]); return x * s.axis[0] + y * s.axis[1]; };
+    let a = pts[0], b = pts[0];
+    pts.forEach(p => { if (pr(p) < pr(a)) a = p; if (pr(p) > pr(b)) b = p; });
+    return { pieces: pcs, a, b, len: Math.round(NX.geo.d(...NX.geo.xy(a[0], a[1]), ...NX.geo.xy(b[0], b[1]))) };
+  }
+  // Real oʻlchovlar tarixi (shu kompyuterda): har ochilganda Yandex yoʻl vaqtlari yoziladi
+  function yxHistory(sid, sample) {
+    const k = 'yx:' + sid, h = NX.store.get(k, []);
+    if (sample) { h.push(sample); NX.store.set(k, h.slice(-300)); }
+    return h;
+  }
+  async function deepAnalyze(q, A, onStep) {
+    const M = S.model, st = A ? A.st : null;
+    const found = NX.ai.detectStreets(q, M);
+    const sid = found.length ? found[0].s.id : st ? (st.streets.find(x => x.name) || st.streets[0] || {}).s : S.chatStreet;
+    if (sid == null) return null;
+    const s = M.streets[sid], d = V.directionLabels(s), scen = NX.ai.detectScenario(q);
+    await NX.sim.whenReady(); S.simInfo = NX.sim.info();
+    const part = streetPart(sid, st && st.poly) || streetPart(sid, null);
+    // Variantlar: savolga qarab
+    let types;
+    if (scen && scen.type === 'oneway') types = ['oneway-A', 'oneway-B'];
+    else if (scen && scen.type === 'close') types = ['close', 'oneway-A', 'oneway-B'];
+    else if (scen && (scen.type === 'buslane' || scen.type === 'signal')) types = [scen.type];
+    else types = ['oneway-A', 'oneway-B', 'signal'].concat(s.busRefs.length ? ['buslane'] : []);
+    const opts = [];
+    for (const type of types) {
+      const { sc, label, dirSign } = scenarioFor(s, type);
+      if (part && st) { sc.pieces = part.pieces; }
+      const lab = label.replace(/^[^:]*:/, `${s.name || 'Koʻcha'}${part && st ? ` (hudud ichidagi ${part.len} m)` : ''}:`);
+      onStep(`Hisoblanmoqda: ${lab}`);
+      const r = await NX.sim.run({ demand: S.demand, scenario: sc, iters: 10 });
+      opts.push({ type, label: lab, r, v: verdict(r, sc, s, type, dirSign || 1), pieces: sc.pieces });
+    }
+    const score = o => o.v.level * 10 + o.r.ttChangePct + o.r.overloadedCount * 2 - (o.r.target ? Math.max(0, o.r.target.baseVC - o.r.target.scenVC) * 20 : 0);
+    const best = opts.slice().sort((x, y) => score(x) - score(y))[0];
+    // Real: Yandex hozirgi yoʻl vaqtlari ikkala yoʻnalishda
+    onStep('Yandex’dan real yoʻl vaqtlari olinmoqda');
+    let live = null;
+    if (part && NX.view.yandexActive() && NX.yandex.mode() === 'api') {
+      try {
+        const [ab, ba] = await Promise.all([NX.yandex.routeTimes(part.a, [{ name: d.B, ll: part.b }]), NX.yandex.routeTimes(part.b, [{ name: d.A, ll: part.a }])]);
+        if (ab && ab[0] && ba && ba[0]) live = { ts: Date.now(), [d.A + 'dan ' + d.B + 'ga']: ab[0], [d.B + 'dan ' + d.A + 'ga']: ba[0] };
+      } catch (e) { live = null; }
+    }
+    const hist = yxHistory(sid, live ? { ts: live.ts, ab: live[d.A + 'dan ' + d.B + 'ga'].jams / Math.max(1, live[d.A + 'dan ' + d.B + 'ga'].free), ba: live[d.B + 'dan ' + d.A + 'ga'].jams / Math.max(1, live[d.B + 'dan ' + d.A + 'ga'].free) } : null);
+    // Internet
+    onStep('Internetdan maʼlumot qidirilmoqda');
+    let web = null;
+    try { web = await NX.ai.webSearchQ(`Samarqand, ${s.name || 'koʻcha'}: tirbandlik, yoʻl taʼmiri, bir tomonlama harakat yoki svetofor boʻyicha yangiliklar va hokimiyat qarorlari (oxirgi 3 yil)`, `Koʻcha: ${s.name}. Yoʻnalishlar: ${d.A} — ${d.B}.`); } catch (e) { web = null; }
+    // Xaritada — eng yaxshi variant
+    ensureLeaflet();
+    NX.view.showDeltas(best.r, S.simInfo.pieces);
+    NX.view.selectStreet(sid, false);
+    if (A) NX.view.drawArea(A.st.poly, null, false);
+    const row = x => ({ koʻcha: x.name || 'nomsiz yoʻl', mashina_soat: Math.round(x.dv) });
+    const min = t => Math.round(t / 60 * 10) / 10;
+    const facts = {
+      koʻcha: { nomi: s.name, turi: NX.HW[s.hw].uz, polosalar: s.lanes || s.lanesPerDir * 2 || null, hozir: s.oneway === 'yes' ? 'bir tomonlama' : 'ikki tomonlama', uzunlik_m: Math.round(s.length), tahlil_qilingan_qism_m: part ? part.len : null, yonalishlar: `${d.A} ↔ ${d.B}`, avtobuslar: s.busRefs, svetoforlar: s.signals.length, piyoda_otish: s.crossings.length },
+      real_yandex_hozir: live ? Object.keys(live).filter(k => k !== 'ts').map(k => ({ yonalish: k, hozir_daqiqa: min(live[k].jams), probkasiz_daqiqa: min(live[k].free), sekinlashish_marta: +(live[k].jams / Math.max(1, live[k].free)).toFixed(2) })) : 'olinmadi (Yandex xaritasi yoqilmagan)',
+      real_yandex_vaqt: live ? new Date(live.ts).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }) : null,
+      shahar_tirbandligi_ball: S.yandexState && S.yandexState.level,
+      oldingi_olchovlar: hist.length > 1 ? { soni: hist.length, davr: `${new Date(hist[0].ts).toLocaleDateString('uz-UZ')} — ${new Date(hist[hist.length - 1].ts).toLocaleDateString('uz-UZ')}`, soat_boyicha: Object.entries(hist.reduce((m, x) => { const h = new Date(x.ts).getHours(); (m[h] = m[h] || []).push(x); return m; }, {})).map(([h, a]) => ({ soat: +h, [d.A + '→' + d.B]: +(a.reduce((t, x) => t + x.ab, 0) / a.length).toFixed(2), [d.B + '→' + d.A]: +(a.reduce((t, x) => t + x.ba, 0) / a.length).toFixed(2) })) } : 'hali yoʻq (har safar tahlil qilinganda yoziladi)',
+      variantlar_hisob: opts.map(o => ({ variant: o.label, baho: o.v.label, umumiy_yol_vaqti_foiz: +o.r.ttChangePct.toFixed(1), shu_koʻcha_toʻlishi_foiz: o.r.target ? { oldin: Math.round(o.r.target.baseVC * 100), keyin: Math.round(o.r.target.scenVC * 100) } : null, yuk_oshadigan: o.r.affected.filter(x => x.dv > 0).slice(0, 4).map(row), yuk_kamayadigan: o.r.affected.filter(x => x.dv < 0).slice(0, 3).map(row), sigmay_qoladigan: o.r.overloaded.slice(0, 4).map(x => x.name || 'nomsiz yoʻl'), avtobus_yonalishi_ozgaradi: o.v.busLines, sabablar: o.v.reasons })),
+      xaritada_korsatilgan: best.label,
+      internet: web && web.text ? { matn: web.text.slice(0, 2500), manbalar: web.sources.slice(0, 6) } : 'qidirilmadi yoki topilmadi',
+      eslatma: 'variantlar_hisob — harakat modeli; real_yandex — real oʻlchov',
+    };
+    return { facts, opts, best, sid, web };
+  }
+
   async function areaAsk(q) {
     const A = S.area;
     q = (q || '').trim();
@@ -251,10 +334,27 @@
       renderKeepScroll();
       await runBuild();
     }
-    A.qaBusy = 'AI javob yozmoqda…';
-    renderKeepScroll();
-    const r = await NX.ai.areaAsk(q, A, prev, areaExtra());
-    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+    // Tirbandlik / bir tomonlama / svetofor savoli — chuqur tahlil (variantlar, Yandex real vaqt, internet, xarita)
+    let r = null;
+    if (!pb && TRAFFIC_Q.test(q) && NX.ai.available()) {
+      try {
+        const step = t => { A.qaBusy = t + '…'; renderKeepScroll(); };
+        const dp = await deepAnalyze(q, A, step);
+        if (dp) {
+          A.deep = dp;
+          step('AI xulosa yozmoqda (chuqur tahlil)');
+          r = await NX.ai.deepAsk(q, Object.assign({ hudud: NX.ai.areaFacts(A, areaExtra()).hudud_osm, shahar_tizimlari: NX.ai.systemsFacts(A.st) }, dp.facts), prev);
+          r.opts = dp.opts.map((o, i) => ({ i, label: o.label, tt: o.r.ttChangePct, vc: o.r.target ? [o.r.target.baseVC, o.r.target.scenVC] : null, over: o.r.overloadedCount, level: o.v.level, best: o === dp.best }));
+          r.sources = dp.web && dp.web.sources ? dp.web.sources.slice(0, 5) : [];
+        }
+      } catch (e) { console.warn(e); r = null; }
+    }
+    if (!r) {
+      A.qaBusy = 'AI javob yozmoqda…';
+      renderKeepScroll();
+      r = await NX.ai.areaAsk(q, A, prev, areaExtra());
+    }
+    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources });
     A.qaBusy = null;
     if (S.tab === 'map' && S.area === A) { renderKeepScroll(); const c = $('#areaChat'); if (c) c.scrollIntoView({ block: 'end' }); }
   }
@@ -776,6 +876,21 @@
     S.chat.busy = 'Oʻylayapman…';
     renderChat();
     const TYPE = { oneway: d => 'oneway-' + (d || 'A'), close: () => 'close', buslane: () => 'buslane', signal: () => 'signal', demand: () => 'demand' };
+    // Koʻcha boʻyicha tirbandlik savoli — chuqur tahlil (bir nechta variant, Yandex real vaqt, internet, xarita)
+    if (TRAFFIC_Q.test(q) && NX.ai.available() && (NX.ai.detectStreets(q, S.model).length || (S.chatStreet != null && /nima qils|yechim|hal qil|bir tomon|yops|svetofor|polosa|shu koʻcha|bu koʻcha|shu yer|bu yer/i.test(q)))) {
+      try {
+        const dp = await deepAnalyze(q, null, t => { S.chat.busy = t + '…'; renderChat(); });
+        if (dp) {
+          S.chatStreet = dp.sid;
+          S.chat.busy = 'AI xulosa yozmoqda (chuqur tahlil)…'; renderChat();
+          const r = await NX.ai.deepAsk(q, Object.assign({ shahar_tizimlari: NX.ai.systemsFacts() }, dp.facts), prev.map(m => ({ role: m.role, text: m.content })));
+          S.sim.last = { street: dp.sid, type: dp.best.type, label: dp.best.label, demand: S.demand, result: dp.best.r, verdict: dp.best.v, iters: 10 };
+          S.chat.msgs.push({ role: 'ai', text: r.text, src: 'ai', sim: simSummary(S.sim.last) });
+          S.chat.busy = null; renderChat();
+          return;
+        }
+      } catch (e) { console.warn(e); }
+    }
     try {
       const res = await NX.ai.ask(q, S.model, {
         defaultStreet: S.chatStreet != null ? S.model.streets[S.chatStreet] : null,
@@ -951,6 +1066,11 @@
         case 'area-clear': clearArea(); break;
         case 'area-redraw': drawArea(); break;
         case 'area-ask': areaAsk(b.dataset.q); break;
+        case 'area-opt': {
+          const o = S.area && S.area.deep && S.area.deep.opts[+b.dataset.i];
+          if (o) { ensureLeaflet(); NX.view.showDeltas(o.r, S.simInfo.pieces); NX.view.selectStreet(S.area.deep.sid, false); NX.view.drawArea(S.area.st.poly, null, false); S.area.deep.shown = +b.dataset.i; renderKeepScroll(); }
+          break;
+        }
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;

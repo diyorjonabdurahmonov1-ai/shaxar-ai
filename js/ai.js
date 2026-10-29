@@ -120,9 +120,9 @@ Qoidalar:
   const proxyUrl = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim();
   const aiAvailable = () => !!(userKey() || proxyUrl());
 
-  async function callOpenAI(key, ctx, onModel, history, messages) {
+  async function callOpenAI(key, ctx, onModel, history, messages, models) {
     let lastErr = null;
-    for (const model of NX.config.openaiModels) {
+    for (const model of (models || NX.config.openaiModels)) {
       onModel && onModel(model);
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
@@ -404,7 +404,8 @@ Qoidalar:
 - Oʻzbek tilida (lotin), sodda va qisqa yoz. Savolga aniq javob ber. “Taxmin” soʻzini takrorlama; faqat bir marta qisqa ayt: hisob modelga asoslangan.
 - Faqat JSON’dagi raqam va nomlardan foydalan; yoʻq narsani oʻylab topma. Avval real holatni ayt (OSM va Yandex), keyin hisob natijasini.
 - Foydalanuvchi xonadon yoki qavat sonini aytmagan boʻlsa — hisobda qaysi raqam olinganini ayt.
-- Qurilish soʻralsa tuzilma: **Hozir** (real holat: koʻchalar, bekatlar, maktablar, yoʻl vaqtlari), **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk tushadi — ular xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak** (ustuvorlik bilan), **Kelajakda (5 yil)**. Har biri 2–4 nuqta.
+- Faqat soʻralgan savolga javob ber; soʻralmagan boʻlim yozma. JSON kalit nomlarini, “null” kabi texnik soʻzlarni hech qachon yozma.
+- FAQAT qurilish (dom, bino) soʻralganda tuzilma: **Hozir**, **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk — xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak**, **Kelajakda (5 yil)**. Har biri 2–4 nuqta, raqamlar bilan.
 - Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.`;
 
   function areaFacts(A, extra) {
@@ -428,6 +429,42 @@ Qoidalar:
     };
   }
 
+  // Chuqur tahlil (tirbandlik, bir tomonlama, svetofor…): bir nechta variant simulyatsiyasi, Yandex real yoʻl vaqtlari, internet
+  const DEEP = `Sen Samarqand shahar hokimiyati rahbariyati uchun yoʻl harakati boʻyicha bosh tahlilchisan. Javobing davlat rahbariyatiga koʻrsatiladi.
+Senga beriladi: savol; hududning real maʼlumoti (OpenStreetMap); Yandex’dan HOZIR oʻlchangan real yoʻl vaqtlari ikkala yoʻnalishda (va oldingi oʻlchovlar tarixi, boʻlsa);
+bir nechta variant boʻyicha harakat modeli hisobi (har birida: umumiy yoʻl vaqti oʻzgarishi, shu koʻchaning toʻlishi, qaysi koʻchalarga yuk oshadi/kamayadi, avtobuslar); internet manbalari (boʻlsa).
+Qoidalar:
+- Faqat savolga javob ber. Soʻralmagan mavzu (qurilish, maktab va h.k.) haqida yozma.
+- 1-qator: aniq tavsiya bitta gapda (masalan: “7:30–10:00 da faqat shimolga bir tomonlama, qolgan vaqtda ikki tomonlama”).
+- Keyin **Asos**: real oʻlchov (qaysi yoʻnalish hozir sekin, necha daqiqa, oʻlchov vaqti) va variantlar solishtiruvi — har variant bir qatorda raqamlar bilan. Eng yaxshisini nega tanlaganingni ayt.
+- **Sxema**: aniq vaqt oraliqlari, yoʻnalish, qaysi chorrahalarda qanday belgi/svetofor, aylanib oʻtish yoʻli (yuk oshadigan koʻchalar), avtobuslar.
+- **Sinov va nazorat**: necha kun, nimani oʻlchash, qaysi raqamda bekor qilish.
+- **Xaritada**: xaritada qaysi variant koʻrsatilganini bir gapda ayt (qizil — yuk oshadi, yashil — kamayadi).
+- Internet manbalari boʻlsa — faqat shu koʻchaga tegishlisini qisqa, havolasi bilan. Boʻlmasa — yozma.
+- Hech qachon JSON kalit nomlarini, “null”, “hisoblanmagan” kabi texnik soʻzlarni yozma. Umumiy, mazmunsiz gaplar yozma. Maʼlumot yetishmasa — bitta gapda nima yetishmaydi va qanday olinadi.
+- Raqamlarni faqat berilgan maʼlumotdan ol. Real oʻlchov va model hisobini aralashtirma: hisobni “hisob boʻyicha” deb ayt.
+- Oʻzbek tilida (lotin), aniq va londa.`;
+  async function deepAsk(q, facts, history) {
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
+    const messages = [{ role: 'system', content: DEEP }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
+    const r = await callOpenAI(userKey(), null, null, null, messages, ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini']);
+    return { text: r.text, src: 'ai', model: r.model };
+  }
+  // Erkin internet qidiruvi (koʻcha yoki hudud boʻyicha)
+  async function webSearchQ(q, context) {
+    if (!proxyUrl()) {
+      const key = userKey(); if (!key) return null;
+      const r = await NX.fetchJSON('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify({ model: 'gpt-5.4-mini', input: q + '\n\n' + String(context || '').slice(0, 2500), tools: [{ type: 'web_search' }], reasoning: { effort: 'low' } }) }, 90000);
+      if (!r.ok || !r.data) return null;
+      let text = ''; const sources = [];
+      (r.data.output || []).forEach(o => (o.content || []).forEach(c => { if (c.type === 'output_text') { text += c.text; (c.annotations || []).forEach(a => a.url && !sources.some(x => x.url === a.url) && sources.push({ url: a.url, title: a.title || a.url })); } }));
+      return { text, sources };
+    }
+    if (!(await proxyReady())) return null;
+    const r = await NX.fetchJSON(proxyUrl() + '/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q, context: String(context || '').slice(0, 2500) }) }, 90000);
+    return r.ok && r.data ? { text: r.data.text || '', sources: r.data.sources || [] } : null;
+  }
+
   async function areaAsk(q, A, history, extra) {
     const facts = areaFacts(A, extra);
     const local = () => {
@@ -447,5 +484,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

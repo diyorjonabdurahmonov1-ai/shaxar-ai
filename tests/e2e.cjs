@@ -255,8 +255,7 @@ async function clickStreet(page, name) {
   const aiTxt = await page.textContent('#chat .chat-msg.ai .ai-text');
   const body = ctx.openaiBodies[ctx.openaiBodies.length - 1];
   const userMsg = body.messages[body.messages.length - 1].content;
-  ok('AI: koʻcha aniqlanadi va simulyatsiya JSON yuboriladi', /Dagbitskiy/.test(userMsg) && /simulyatsiya/.test(userMsg) && /umumiy_yol_vaqti/.test(userMsg), 'model: ' + body.model);
-  ok('AI: model ketma-ketligi (404 → keyingisi)', ctx.openaiBodies.some(b => b.model === 'gpt-5.4-mini') && body.model === 'gpt-5.5');
+  ok('AI: koʻcha aniqlanadi, variantlar hisoblanib JSON yuboriladi (chuqur tahlil)', /Dagbitskiy/.test(userMsg) && /variantlar_hisob/.test(userMsg) && /umumiy_yol_vaqti/.test(userMsg) && body.model === 'gpt-5.5', 'model: ' + body.model);
   ok('AI javobi koʻrsatiladi (ogohlantirishsiz)', /Hozirgi holat/.test(aiTxt) && !(await page.$('#chat .ai-src')));
   // Umumiy savol (koʻcha va stsenariysiz): AI ga real holat beriladi
   await page.fill('#chat textarea[name=q]', 'Hozir qaysi koʻchalar tirband va ob-havo qanday?');
@@ -265,6 +264,7 @@ async function clickStreet(page, name) {
   const gen = ctx.openaiBodies[ctx.openaiBodies.length - 1];
   const genMsg = gen.messages[gen.messages.length - 1].content;
   ok('Umumiy savolda AI ga ob-havo, tirbandlik, hodisalar, avtobuslar beriladi', /ob_havo/.test(genMsg) && /hozirgi_tirbandlik/.test(genMsg) && /avtobus_liniyalari/.test(genMsg) && /muammolar/.test(genMsg), 'xabarlar: ' + gen.messages.length);
+  ok('AI: model ketma-ketligi (404 → keyingisi)', ctx.openaiBodies.some(b => b.model === 'gpt-5.4-mini') && gen.model === 'gpt-5.5');
   ok('Oldingi savol-javob eslab qolinadi', gen.messages.length === 4 && gen.messages[1].role === 'user');
   ok('Soʻrov hajmi proksi limitidan kichik (30 000)', JSON.stringify(gen).length < 30000, String(JSON.stringify(gen).length));
   ok('Konsolda xato yoʻq (desktop)', errs.length === 0, errs.join(' || '));
@@ -573,6 +573,26 @@ async function clickStreet(page, name) {
   await p8b.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.review.ts, null, { timeout: 60000 });
   ok('AI natijasi umumiy: boshqa foydalanuvchida qayta soʻralmaydi', pc.posts === postsBefore && (await p8b.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `yangi soʻrovlar: ${pc.posts - postsBefore}`);
   await p8b.close();
+  // Chuqur tahlil: “doim tirbandlik — nima qilsak?” → bir nechta variant hisoblanadi, internet qidiriladi, eng yaxshisi xaritada
+  await p8.click('.tabs [data-tab=ai]');
+  const srch0 = px.search, chat0 = px.chat.length;
+  await p8.fill('#chat textarea[name=q]', 'Registon koʻchasida doim tirbandlik, nima qilsak boʻladi? Soatbay bir tomonlama qilsak-chi?');
+  await p8.click('#chat form button');
+  await p8.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.some(m => m.role === 'ai'), null, { timeout: 120000 });
+  const deepReq = px.chat.slice(chat0).find(b => /bosh tahlilchisan/.test(b.messages[0].content));
+  const deepFacts = deepReq && JSON.parse(deepReq.messages[deepReq.messages.length - 1].content.split('(JSON):\n')[1]);
+  ok('Chuqur tahlil: variantlar hisoblanadi, internet qidiriladi, kuchli model', deepReq && deepReq.model === 'gpt-5.5' && deepFacts.variantlar_hisob.length >= 2 && px.search > srch0 && (await p8.evaluate(() => NX.map.hasDeltas())), deepFacts ? deepFacts.variantlar_hisob.map(v => v.variant + ' ' + v.umumiy_yol_vaqti_foiz).join(' | ') : 'yoʻq');
+  // Hudud chatida chuqur tahlil: variantlar tugmalari (xaritada koʻrsatish)
+  await p8.click('.tabs [data-tab=map]');
+  await p8.evaluate(c => { const poly = [[c[0] - 0.002, c[1] - 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] - 0.002]]; const st = NX.area.stats(NX.state.model, poly); st.systems = []; const A0 = {}; Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; }); NX.state.area = { st, spec: { flats: 500, floors: 9 }, A: A0, res: null, busy: null, qa: [], qaBusy: null }; }, await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center));
+  await p8.click('.tabs [data-tab=map]');
+  await p8.click('#areaChat [data-act=area-ask] >> nth=0');
+  await p8.waitForFunction(() => NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 120000 });
+  const nOpt = (await p8.$$('#areaChat .dopt')).length;
+  await p8.click('#areaChat .dopt >> nth=1');
+  ok('Hudud: chuqur tahlil variantlari raqamlar bilan, bosilsa xaritada koʻrinadi', nOpt >= 3 && (await p8.evaluate(() => NX.state.area.deep.shown === 1 && NX.map.hasDeltas())), 'variantlar: ' + nOpt);
+  if (process.env.SHOT6) { await p8.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p8.screenshot({ path: process.env.SHOT6 }); }
+  await p8.click('[data-act=area-clear]');
   // Shahar tizimlari: xaritani yuklash (barcha xodimlarga), xaritada koʻrinadi, hudud tahliliga qoʻshiladi
   await p8.evaluate(() => localStorage.setItem('nx:fixes:pin', JSON.stringify('4321')));
   await p8.click('.tabs [data-tab=systems]');
@@ -615,7 +635,7 @@ async function clickStreet(page, name) {
   const st9 = await p9.evaluate(() => ({ ha: NX.state.area.st.areaHa, streets: NX.state.area.st.streets.length, probs: NX.state.area.st.problems.length }));
   ok('Sichqoncha bilan erkin chizilgan hudud tahlil qilinadi', st9.ha > 1 && st9.streets > 0 && /Belgilangan hudud/.test(await p9.textContent('#panel h2')) && !(await p9.$('.draw-ov')), JSON.stringify(st9));
   ok('Hudud panelida AI tahlil asosiy (alohida “Taxmin” boʻlimi yoʻq)', (await p9.isVisible('#areaChat textarea')) && !(await p9.$('#areaBuild')));
-  await p9.click('#areaChat [data-act=area-ask] >> nth=0');
+  await p9.click('#areaChat [data-act=area-ask] >> nth=2');
   await p9.waitForFunction(() => NX.state.area.res && !NX.state.area.busy && NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const r9 = await p9.evaluate(() => ({ res: NX.state.area.res.b.residents, trips: NX.state.area.res.sim.build && NX.state.area.res.sim.build.trips, deltas: NX.map.hasDeltas() }));
   ok('500 xonadon: aholi, mashinalar, yuklama xaritada', r9.res === 2000 && r9.trips === 150 && r9.deltas, JSON.stringify(r9));
