@@ -818,6 +818,26 @@ async function clickStreet(page, name) {
   ok('Hududni olib tashlash', await p9.evaluate(() => NX.state.area === null && !NX.map.hasDeltas()));
   ok('Konsolda xato yoʻq (hudud)', e9.length === 0, e9.join(' || '));
 
+  // ---------- 10. OpenStreetMap koʻchalar soʻrovi qotib qolsa — chat baribir javob beradi ----------
+  const ctx10 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await setupRoutes(ctx10);
+  await ctx10.route(/overpass|maps\.mail\.ru/, async route => {
+    const body = decodeURIComponent((route.request().postData() || '').replace(/\+/g, ' '));
+    if (/out body geom qt/.test(body) && /trunk\|primary/.test(body)) { await new Promise(r => setTimeout(r, 90000)); return route.abort('timedout').catch(() => {}); }
+    return route.fallback();
+  });
+  const p10 = await ctx10.newPage();
+  await p10.goto(BASE);
+  await p10.waitForSelector('#panel .live', { timeout: 30000 });
+  await p10.click('.tabs [data-tab=twin]');
+  const t10 = Date.now();
+  await p10.fill('#twinChat textarea[name=tq]', '30 mm yomgʻir yogʻsa qayerni suv bosadi?');
+  await p10.click('#twinChat form button');
+  await p10.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 150000 });
+  const dt10 = Math.round((Date.now() - t10) / 1000);
+  ok('Koʻchalar serveri javob bermasa ham chat ~1 daqiqada javob beradi (cheksiz kutmaydi)', dt10 < 110 && (await p10.evaluate(() => !NX.state.twin.roads)), dt10 + ' s');
+  await ctx10.close();
+
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));
   console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`);

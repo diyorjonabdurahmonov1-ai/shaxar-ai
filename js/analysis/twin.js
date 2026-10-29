@@ -284,18 +284,19 @@
     if (hit && hit.list && hit.list.length && Date.now() - hit.ts < 30 * 86400e3) return hit.list;
     const mlat = (CITY.s + CITY.n) / 2, mlon = (CITY.w + CITY.e) / 2, parts = [[CITY.s, CITY.w, mlat, mlon], [CITY.s, mlon, mlat, CITY.e], [mlat, CITY.w, CITY.n, mlon], [mlat, mlon, CITY.n, CITY.e]];
     const seen = new Set(), list = [];
-    for (let k = 0; k < parts.length; k++) {
-      onStep && onStep(`Butun shahar koʻchalari yuklanmoqda (bir marta): ${k + 1}/4`);
-      const [s, w, n, e] = parts[k];
-      const q = `[out:json][timeout:90];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${s},${w},${n},${e});out body geom qt;`;
-      let got = null;
-      for (const url of NX.config.overpassMirrors) {
-        try {
-          const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 100000);
-          if (r.ok && r.data && r.data.elements) { got = r.data.elements; break; }
-        } catch (err) { /* keyingi server */ }
-      }
-      if (!got) throw new Error(`Shahar koʻchalari yuklanmadi (Overpass, ${k + 1}/4 qism). Keyinroq qayta urinib koʻring.`);
+    // 4 qism parallel; har qismda barcha Overpass serverlari bir vaqtda soʻraladi — birinchi toʻgʻri javob olinadi
+    let done = 0;
+    const part = ([s, w, n, e]) => {
+      const q = `[out:json][timeout:60];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${s},${w},${n},${e});out body geom qt;`;
+      const ctl = new AbortController();
+      return Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 70000, ctl.signal)
+        .then(r => { if (r.ok && r.data && r.data.elements) return r.data.elements; throw new Error('HTTP ' + r.status); })))
+        .then(els => { ctl.abort(); onStep && onStep(`Shahar koʻchalari yuklanmoqda: ${++done}/4`); return els; });
+    };
+    onStep && onStep('Shahar koʻchalari yuklanmoqda: 0/4');
+    let all;
+    try { all = await Promise.all(parts.map(part)); } catch (err) { throw new Error('Shahar koʻchalari yuklanmadi (OpenStreetMap serverlari javob bermadi). Keyinroq qayta urinib koʻring.'); }
+    for (const got of all) {
       got.forEach(e => {
         if (e.type !== 'way' || !e.geometry || e.geometry.length < 2 || seen.has(e.id)) return;
         seen.add(e.id);

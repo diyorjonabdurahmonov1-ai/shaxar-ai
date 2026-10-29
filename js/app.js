@@ -224,11 +224,13 @@
     draw();
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
-    // Butun shahar koʻchalari — suv koʻchalar boʻylab hisoblanadi va chiziladi
-    try { T.roads = await NX.twin.roads(step); T.roadsErr = null; } catch (e) { T.roadsErr = e.message; }
+    // Butun shahar koʻchalari — fon rejimida (chat ularni cheksiz kutmaydi)
+    T.roadsP = NX.twin.roads(step).then(r => { T.roads = r; T.roadsErr = null; }, e => { T.roadsErr = e.message; });
     await Promise.all(jobs);
-    T.busy = null; T.loading = false;
-    draw(); fin();
+    T.loading = false; fin();
+    await T.roadsP;
+    T.busy = null;
+    draw();
   }
   // “N mm yomgʻir yogʻsa” — suv qayerda va qancha chuqurlikda toʻplanadi (xaritada)
   function twinRain(mm) {
@@ -348,6 +350,7 @@
       binolar_osm: { jami: b.length, qavati_nomaʼlum_foiz: b.length ? Math.round(b.filter(x => x.est).length / b.length * 100) : null, qavat_5_va_yuqori: lv(5), qavat_9_va_yuqori: lv(9), maktab: b.filter(x => x.kind === 'school').length, bogcha: b.filter(x => x.kind === 'kindergarten').length, shifoxona: b.filter(x => /hospital|clinic/.test(x.kind)).length },
       quyosh_yillik_kvt_soat_m2: T.ghi ? T.ghi.kwh : null,
       kanalizatsiya_xaritasi: NX.systems.get('sewer') ? 'yuklangan' : 'yuklanmagan (sigʻim 10 mm deb olingan)',
+      shahar_koʻchalari: T.roads ? `${T.roads.length} ta (OSM)` : 'hali yuklanmadi — natijada koʻcha nomlari boʻlmasligi mumkin',
       iqlim_samarqand: T.climate ? { manba: T.climate.src, harorat_meyori_1991_2020_c: T.climate.tNorm, yogin_meyori_mm: T.climate.pNorm, isish_c_10_yilda: T.climate.trend10,
         oxirgi_yillar: T.climate.years.slice(-5).map(o => ({ yil: o.y, harorat_c: o.t, yogin_mm: o.p, eng_kuchli_kun_mm: o.pmax })), eng_kuchli_kunlar_1991dan: T.climate.top.slice(0, 5), oylik_meyor_mm: T.climate.monthNorm, ozgidromet: T.climate.doc, ozgidromet_oylik_yogin_mm: NX.twin.EGOV_RAIN } : { ozgidromet: NX.twin.UZHYDROMET, ozgidromet_oylik_yogin_mm: NX.twin.EGOV_RAIN },
     }, extra || {});
@@ -360,21 +363,30 @@
     const prev = C.msgs.slice(-2);
     C.msgs.push({ role: 'user', text: q });
     C.busy = 'Maʼlumot tayyorlanmoqda'; renderKeepScroll();
-    await loadTwin();
+    // Asosiy maʼlumot (binolar, relyef) — 40 s gacha; koʻchalar — 25 s gacha, kelmasa ularsiz davom etadi
+    const T0 = twinState(), wait = (p, ms) => Promise.race([p, NX.sleep(ms)]);
+    const busyTick = setInterval(() => { if (T0.busy && C.busy) { C.busy = T0.busy; renderKeepScroll(); } }, 1500);
+    try {
+      await wait(loadTwin(), 40000);
+      if (!T0.roads && T0.roadsP) await wait(T0.roadsP, 25000);
+    } finally { clearInterval(busyTick); }
     const n = q.toLowerCase();
     const mmM = n.match(/(\d+(?:[.,]\d+)?)\s*(mm|millimetr)/);
     const rainQ = mmM || /yomg|jala|sel|toshqin|suv bos/.test(n);
     const quakeQ = /zilzila|yer qimirla|silkin|seysm/.test(n);
     let extra = {}, local = '';
     if (rainQ && twinState().dem) {
-      const mm = mmM ? parseFloat(mmM[1].replace(',', '.')) : /sel|juda kuchli/.test(n) ? 80 : /kuchli|jala/.test(n) ? 50 : 30;
+      const asked = mmM ? parseFloat(mmM[1].replace(',', '.')) : /sel|juda kuchli/.test(n) ? 80 : /kuchli|jala/.test(n) ? 50 : 30;
+      // Juda katta qiymatlar (masalan 500 mm) modelni soatlab hisoblatadi va real emas — 200 mm/soatda cheklanadi, AI’ga aytiladi
+      const mm = Math.min(200, asked);
+      if (asked > mm) extra.soralgan_mm = `${asked} mm soʻraldi — bu Samarqand uchun real emas (1991-yildan eng kuchli kun ~40 mm); model ${mm} mm/soat bilan hisoblandi`;
       C.busy = `${mm} mm yomgʻir hisoblanmoqda`; renderKeepScroll();
       const variants = [...new Set([Math.round(mm / 2), mm, mm * 2])].filter(x => x > 0).map(x => scenFacts(rainScen(x)));
       const sc = rainScen(mm);
       // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
       const R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
-      extra = { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants };
+      extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
