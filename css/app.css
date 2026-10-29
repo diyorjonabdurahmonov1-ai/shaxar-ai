@@ -576,3 +576,4 @@ details.pgroup .pill { margin-left: auto; }
 .dyn-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .dyn-bar input[type=range] { flex: 1; accent-color: #2563eb; }
 .dyn { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 6px; }
+.clim-svg { width: 100%; height: auto; display: block; background: color-mix(in srgb, var(--border) 25%, transparent); border-radius: 8px; }

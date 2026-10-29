@@ -199,6 +199,7 @@
     const jobs = [
       NX.twin.solarYear().then(g => { T.ghi = g; }).catch(e => { T.err = e.message; }),
       NX.twin.rain().then(r => { T.rain = r; }).catch(() => {}),
+      NX.twin.climate().then(c => { T.climate = c; }).catch(() => {}),
     ];
     try { T.buildings = await NX.buildings.load(step); } catch (e) { T.err = e.message; }
     draw();
@@ -327,6 +328,8 @@
       binolar_osm: { jami: b.length, qavati_nomaʼlum_foiz: b.length ? Math.round(b.filter(x => x.est).length / b.length * 100) : null, qavat_5_va_yuqori: lv(5), qavat_9_va_yuqori: lv(9), maktab: b.filter(x => x.kind === 'school').length, bogcha: b.filter(x => x.kind === 'kindergarten').length, shifoxona: b.filter(x => /hospital|clinic/.test(x.kind)).length },
       quyosh_yillik_kvt_soat_m2: T.ghi ? T.ghi.kwh : null,
       kanalizatsiya_xaritasi: NX.systems.get('sewer') ? 'yuklangan' : 'yuklanmagan (sigʻim 10 mm deb olingan)',
+      iqlim_samarqand: T.climate ? { manba: T.climate.src, harorat_meyori_1991_2020_c: T.climate.tNorm, yogin_meyori_mm: T.climate.pNorm, isish_c_10_yilda: T.climate.trend10,
+        oxirgi_yillar: T.climate.years.slice(-5).map(o => ({ yil: o.y, harorat_c: o.t, yogin_mm: o.p, eng_kuchli_kun_mm: o.pmax })), eng_kuchli_kunlar_1991dan: T.climate.top.slice(0, 5), ozgidromet: T.climate.doc } : { ozgidromet: NX.twin.UZHYDROMET },
     }, extra || {});
   }
   const scenFacts = s => ({ yomgir_mm_1_soatda: s.rain, kanalizatsiya_olib_ketadi_mm_soat: s.drain, [s.mode === 'street' ? 'suv_10sm_dan_chuqur_koʻchalar_km' : 'suv_ostida_ga']: s.mode === 'street' ? s.km : s.areaHa, koʻchalar: s.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })), suv_yetadigan_binolar: s.buildings, maktab_shifoxona: s.critical, hisob: s.mode === 'street' ? 'koʻchalar boʻylab oqim (OSM koʻchalari + SRTM relyef, Manning)' : 'relyef kataklari' });

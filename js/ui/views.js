@@ -57,6 +57,7 @@
       ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
       ${fl ? `<p class="small">Relyef boʻyicha katta maydondan suv oqib keladigan va sekin oqadigan <b>${fl.basins}</b> ta joy bor. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
         <h4>⏱ 2D fizik model — suv vaqt boʻyicha</h4>
+        ${T.climate ? `<p class="small muted">Taqqoslash uchun: 1991-yildan beri Samarqanddagi eng kuchli kunlik yogʻin — <b>${T.climate.top[0].p} mm</b> (${T.climate.top[0].t}); 20 mm dan koʻp yomgʻirli kunlar yiliga oʻrtacha ${F.num(T.climate.years.reduce((t, o) => t + o.wet20, 0) / T.climate.years.length, 1)} ta (ERA5).</p>` : ''}
         <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa</b> (bosing — suv qanday tarqalishi soatma-soat hisoblanadi, ~10 soniya):</p>
         <div class="chips">${[10, 30, 50, 80, 120].map(mm => `<button class="chip${T.dyn && T.dyn.label === mm + ' mm, 1 soatda' ? ' on' : ''}" data-act="twin-rain" data-mm="${mm}" ${T.dynBusy ? 'disabled' : ''}>${mm} mm</button>`).join('')}<button class="chip" data-act="twin-forecast" ${T.dynBusy ? 'disabled' : ''}>🌦 Real prognoz boʻyicha (24 soat)</button></div>
         ${T.dynBusy ? `<p class="small"><span class="spinner sm"></span> <span id="dynBusy">${E(T.dynBusy)}…</span></p>` : ''}
@@ -67,6 +68,7 @@
           ${T.scen.mode !== 'street' ? '<p class="small warn-line">⚠️ Shahar koʻchalari hali yuklanmadi — natija relyef kataklari boʻyicha.</p>' : ''}` : ''}
         <p class="small muted">Relyef: ${E(fl.src || '')}, 60 m katak. Model: soatiga ${NX.systems.get('sewer') ? 15 : 10} mm ni kanalizatsiya olib ketadi, qolganining 70% i asfalt va tomlardan oqib, relyef boʻylab past koʻchalarga yigʻiladi; chuqurlik — Manning formulasi (koʻcha 20 m). Daryo va kanal oʻzanlari hisobga kirmaydi. Kanalizatsiya xaritasi “Tizimlar”da yuklansa, aniqroq boʻladi.</p>` : ''}
     </section>
+    ${climateCard(T)}
     <section class="card">
       <h3>☀️ Tomlardagi quyosh energiyasi ${B('meteo')}</h3>
       ${ghi ? `<p>Samarqandda ${T.ghi.year}-yilda 1 m² ga <b>${F.int(ghi)} kVt·soat</b> quyosh nuri tushgan (oʻlchov arxivi).</p>
@@ -80,6 +82,31 @@
         <ul class="small">${S.area.res.shadow.list.filter(s => s.sun.alt > 2).map(s => `<li>${E(s.label)}, ${s.hour}:00 — quyosh ${Math.round(s.sun.alt)}°, soya ~${Math.round(Math.min(400, S.area.spec.floors * 3.2 / Math.tan(s.sun.alt * Math.PI / 180)))} m</li>`).join('')}</ul>
         <p class="small muted">Binafsha — rejadagi bino, kulrang — qishki soya va soyada qoladigan binolar (“🏗 Yangi bino va soya” rejimi).</p>`
         : '<p class="small muted">Xarita boʻlimida “✏️ Hudud belgilash” → AI’ga “… xonadonli … qavatli dom qursam?” deb yozing — bino va soyasi shu yerda 3D koʻrinadi.</p>'}
+    </section>`;
+  }
+
+  // Iqlim kartasi: yillik harorat va yogʻin (ERA5) + Oʻzgidromet meʼyori
+  function climateCard(T) {
+    const C = T.climate, D = NX.twin.UZHYDROMET;
+    const chart = (vals, norm, docNorm, color, bars, unit) => {
+      const W = 320, H = 110, pad = 22, n = vals.length, mn = Math.min(...vals, norm, docNorm) * (bars ? 0 : 0.98), mxv = Math.max(...vals, norm, docNorm) * 1.02;
+      const X = i => pad + (i * (W - pad - 4)) / Math.max(1, n - 1), Y = v => H - 16 - ((v - mn) / (mxv - mn || 1)) * (H - 26);
+      let g = `<svg viewBox="0 0 ${W} ${H}" class="clim-svg" role="img">`;
+      if (bars) vals.forEach((v, i) => { g += `<rect x="${X(i) - 3}" y="${Y(v)}" width="6" height="${Math.max(0, H - 16 - Y(v))}" fill="${color}" opacity=".85"/>`; });
+      else g += `<polyline points="${vals.map((v, i) => X(i) + ',' + Y(v)).join(' ')}" fill="none" stroke="${color}" stroke-width="2"/>` + vals.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v)}" r="2" fill="${color}"/>`).join('');
+      g += `<line x1="${pad}" x2="${W - 4}" y1="${Y(norm)}" y2="${Y(norm)}" stroke="#dc2626" stroke-width="1.5"/><line x1="${pad}" x2="${W - 4}" y1="${Y(docNorm)}" y2="${Y(docNorm)}" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+      g += `<text x="${pad}" y="${H - 3}" font-size="9" fill="#64748b">${C.years[0].y}</text><text x="${W - 26}" y="${H - 3}" font-size="9" fill="#64748b">${C.years[n - 1].y}</text><text x="2" y="10" font-size="9" fill="#64748b">${Math.round(mxv)}${unit}</text></svg>`;
+      return g;
+    };
+    return `<section class="card">
+      <h3>🌡 Samarqand iqlimi (1991–${C ? C.years[C.years.length - 1].y : '…'})</h3>
+      ${C ? `<p class="small">Oʻrtacha harorat har 10 yilda <b>${C.trend10 > 0 ? '+' : ''}${C.trend10}°C</b> ga oʻzgarmoqda. Meʼyor (1991–2020): ${C.tNorm}°C, yogʻin ${C.pNorm} mm (ERA5).</p>
+        <p class="small"><b>Yillik harorat</b></p>${chart(C.years.map(o => o.t), C.tNorm, D.samarqand_harorat_meyori_c, '#ea580c', false, '°')}
+        <p class="small"><b>Yillik yogʻin</b></p>${chart(C.years.map(o => o.p), C.pNorm, D.samarqand_yogin_meyori_mm, '#16a34a', true, ' mm')}
+        <p class="plan-leg small"><span><i style="background:#dc2626;border-radius:0;height:3px"></i>meʼyor (ERA5)</span><span><i style="background:#7c3aed;border-radius:0;height:3px"></i>meʼyor (Oʻzgidromet)</span></p>
+        <p class="small"><b>Eng kuchli yomgʻirli kunlar:</b> ${C.top.slice(0, 5).map(x => `${x.t} — ${x.p} mm`).join('; ')}</p>` : '<p class="small muted">Iqlim arxivi yuklanmoqda…</p>'}
+      <p class="small"><b>Oʻzgidromet (2024-yil):</b> ${E(D.yil2024)}. ${E(D.sel)}.</p>
+      <p class="small muted">Manba: Open-Meteo arxivi (ERA5 qayta tahlili, ~25 km — kuchli jalalarni biroz kamaytirib koʻrsatadi); ${E(D.manba)} — meʼyorlar hujjat grafigidan taxminan oʻqilgan.</p>
     </section>`;
   }
 

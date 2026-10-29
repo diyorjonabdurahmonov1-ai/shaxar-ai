@@ -54,7 +54,13 @@ async function setupRoutes(ctx, opts = {}) {
   });
   // Relyef: sintetik — markazdan janubi-sharqda botiq joy; quyosh arxivi; soatlik yogʻin
   await ctx.route(/elevation-tiles-prod\/terrarium/, route => { const m = route.request().url().match(/terrarium\/(\d+)\/(\d+)\/(\d+)\.png/); route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: terrTile(+m[1], +m[2], +m[3]) }); });
-  await ctx.route(/archive-api\.open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time: [], shortwave_radiation_sum: Array(365).fill(18) } }) }));
+  await ctx.route(/archive-api\.open-meteo\.com/, route => {
+    if (!/temperature_2m_mean/.test(route.request().url())) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time: [], shortwave_radiation_sum: Array(365).fill(18) } }) });
+    // Sintetik iqlim (faqat test): isish 0.3°C/10 yil, yogʻin ~1 mm/kun, har yili bitta kuchli kun
+    const time = [], T = [], P = [], y1 = new Date().getFullYear() - 1;
+    for (let d = Date.UTC(1991, 0, 1); d <= Date.UTC(y1, 11, 31); d += 86400e3) { const dt = new Date(d), y = dt.getUTCFullYear(), doy = (d - Date.UTC(y, 0, 1)) / 86400e3; time.push(dt.toISOString().slice(0, 10)); T.push(14.5 + 0.03 * (y - 1991) - 12 * Math.cos((2 * Math.PI * (doy - 15)) / 365)); P.push(doy === 100 ? 20 + (y % 7) * 3 : doy % 9 === 0 ? 8 : 0); }
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time, temperature_2m_mean: T, precipitation_sum: P } }) });
+  });
   await ctx.route(/api\.open-meteo\.com\/v1\/elevation/, route => {
     const u = new URL(route.request().url()), la = u.searchParams.get('latitude').split(',').map(Number), lo = u.searchParams.get('longitude').split(',').map(Number);
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elevation: la.map((a, i) => 700 + (a - 39.64) * 2000 - 8 * Math.exp(-(((a - 39.650) / 0.002) ** 2 + ((lo[i] - 66.980) / 0.003) ** 2))) }) });
@@ -133,6 +139,10 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => NX.map3d.map() && NX.map3d.map().getSource('bld'), null, { timeout: 20000 });
   const tw = await page.evaluate(() => ({ n: NX.state.twin.buildings.length, est: NX.state.twin.buildings.filter(b => b.est).length, ghi: NX.state.twin.ghi.kwh, hot: NX.state.twin.flood.hot.length, rain: NX.state.twin.rain && NX.state.twin.rain.d24, vis: !document.getElementById('map3d').hidden }));
   ok('3D egizak: binolar (OSM) 3D xaritada, qavati yoʻqlari belgilanadi', tw.n === 144 && tw.est > 0 && tw.vis, JSON.stringify(tw));
+  await page.waitForFunction(() => NX.state.twin.climate, null, { timeout: 20000 });
+  const cl = await page.evaluate(() => ({ n: NX.state.twin.climate.years.length, tr: NX.state.twin.climate.trend10, top: NX.state.twin.climate.top[0].p }));
+  if (process.env.SHOT10) await page.locator('#panel section:has(.clim-svg)').screenshot({ path: process.env.SHOT10 });
+  ok('Iqlim: 1991-yildan yillik harorat/yogʻin (arxiv), isish tezligi, eng kuchli kunlar, Oʻzgidromet meʼyori', cl.n >= 34 && Math.abs(cl.tr - 0.3) < 0.05 && cl.top >= 20 && /Oʻzgidromet/.test(await page.textContent('#panel')) && (await page.$$('#panel .clim-svg')).length === 2, JSON.stringify(cl));
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');

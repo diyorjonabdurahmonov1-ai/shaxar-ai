@@ -97,6 +97,41 @@
     return out;
   }
 
+  // ---------- Iqlim: 1991–oʻtgan yil (Open-Meteo arxivi, ERA5 qayta tahlili) + Oʻzgidromet sharhi ----------
+  // Oʻzgidromet, “Oʻzbekiston iqlimi” (2024-yil yakunlari, 2025-yil yanvar): grafiklardan oʻqilgan qiymatlar — taxminiy
+  const UZHYDROMET = {
+    manba: 'Oʻzgidromet, “Oʻzbekiston iqlimi” sharhi (2024-yil yakunlari)',
+    samarqand_harorat_meyori_c: 14.7, samarqand_yogin_meyori_mm: 380, meyor_davri: '1991–2020',
+    yil2024: 'Oʻrtacha yillik harorat meʼyordan 0,6–1,1° yuqori; Samarqand viloyatining ayrim hududlarida yogʻin meʼyorning 124–184% i',
+    sel: 'Togʻ oldi hududlarida jadal yomgʻirlar sel toshqinlarini keltirib chiqaradi; bahorda qor koʻchkilari boʻlishi mumkin',
+    eslatma: 'meʼyor qiymatlari hujjatdagi grafikdan oʻqilgan (taxminan)',
+  };
+  async function climate() {
+    const hit = await NX.bigStore.get('climate:v1');
+    if (hit && Date.now() - hit.ts < 30 * 86400e3) return hit;
+    const y1 = new Date().getFullYear() - 1, [la, lo] = NX.config.center;
+    const r = await NX.fetchJSON(`https://archive-api.open-meteo.com/v1/archive?latitude=${la}&longitude=${lo}&start_date=1991-01-01&end_date=${y1}-12-31&daily=temperature_2m_mean,precipitation_sum&timezone=Asia%2FSamarkand`, {}, 60000);
+    if (!r.ok || !r.data || !r.data.daily) throw new Error('Iqlim arxivi olinmadi.');
+    const d = r.data.daily, years = new Map(), days = [];
+    d.time.forEach((t, i) => {
+      const y = +t.slice(0, 4), o = years.get(y) || { y, ts: 0, n: 0, p: 0, pmax: 0, pmaxAt: '', wet20: 0 };
+      const T = d.temperature_2m_mean[i], P = d.precipitation_sum[i] || 0;
+      if (T != null) { o.ts += T; o.n++; }
+      o.p += P; if (P > o.pmax) { o.pmax = P; o.pmaxAt = t; } if (P >= 20) o.wet20++;
+      years.set(y, o); days.push({ t, p: P });
+    });
+    const list = [...years.values()].map(o => ({ y: o.y, t: +(o.ts / Math.max(1, o.n)).toFixed(2), p: Math.round(o.p), pmax: +o.pmax.toFixed(1), pmaxAt: o.pmaxAt, wet20: o.wet20 }));
+    const norm = list.filter(o => o.y >= 1991 && o.y <= 2020), mean = a => a.reduce((t, v) => t + v, 0) / a.length;
+    const tN = mean(norm.map(o => o.t)), pN = mean(norm.map(o => o.p));
+    // Isish tezligi: chiziqli regressiya, °C / 10 yil
+    const xs = list.map(o => o.y), ys = list.map(o => o.t), mx = mean(xs), my = mean(ys);
+    const slope = xs.reduce((t, x, i) => t + (x - mx) * (ys[i] - my), 0) / xs.reduce((t, x) => t + (x - mx) ** 2, 0);
+    const top = days.sort((a, b) => b.p - a.p).slice(0, 8).map(x => ({ t: x.t, p: +x.p.toFixed(1) }));
+    const out = { ts: Date.now(), years: list, tNorm: +tN.toFixed(2), pNorm: Math.round(pN), trend10: +(slope * 10).toFixed(2), top, src: 'Open-Meteo arxivi (ERA5 qayta tahlili)', doc: UZHYDROMET };
+    NX.bigStore.set('climate:v1', out);
+    return out;
+  }
+
   // ---------- Suv toshqini: yomgʻir suvi relyef boʻylab qayerga oqib, qayerda chuqurlashadi ----------
   // 1) Relyef chuqurlari toʻldiriladi (Priority-flood + epsilon, Barnes 2014) — SRTM’dagi soxta chuqurlar yoʻqoladi, suv oqib ketadi.
   // 2) Har katakdan suv eng tik pastga oqadi (D8) → har katakka qancha maydondan suv keladi (oqim yigʻilishi).
@@ -376,5 +411,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { climate, UZHYDROMET, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();
