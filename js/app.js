@@ -220,6 +220,57 @@
     if (top && top.at) NX.map3d.flyTo(top.at[0], top.at[1], 15.5);
     return T.scen;
   }
+  // ---------- Dinamik transport: tigʻiz soat 15 daqiqalik qadamlarda, navbatlar bilan ----------
+  function dynSummary(res) {
+    const M = S.model, pcs = S.simInfo.pieces, ps = pcs.map(([wi]) => M.ways[wi].street), P = res.P;
+    const per = res.slices.map((sl, si) => {
+      const m = new Map();
+      for (let p = 0; p < P; p++) { const q = res.ql[si * P + p], r = res.sr[si * P + p]; if (q < 1 && r > 0.85) continue; const s = ps[p], o = m.get(s) || { s, q: 0, r: 1 }; o.q = Math.max(o.q, q); o.r = Math.min(o.r, r); m.set(s, o); }
+      return [...m.values()].filter(o => M.streets[o.s].name).sort((a, b) => b.q - a.q || a.r - b.r);
+    });
+    // Har koʻcha: navbat qachon boshlanadi, eng uzun payti
+    const st = new Map();
+    per.forEach((list, si) => list.forEach(o => { const v = st.get(o.s) || { s: o.s, name: M.streets[o.s].name, start: null, peak: 0, peakAt: null, minR: 1 }; if (o.q >= 50 && v.start == null) v.start = res.slices[si].time; if (o.q > v.peak) { v.peak = o.q; v.peakAt = res.slices[si].time; } v.minR = Math.min(v.minR, o.r); st.set(o.s, v); }));
+    const streets = [...st.values()].filter(v => v.peak >= 50 || v.minR < 0.55).sort((a, b) => b.peak - a.peak || a.minR - b.minR);
+    const peakSi = res.slices.reduce((b, sl, i) => (sl.queueVeh > res.slices[b].queueVeh ? i : b), 0);
+    return { per, streets, peakSi };
+  }
+  async function runDynamic(scenario, label) {
+    const T = S.dynT = S.dynT || {};
+    if (T.busy) return T;
+    T.busy = 'Tarmoq tayyorlanmoqda'; renderKeepScroll();
+    try {
+      await NX.sim.whenReady(); S.simInfo = NX.sim.info();
+      const res = await NX.sim.dynamic({ demand: S.demand, scenario: scenario || null, iters: 4 }, p => { T.busy = `Tigʻiz soat hisoblanmoqda ${Math.round(p * 100)}%`; const el = panel.querySelector('#dynTBusy'); if (el) el.textContent = T.busy + '…'; });
+      T.res = res; T.sum = dynSummary(res); T.label = label || 'Hozirgi holat'; T.si = T.sum.peakSi;
+      ensureLeaflet();
+      showDynSlice(T.si);
+    } catch (e) { console.error(e); toast('Dinamik model xatosi: ' + e.message, 'bad'); }
+    T.busy = null; renderKeepScroll();
+    return T;
+  }
+  function showDynSlice(si) {
+    const T = S.dynT; if (!T || !T.res) return;
+    T.si = Math.max(0, Math.min(T.res.slices.length - 1, si));
+    const P = T.res.P, a = T.si * P;
+    NX.view.clearDeltas(false);
+    NX.view.showDynamic(T.res.sr.subarray(a, a + P), T.res.ql.subarray(a, a + P), S.simInfo.pieces);
+    const el = panel.querySelector('#dynTInfo'); if (el) el.outerHTML = V.dynTInfo(S);
+  }
+  let dynTTimer = null;
+  function dynTPlay() {
+    const T = S.dynT; if (!T || !T.res) return;
+    if (dynTTimer) { clearInterval(dynTTimer); dynTTimer = null; T.playing = false; renderKeepScroll(); return; }
+    T.playing = true; if (T.si >= T.res.slices.length - 1) T.si = 0; renderKeepScroll();
+    dynTTimer = setInterval(() => { if (T.si >= T.res.slices.length - 1) { clearInterval(dynTTimer); dynTTimer = null; T.playing = false; renderKeepScroll(); return; } showDynSlice(T.si + 1); }, 900);
+  }
+  const dynTFacts = (T, sid) => {
+    const r = T.res, sm = T.sum, one = sid != null ? sm.streets.find(x => x.s === sid) : null;
+    return { model: 'dinamik (15 daqiqalik qadamlar, navbatlar bilan, 07:00–10:00)', shahar_navbati_mashina: r.slices.map(s => ({ vaqt: s.time, navbat: s.queueVeh })), eng_yomon_payt: r.slices[sm.peakSi].time,
+      navbatli_koʻchalar: sm.streets.slice(0, 8).map(v => ({ koʻcha: v.name, navbat_boshlanadi: v.start, eng_uzun_m: Math.round(v.peak), qachon: v.peakAt, eng_past_tezlik_foiz: Math.round(v.minR * 100) })),
+      shu_koʻcha: one ? { navbat_boshlanadi: one.start, eng_uzun_m: Math.round(one.peak), qachon: one.peakAt, eng_past_tezlik_foiz: Math.round(one.minR * 100) } : 'navbat yoʻq' };
+  };
+
   // ---------- 2D fizik model (LISFLOOD-FP): vaqt boʻyicha suv ----------
   // series: [{ t0, t1, mmh }] soniyalarda; label — “50 mm / 1 soat” yoki “Real prognoz”
   async function twinFlood2d(series, label, t0ms) {
@@ -450,6 +501,14 @@
     onStep('Internetdan maʼlumot qidirilmoqda');
     let web = null;
     try { web = await NX.ai.webSearchQ(`Samarqand, ${s.name || 'koʻcha'}: tirbandlik, yoʻl taʼmiri, bir tomonlama harakat yoki svetofor boʻyicha yangiliklar va hokimiyat qarorlari (oxirgi 3 yil)`, `Koʻcha: ${s.name}. Yoʻnalishlar: ${d.A} — ${d.B}.`); } catch (e) { web = null; }
+    // Dinamik: tigʻiz soatda navbat qachon boshlanib, qancha uzayadi — hozir va eng yaxshi variantda
+    onStep('Tigʻiz soat (07:00–10:00) dinamik hisoblanmoqda');
+    let dyn = null;
+    try {
+      const b0 = await NX.sim.dynamic({ demand: S.demand, iters: 3 }), b1 = await NX.sim.dynamic({ demand: S.demand, scenario: Object.assign({}, scenarioFor(s, best.type).sc, best.pieces ? { pieces: best.pieces } : {}), iters: 3 });
+      const f = (r, lab) => dynTFacts({ res: r, sum: dynSummary(r), label: lab }, sid);
+      dyn = { hozir: f(b0, 'hozir'), eng_yaxshi_variant: f(b1, best.label) };
+    } catch (e) { dyn = null; }
     // Xaritada — eng yaxshi variant
     ensureLeaflet();
     NX.view.showDeltas(best.r, S.simInfo.pieces);
@@ -465,6 +524,7 @@
       oldingi_olchovlar: hist.length > 1 ? { soni: hist.length, davr: `${new Date(hist[0].ts).toLocaleDateString('uz-UZ')} — ${new Date(hist[hist.length - 1].ts).toLocaleDateString('uz-UZ')}`, soat_boyicha: Object.entries(hist.reduce((m, x) => { const h = new Date(x.ts).getHours(); (m[h] = m[h] || []).push(x); return m; }, {})).map(([h, a]) => ({ soat: +h, [d.A + '→' + d.B]: +(a.reduce((t, x) => t + x.ab, 0) / a.length).toFixed(2), [d.B + '→' + d.A]: +(a.reduce((t, x) => t + x.ba, 0) / a.length).toFixed(2) })) } : 'hali yoʻq (har safar tahlil qilinganda yoziladi)',
       variantlar_hisob: opts.map(o => ({ variant: o.label, baho: o.v.label, umumiy_yol_vaqti_foiz: +o.r.ttChangePct.toFixed(1), shu_koʻcha_toʻlishi_foiz: o.r.target ? { oldin: Math.round(o.r.target.baseVC * 100), keyin: Math.round(o.r.target.scenVC * 100) } : null, yuk_oshadigan: o.r.affected.filter(x => x.dv > 0).slice(0, 4).map(row), yuk_kamayadigan: o.r.affected.filter(x => x.dv < 0).slice(0, 3).map(row), sigmay_qoladigan: o.r.overloaded.slice(0, 4).map(x => x.name || 'nomsiz yoʻl'), avtobus_yonalishi_ozgaradi: o.v.busLines, sabablar: o.v.reasons })),
       xaritada_korsatilgan: best.label,
+      dinamik_tigiz_soat: dyn || 'hisoblanmadi',
       internet: web && web.text ? { matn: web.text.slice(0, 2500), manbalar: web.sources.slice(0, 6) } : 'qidirilmadi yoki topilmadi',
       eslatma: 'variantlar_hisob — harakat modeli; real_yandex — real oʻlchov',
     };
@@ -1256,6 +1316,10 @@
           break;
         }
         case 'twin-play': twinPlay(); break;
+        case 'dyn-run': runDynamic(null, 'Hozirgi holat'); break;
+        case 'dyn-sim': if (S.sim.last) { const s0 = S.model.streets[S.sim.last.street]; runDynamic(scenarioFor(s0, S.sim.last.type).sc, S.sim.last.label); setTab('map'); clearStreet(); } break;
+        case 'dyn-play': dynTPlay(); break;
+        case 'dyn-clear': NX.view.clearDynamic(); S.dynT = null; render(); break;
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
@@ -1326,6 +1390,8 @@
         panel.querySelectorAll('[data-out=demand]').forEach(o => (o.textContent = F.int(S.demand)));
       } else if (t.dataset.input === 'route-q') {
         S.routeQ = t.value; $('#routeList').innerHTML = V.routeList(S);
+      } else if (t.dataset.input === 'dyn-t') {
+        showDynSlice(+t.value);
       } else if (t.dataset.input === 'twin-t') {
         twinShowFrame(+t.value);
       } else if (t.dataset.input === 'fc-hour') {

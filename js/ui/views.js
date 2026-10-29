@@ -162,6 +162,27 @@
     }).join('')}`;
   }
 
+  // ---------- Dinamik transport: tigʻiz soat ----------
+  function dynTInfo(S) {
+    const T = S.dynT, r = T.res, sl = r.slices[T.si], list = T.sum.per[T.si].slice(0, 8);
+    return `<div id="dynTInfo">
+      <div class="dyn-bar"><button class="btn xs" data-act="dyn-play">${T.playing ? '⏸' : '▶'}</button><input type="range" min="0" max="${r.slices.length - 1}" value="${T.si}" data-input="dyn-t" aria-label="Vaqt"><b>${sl.time}</b></div>
+      <p class="small">${sl.time} da: talab ${F.int(sl.demand)} mashina/soat, shahar boʻyicha navbatda <b>${F.int(sl.queueVeh)}</b> ta mashina. Eng yomon payt: <b>${r.slices[T.sum.peakSi].time}</b>.</p>
+      ${list.length ? `<ul class="small">${list.map(o => `<li><b>${E(S.model.streets[o.s].name)}</b> — ${o.q >= 10 ? `navbat ~${F.int(o.q)} m, ` : ''}tezlik ${Math.round(o.r * 100)}%</li>`).join('')}</ul>` : '<p class="small ok-text">Bu paytda tirbandlik yoʻq.</p>'}
+      ${T.sum.streets.length ? `<details class="more"><summary>Navbat qachon boshlanadi (koʻchalar)</summary><ul class="small">${T.sum.streets.slice(0, 12).map(v => `<li><b>${E(v.name)}</b>: ${v.start ? `${v.start} da boshlanadi, ` : ''}eng uzun ${F.int(v.peak)} m — ${v.peakAt}</li>`).join('')}</ul></details>` : ''}
+      <p class="plan-leg small"><span><i style="background:#16a34a"></i>erkin</span><span><i style="background:#f59e0b"></i>sekin</span><span><i style="background:#dc2626"></i>tirband</span><span><i style="background:#7f1d1d"></i>toʻxtab qolgan</span><span>qalin — navbat</span></p>
+    </div>`;
+  }
+  function dynCard(S) {
+    const T = S.dynT || {};
+    return `<section class="card">
+      <h3>⏱ Ertalabki tigʻiz soat (07:00–10:00) ${B('bashorat')}</h3>
+      <p class="small muted">Dinamik model: har 15 daqiqada haydovchilar yoʻl tanlaydi, sigʻimdan oshgan mashinalar navbatga turadi — tirbandlik qayerda boshlanib, qanday tarqalishi koʻrinadi.</p>
+      ${T.busy ? `<p class="small"><span class="spinner sm"></span> <span id="dynTBusy">${E(T.busy)}…</span></p>` : ''}
+      ${T.res ? `<p class="small"><b>${E(T.label)}</b> <button class="link" data-act="dyn-clear">✕ yopish</button></p>${dynTInfo(S)}` : `<button class="btn primary wide" data-act="dyn-run" ${T.busy ? 'disabled' : ''}>▶ Tigʻiz soatni hisoblash</button>`}
+    </section>`;
+  }
+
   // ---------- Umumiy koʻrinish (Xarita) ----------
   function home(S) {
     const M = S.model;
@@ -176,6 +197,7 @@
       ${groups.length ? `<ul class="top-probs">${groups.slice(0, 4).map(g => `<li><span>${NX.PROBLEM[g.t].icon} ${E(NX.PROBLEM[g.t].short)}</span><b>${g.items.length}</b></li>`).join('')}</ul>
         <button class="btn primary wide" data-act="tab" data-tab="problems">Muammolar va yechimlar →</button>` : '<p class="muted">Muammo topilmadi.</p>'}
     </section>
+    ${dynCard(S)}
     <p class="hint-line">👆 Koʻchani bosing → <b>“Nima qilsak?”</b> → oqibatini koʻring.</p>
     <button class="btn wide ai-cta" data-act="tab" data-tab="ai">🤖 AI yordamchi bilan gaplashish</button>`;
   }
@@ -364,7 +386,7 @@
         <p class="muted small">Raqamlar — bir soatda oʻtadigan mashinalar soni. “Toʻlishi” 100% dan oshsa — koʻcha sigʻmaydi, tirbandlik boʻladi.</p>
       </details>
       <p class="disclaimer">${E(DISCLAIMER)}</p>
-      <div class="row-btns"><button class="btn sm" data-act="show-sim">Xaritada koʻrsatish</button><button class="btn sm" data-act="clear-sim">Xaritadan olib tashlash</button></div>
+      <div class="row-btns"><button class="btn sm" data-act="show-sim">Xaritada koʻrsatish</button><button class="btn sm" data-act="clear-sim">Xaritadan olib tashlash</button><button class="btn sm" data-act="dyn-sim">⏱ Tigʻiz soatda (dinamik)</button></div>
     </div>`;
   }
 
@@ -782,5 +804,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, alertsCard, systems, twin, dynInfo, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, twin, dynInfo, dynTInfo, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

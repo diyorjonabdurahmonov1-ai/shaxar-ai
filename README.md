@@ -12,6 +12,8 @@ Tizimlar: 🚦 transport (ulangan, real vaqt) · 📹 kameralar · ⚡ elektr ·
 
 **3D egizak** (Virtual Singapore yoʻnalishida): binolar 3D (OpenStreetMap), tomlardagi quyosh energiyasi salohiyati (Open-Meteo yillik nurlanish arxivi), suv toshqini xavfi (Copernicus DEM relyefi + 48 soatlik yogʻin prognozi), rejadagi yangi binoning qish/yoz soyasi va soyada qoladigan qoʻshni binolar. 3D — MapLibre GL (vendor/maplibre, BSD).
 
+**Fizik modellar:** transport — statik muvozanat (BPR + MSA) va **dinamik** tigʻiz soat modeli (07:00–10:00, 15 daqiqalik qadamlar, navbatlar keyingi qadamga oʻtadi); suv toshqini — **2D LISFLOOD-FP** (local inertial, 40 m katak, Web Worker, koʻchalar — silliq kanal, binolar — toʻsiq) va tezkor koʻcha-oqim (Manning) hisobi.
+
 **Xavfsizlik:** kameralar va yer osti tarmoqlari maxfiy maʼlumot. Ularni ulashdan oldin sayt va Worker faqat xodimlar kira oladigan joyda boʻlishi kerak (masalan, Cloudflare Pages + Cloudflare Access — xodimlar emaili bilan kirish) yoki hokimiyat serverida.
 
 | Boʻlim | Nima qiladi |

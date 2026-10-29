@@ -6,7 +6,7 @@
   const NX = window.NX;
   const COL = { green: '#16a34a', amber: '#f59e0b', red: '#dc2626' };
   let M = null, colorMode = { mode: 'now' }, showProb = false, pieces = null;
-  const G = { sys: null, area: null, seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
+  const G = { dyn: null, sys: null, area: null, seg: null, sel: null, delta: null, prob: null, fixes: null, route: null, fc: null, rep: null };
   const Y = () => NX.yandex && NX.yandex.getMap && NX.yandex.getMap();
   let layoutCache = null;
 
@@ -62,6 +62,18 @@
       }
     },
     clearDeltas() { drop('delta'); NX.yandex.setTraffic(true); NX.map.updateLegend(); },
+    showDynamic(sr, ql, pcs) {
+      if (!Y() || !M) return;
+      NX.yandex.setTraffic(false);
+      const c = coll('dyn');
+      for (let p = 0; p < pcs.length; p++) {
+        const r = sr[p], q = ql[p];
+        if (r >= 0.85 && q < 5) continue;
+        const [wi, i0, i1] = pcs[p];
+        c.add(line(M.ways[wi].ll.slice(i0, i1 + 1), { strokeColor: r >= 0.75 ? COL.green : r >= 0.55 ? COL.amber : r >= 0.35 ? COL.red : '#7f1d1d', strokeWidth: 3 + Math.min(9, q / 60), strokeOpacity: 0.9 }));
+      }
+    },
+    clearDynamic() { drop('dyn'); NX.yandex.setTraffic(true); },
     drawSystems(list) {
       if (!Y()) return;
       if (!list || !list.length) { drop('sys'); return; }
@@ -174,7 +186,7 @@
   const ONLY_ACTIVE = { pickPoint: 1, cancelPick: 1 };
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
-  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'drawProblems', 'showProblems',
+  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'showDynamic', 'clearDynamic', 'drawProblems', 'showProblems',
     'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;

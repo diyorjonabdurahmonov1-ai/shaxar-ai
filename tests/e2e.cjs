@@ -156,6 +156,17 @@ async function clickStreet(page, name) {
   await page.click('.tabs [data-tab=map]');
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
   ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
+  // Dinamik transport: tigʻiz soat 07:00–10:00, 15 daqiqalik qadamlar
+  await page.click('[data-act=dyn-run]');
+  await page.waitForFunction(() => NX.state.dynT && NX.state.dynT.res && !NX.state.dynT.busy, null, { timeout: 120000 });
+  const dy = await page.evaluate(() => { const r = NX.state.dynT.res; return { n: r.slices.length, t0: r.slices[0].time, t1: r.slices[r.slices.length - 1].time, peak: r.slices[NX.state.dynT.sum.peakSi].time, q0: r.slices[0].queueVeh, qp: r.slices[NX.state.dynT.sum.peakSi].queueVeh, map: NX.map.hasDynamic() }; });
+  ok('Dinamik transport: 07:00–09:45, 12 qadam, navbat tigʻiz paytda koʻproq, xaritada', dy.n === 12 && dy.t0 === '07:00' && dy.t1 === '09:45' && dy.qp >= dy.q0 && dy.map, JSON.stringify(dy));
+  const hq = await page.evaluate(async () => { const r = await NX.sim.dynamic({ demand: NX.state.demand * 6, iters: 3 }); return r.slices.map(s => s.queueVeh); });
+  const pk = hq.indexOf(Math.max(...hq));
+  ok('Dinamik: talab oshsa navbat paydo boʻlib oʻsadi, tigʻiz oʻtgach kamayadi', hq[pk] > 0 && pk > 0 && hq[hq.length - 1] < hq[pk] && hq[0] <= hq[pk], hq.join(','));
+  await page.fill('[data-input=dyn-t]', '0'); await page.dispatchEvent('[data-input=dyn-t]', 'input');
+  ok('Dinamik: vaqt shkalasi ishlaydi', /07:00 da/.test(await page.textContent('#dynTInfo')));
+  await page.click('[data-act=dyn-clear]');
   ok('Keraksiz funksiyalar yoʻq (Belgilash, tirbandlik xabari)', !(await page.$('.nx-mark')) && !(await page.$('#reportCard')));
   await page.waitForFunction(() => /17°C/.test(document.querySelector('.live').textContent), null, { timeout: 10000 });
   ok('Ob-havo va yoʻlga taʼsiri qisqa (hozirgi holatda)', /Yoʻl hoʻl/.test(await page.textContent('#alerts')));

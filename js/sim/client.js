@@ -14,6 +14,7 @@ self.onmessage = function (ev) {
     else if (cmd === 'run') result = SIM.run(payload, progress);
     else if (cmd === 'calibrate') result = SIM.calibrate(payload, progress);
     else if (cmd === 'flows') result = SIM.flows(payload);
+    else if (cmd === 'dynamic') result = SIM.dynamic(payload, progress);
     self.postMessage({ id, type: 'done', result });
   } catch (e) { self.postMessage({ id, type: 'error', error: String((e && e.message) || e) }); }
 };`;
@@ -84,5 +85,7 @@ self.onmessage = function (ev) {
   let flowCache = null;
   async function flows(opt) { await ready; const k = opt.demand + '|' + (opt.iters || 10); if (!flowCache || flowCache.k !== k) flowCache = { k, v: await call('flows', opt) }; return flowCache.v; }
 
-  NX.sim = { init, run, calibrate, flows, info: () => info, whenReady: () => ready };
+  async function dynamic(opt, onProgress) { await ready; return call('dynamic', opt, onProgress); }
+
+  NX.sim = { init, run, calibrate, flows, dynamic, info: () => info, whenReady: () => ready };
 })();

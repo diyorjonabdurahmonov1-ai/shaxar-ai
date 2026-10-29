@@ -374,6 +374,22 @@
     if (fit) map.fitBounds(s.bounds, { padding: [40, 40], maxZoom: 17 });
   }
 
+  // Dinamik model: bir vaqt qadamidagi tezlik (sr) va navbat (ql, m) — koʻchalar boʻyalgan
+  let dynLayer = null;
+  function showDynamic(sr, ql, pieces) {
+    clearDynamic();
+    dynLayer = L.layerGroup();
+    for (let p = 0; p < pieces.length; p++) {
+      const r = sr[p], q = ql[p];
+      if (r >= 0.85 && q < 5) continue;
+      const [wi, i0, i1] = pieces[p];
+      const col = r >= 0.75 ? COL.green : r >= 0.55 ? COL.amber : r >= 0.35 ? COL.red : '#7f1d1d';
+      L.polyline(M.ways[wi].ll.slice(i0, i1 + 1), { renderer, color: col, weight: 3 + Math.min(9, q / 60), opacity: 0.9, interactive: false }).addTo(dynLayer);
+    }
+    dynLayer.addTo(map);
+  }
+  function clearDynamic() { if (dynLayer) { map.removeLayer(dynLayer); dynLayer = null; } }
+
   // Shahar tizimlari (kameralar, elektr, gaz, suv, kanalizatsiya) — yuklangan xaritalar
   function sysPopup(sys, f) {
     const S = NX.SYSTEMS[sys], p = f.properties || {};
@@ -446,7 +462,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, showDynamic, clearDynamic, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

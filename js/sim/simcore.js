@@ -412,6 +412,43 @@ function NXSimFactory() {
     return { ok: true, best, table: table.map(t => ({ factor: t.factor, demand: t.demand, rmse: t.rmse })), base: table.find(t => t.factor === 1) || null };
   }
 
+  // ---------- Dinamik model: tigʻiz soat 15 daqiqalik qadamlarda, navbatlar bilan ----------
+  // Har qadamda talab profil boʻyicha oʻzgaradi; haydovchilar yoʻlni joriy vaqt va navbatlarga qarab tanlaydi (MSA);
+  // sigʻimdan oshgan oqim navbatga aylanadi va keyingi qadamga oʻtadi (nuqtaviy navbat modeli).
+  const PROFILE = [0.55, 0.7, 0.85, 0.95, 1.0, 1.0, 0.95, 0.85, 0.75, 0.65, 0.6, 0.55];   // 07:00–10:00, tigʻiz soatga nisbatan
+  function dynamic(opt, progress) {
+    const prof = opt.profile || PROFILE, dtH = (opt.sliceMin || 15) / 60, iters = opt.iters || 4, start = opt.start || 7 * 60;
+    const on = Uint8Array.from(N.eOn), cap = Float64Array.from(N.eCap);
+    const ap = applyScenario(opt.scenario || null, on, cap);
+    const zn = zoneNodes(on), E = N.E, P = N.P;
+    const x = new Float64Array(E), y = new Float64Array(E), t = new Float64Array(E), queue = new Float64Array(E);
+    const timesQ = () => { for (let e = 0; e < E; e++) { if (!on[e]) { t[e] = Infinity; continue; } const v = Math.min(x[e], cap[e]) / cap[e]; t[e] = N.eT0[e] * (1 + BPR_A * Math.pow(v, BPR_B)) + queue[e] / cap[e]; } };
+    const vc = new Float32Array(prof.length * P), ql = new Float32Array(prof.length * P), sr = new Float32Array(prof.length * P), slices = [];
+    prof.forEach((f, si) => {
+      const D = opt.demand * ap.factor * f;
+      timesQ();
+      aon(t, on, zn, D, y, null);
+      if (si === 0) x.set(y); else for (let e = 0; e < E; e++) x[e] = 0.5 * x[e] + 0.5 * y[e];
+      for (let k = 1; k < iters; k++) { timesQ(); aon(t, on, zn, D, y, null); const a = 1 / (k + 1); for (let e = 0; e < E; e++) x[e] += a * (y[e] - x[e]); }
+      timesQ();
+      let TT = 0, Q = 0;
+      for (let e = 0; e < E; e++) {
+        if (!on[e]) continue;
+        queue[e] = Math.max(0, queue[e] + (x[e] - cap[e]) * dtH);
+        TT += x[e] * t[e]; Q += queue[e];
+      }
+      for (let p = 0; p < P; p++) {
+        let v = 0, q = 0, r = 1;
+        for (let d = 0; d < 2; d++) { const e = 2 * p + d; if (!on[e]) continue; const lanes = Math.max(1, Math.round(cap[e] / LANE_CAP)); v = Math.max(v, x[e] / cap[e]); q = Math.max(q, Math.min(queue[e] * 7 / lanes, 3000)); r = Math.min(r, N.eT0[e] / t[e]); }
+        vc[si * P + p] = v; ql[si * P + p] = q; sr[si * P + p] = r;
+      }
+      const m = start + si * (opt.sliceMin || 15);
+      slices.push({ time: String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'), demand: Math.round(D), TT, queueVeh: Math.round(Q) });
+      if (progress) progress((si + 1) / prof.length);
+    });
+    return { slices, vc, ql, sr, P };
+  }
+
   // Bazaviy holatdagi oqim: har bir boʻlak uchun ikki yoʻnalish yigʻindisi (mashina/soat)
   function flows(opt) {
     const b = baseline(opt.demand, opt.iters || 10);
@@ -420,5 +457,5 @@ function NXSimFactory() {
     return out;
   }
 
-  return { build, run, calibrate, flows };
+  return { build, run, calibrate, flows, dynamic };
 }
