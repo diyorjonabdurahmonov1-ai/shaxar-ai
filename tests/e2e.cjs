@@ -466,6 +466,61 @@ async function clickStreet(page, name) {
   await p7.waitForFunction(() => /yuklanmadi/.test(document.getElementById('panoBox').textContent), null, { timeout: 10000 });
   ok('Yandex ishlamasa panorama oʻrniga Yandex havolasi taklif qilinadi', /yandex\.uz\/maps/.test(await p7.getAttribute('#panoLink', 'href')));
 
+  // ---------- 8. Real surat bilan tekshiruv: Mapillary + AI (surat, internet, rasm) ----------
+  const ctx8 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await setupRoutes(ctx8);
+  await ctx8.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '', mapillary: 'MLY|TEST', aiProxy: 'https://cityjam-ai.example.workers.dev' };" }));
+  const H = { 'Access-Control-Allow-Origin': '*' };
+  let featCalls = 0;
+  const mly = { tokens: new Set() };
+  await ctx8.route(/graph\.mapillary\.com/, route => {
+    const u = new URL(route.request().url());
+    mly.tokens.add(u.searchParams.get('access_token'));
+    const [w, so, e, n] = u.searchParams.get('bbox').split(',').map(Number), c = [(w + e) / 2, (so + n) / 2];
+    if (/\/images/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: [{ id: '123', captured_at: Date.UTC(2025, 5, 1), thumb_1024_url: 'https://scontent.example.fbcdn.net/t.jpg', computed_geometry: { type: 'Point', coordinates: [c[0] + 0.0001, c[1]] } }] }) });
+    featCalls++;
+    route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: featCalls % 2 ? [{ id: 'f1', object_value: 'object--traffic-light--general-upright', geometry: { type: 'Point', coordinates: c }, last_seen_at: Date.UTC(2025, 5, 1) }] : [] }) });
+  });
+  await ctx8.route(/fbcdn\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  const px = { chat: [], search: 0, image: [] };
+  await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
+    const req = route.request(), path = new URL(req.url()).pathname;
+    if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 2 }) });
+    if (path === '/corrections' || path === '/reports') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: '{"items":[]}' });
+    const b = JSON.parse(req.postData() || '{}');
+    if (path === '/search') { px.search++; return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ text: 'Hokimiyat 2026-yilda svetofor qoʻyishni rejalashtirgan.', sources: [{ url: 'https://samarkand.uz/news/1', title: 'Samarqand hokimligi' }] }) }); }
+    if (path === '/image') { px.image.push(b); return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ b64: PNG.toString('base64'), edited: !!b.photo }) }); }
+    px.chat.push(b);
+    route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: '**Svetofor:** suratda koʻrinmayapti\n**Nima qilish kerak:** sanash.' } }] }) });
+  });
+  const p8 = await ctx8.newPage();
+  const e8 = watchErrors(p8);
+  await p8.goto(BASE);
+  await p8.waitForSelector('#panel .live', { timeout: 20000 });
+  await p8.click('.tabs [data-tab=problems]');
+  const jCard = '.prob:has([data-act=verify-all][data-type=junction])';
+  await p8.click(`${jCard} [data-act=verify]`);
+  await p8.waitForSelector(`${jCard} .vbox .vverdict`, { timeout: 15000 });
+  ok('🔎 Tekshirish: Mapillary xulosasi va real surat', (await p8.isVisible(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
+  await p8.click(`${jCard} [data-act=verify-ai]`);
+  await p8.waitForSelector(`${jCard} .vpart .ai-text`, { timeout: 15000 });
+  const vb = px.chat[px.chat.length - 1];
+  const parts = vb && vb.messages[1].content;
+  ok('🤖 AI suratni koʻradi (rasm havolasi Worker’ga yuboriladi)', Array.isArray(parts) && parts.some(x => x.type === 'image_url' && /fbcdn/.test(x.image_url.url)) && /Svetofor/.test(await p8.textContent(`${jCard} .vpart`)));
+  await p8.click(`${jCard} [data-act=verify-web]`);
+  await p8.waitForSelector(`${jCard} .vsrc a`, { timeout: 15000 });
+  ok('🌐 Internetdan qidiruv: javob va manba havolasi', px.search === 1 && /samarkand\.uz/.test(await p8.getAttribute(`${jCard} .vsrc a`, 'href')));
+  await p8.click(`${jCard} [data-act=verify-img]`);
+  await p8.waitForSelector(`${jCard} .vgen img`, { timeout: 15000 });
+  ok('🎨 AI rasm: real surat ustiga, “haqiqiy emas” belgisi bilan', /haqiqiy emas/.test(await p8.textContent(`${jCard} .vgen`)) && px.image[0] && /fbcdn/.test(px.image[0].photo));
+  await p8.click(`${jCard} [data-act=verify-all]`);
+  await p8.waitForFunction(() => NX.state.verifyBatch && !NX.state.verifyBatch.busy, null, { timeout: 60000 });
+  const sum = await p8.textContent(`${jCard} .vsum`);
+  ok('Hammasini tekshirish: ✅/❌/❔ xulosa', /✅ [1-9]/.test(sum) && /❌ [1-9]/.test(sum), sum.trim());
+  ok('Suratda svetofor bor joyda — “xaritani tuzatish” tugmasi', await p8.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction' && NX.state.verify[x.id] && NX.state.verify[x.id].res.status === 'ok'); return !!p; }));
+  if (process.env.SHOT) { await p8.evaluate(s => document.querySelector(s + ' .vbox').scrollIntoView(), jCard); await p8.screenshot({ path: process.env.SHOT }); }
+  ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
+
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));
   console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`);

@@ -1,6 +1,9 @@
 /* City Jam — AI proksi va xarita tuzatishlari (Cloudflare Worker).
    /corrections — foydalanuvchilar “svetofor bor”, “muammo emas” kabi tuzatishlari (KV: CORRECTIONS, yozish ADMIN_PIN bilan).
    /reports — odamlarning “hozir bu yerda tirbandlik” xabarlari (KV: CORRECTIONS, kalit "reports"; PINsiz, IP boʻyicha limit).
+   /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
+   /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
+   Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
    OpenAI kaliti shu yerda YOZILMAYDI: u Cloudflare panelida “OPENAI_API_KEY” nomli maxfiy (Secret) oʻzgaruvchida turadi.
    Sayt savolni shu Worker’ga yuboradi, Worker esa OpenAI’ga kalit bilan soʻraydi — kalit hech qachon brauzerga chiqmaydi.
    Himoya: faqat sayt domenidan soʻrov, faqat ruxsat etilgan modellar, soʻrov hajmi va javob uzunligi cheklangan,
@@ -9,6 +12,22 @@ const ALLOWED_ORIGINS = ['https://diyorjonabdurahmonov1-ai.github.io'];
 const MODELS = ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'];
 const PER_IP_PER_HOUR = 20;
 const MAX_BODY_CHARS = 30000;
+const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
+const IMAGE_MODELS = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
+// Faqat Mapillary suratlari (Meta CDN) AI’ga koʻrsatiladi
+const PHOTO_OK = u => { try { const h = new URL(u); return h.protocol === 'https:' && /(^|\.)(fbcdn\.net|mapillary\.com)$/.test(h.hostname); } catch (e) { return false; } };
+const limit = (key, max) => { const k = key + ':' + Math.floor(Date.now() / 3600000); const n = (hits.get(k) || 0) + 1; hits.set(k, n); if (hits.size > 5000) hits.clear(); return n > max; };
+// Xabar matni yoki [matn, surat] qismlari
+function cleanContent(c) {
+  if (!Array.isArray(c)) return String(c || '');
+  const parts = [];
+  let imgs = 0;
+  c.slice(0, 6).forEach(x => {
+    if (x && x.type === 'text') parts.push({ type: 'text', text: String(x.text || '') });
+    else if (x && x.type === 'image_url' && x.image_url && PHOTO_OK(x.image_url.url) && imgs < 2) { imgs++; parts.push({ type: 'image_url', image_url: { url: String(x.image_url.url), detail: 'low' } }); }
+  });
+  return parts;
+}
 const hits = new Map(); // Worker nusxasi ichidagi oddiy hisoblagich (eng yaxshi harakat)
 
 const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: Object.assign({ 'Content-Type': 'application/json' }, headers) });
@@ -26,8 +45,20 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
+    if (path === '/version') return json({ v: 2, features: ['vision', 'search', 'image'] }, 200, cors);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
+    if (path === '/search' || path === '/image') {
+      if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
+      if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+      if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
+      const raw = await req.text();
+      if (raw.length > 8000) return json({ error: { code: 'too_large', message: 'Soʻrov juda katta' } }, 413, cors);
+      let b;
+      try { b = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
+      const ip = req.headers.get('CF-Connecting-IP') || 'x';
+      return path === '/search' ? search(b, env, cors, ip) : image(b, env, cors, ip);
+    }
     if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
     if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
     if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
@@ -48,7 +79,7 @@ export default {
     if (!MODELS.includes(body.model) || !Array.isArray(body.messages) || body.messages.length > 4) {
       return json({ error: { code: 'model_not_found', message: 'Model yoki xabarlar ruxsat etilmagan' } }, 400, cors);
     }
-    const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : 'user', content: String(m.content || '') })) };
+    const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user', content: cleanContent(m.content) })) };
     out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 2500);
     if (/^gpt-5/.test(body.model)) out.reasoning_effort = 'low'; else out.temperature = 0.3;
 
@@ -107,4 +138,65 @@ async function reports(req, env, cors, okOrigin) {
   const out = list.concat([item]).slice(-20000);
   await env.CORRECTIONS.put('reports', JSON.stringify(out));
   return json({ item }, 200, cors);
+}
+
+// ---------- Internetdan qidirish (OpenAI Responses API + web_search) ----------
+async function search(b, env, cors, ip) {
+  if (limit('s:' + ip, SEARCH_PER_IP_HOUR)) return json({ error: { code: 'proxy_rate_limit', message: 'Soatlik qidiruv limiti tugadi' } }, 429, cors);
+  const q = String(b.q || '').slice(0, 600), context = String(b.context || '').slice(0, 3000);
+  if (!q) return json({ error: { code: 'bad_item', message: 'Savol yoʻq' } }, 400, cors);
+  const instructions = 'Sen Samarqand shahri hokimiyati uchun transport tahlilchisisan. Internetdan faqat ochiq, ishonchli manbalarni qidir (yangiliklar, hokimiyat va vazirlik saytlari, OpenStreetMap, ilmiy ishlar). '
+    + 'Javobni oʻzbek tilida (lotin), qisqa (3–6 gap yoki nuqtalar) yoz. Faqat manbada bor narsani yoz, oʻylab topma; topilmasa “Ochiq manbalarda topilmadi” de. Har bir faktdan keyin manbani koʻrsat.';
+  let last = null;
+  for (const model of ['gpt-5.4-mini', 'gpt-4.1-mini']) {
+    const body = { model, instructions, input: q + (context ? '\n\nJoy haqida maʼlumot:\n' + context : ''), tools: [{ type: 'web_search' }], max_output_tokens: 1500 };
+    if (/^gpt-5/.test(model)) body.reasoning = { effort: 'low' };
+    const r = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => null);
+    if (!r.ok) { last = { status: r.status, d }; if (r.status === 400 || r.status === 404) continue; break; }
+    let text = '';
+    const sources = [];
+    (d.output || []).forEach(o => (o.content || []).forEach(c => {
+      if (c.type !== 'output_text') return;
+      text += c.text || '';
+      (c.annotations || []).forEach(a => { if (a.type === 'url_citation' && a.url && !sources.some(x => x.url === a.url)) sources.push({ url: a.url, title: a.title || a.url }); });
+    }));
+    return json({ text, sources: sources.slice(0, 8), model }, 200, cors);
+  }
+  return json({ error: (last && last.d && last.d.error) || { message: 'Qidiruv ishlamadi' } }, (last && last.status) || 500, cors);
+}
+
+// ---------- Yechimning AI rasmi ----------
+async function image(b, env, cors, ip) {
+  if (limit('i:' + ip, IMAGES_PER_IP_HOUR)) return json({ error: { code: 'proxy_rate_limit', message: 'Soatlik rasm limiti tugadi' } }, 429, cors);
+  // Kunlik umumiy limit (KV boʻlsa) — xarajat nazorati
+  if (env.CORRECTIONS) {
+    const dk = 'img:' + new Date().toISOString().slice(0, 10), used = +((await env.CORRECTIONS.get(dk)) || 0);
+    if (used >= IMAGES_PER_DAY) return json({ error: { code: 'proxy_rate_limit', message: 'Bugungi rasm limiti tugadi' } }, 429, cors);
+    await env.CORRECTIONS.put(dk, String(used + 1), { expirationTtl: 3 * 86400 });
+  }
+  const prompt = String(b.prompt || '').slice(0, 1500);
+  if (!prompt) return json({ error: { code: 'bad_item', message: 'Tavsif yoʻq' } }, 400, cors);
+  let photo = null;
+  if (b.photo && PHOTO_OK(b.photo)) {
+    const pr = await fetch(b.photo);
+    if (pr.ok) photo = await pr.blob();
+  }
+  let last = null;
+  for (const model of IMAGE_MODELS) {
+    let r;
+    if (photo) {
+      const f = new FormData();
+      f.append('model', model); f.append('prompt', prompt); f.append('size', '1024x1024'); f.append('quality', 'low');
+      f.append('image', photo, 'photo.jpg');
+      r = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
+    } else {
+      r = await fetch('https://api.openai.com/v1/images/generations', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify({ model, prompt, size: '1024x1024', quality: 'low' }) });
+    }
+    const d = await r.json().catch(() => null);
+    if (r.ok && d && d.data && d.data[0] && d.data[0].b64_json) return json({ b64: d.data[0].b64_json, model, edited: !!photo }, 200, cors);
+    last = { status: r.status, d };
+    if (!(r.status === 400 || r.status === 404) || !/model/i.test(JSON.stringify((d && d.error) || ''))) break;
+  }
+  return json({ error: (last && last.d && last.d.error) || { message: 'Rasm chizilmadi' } }, (last && last.status) || 500, cors);
 }

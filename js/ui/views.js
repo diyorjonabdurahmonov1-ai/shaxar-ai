@@ -256,6 +256,49 @@
     </section>`;
   }
 
+  // ---------- Real surat bilan tekshiruv (Mapillary + AI) ----------
+  const VST = { ok: ['✅', 'ok'], bad: ['❌', 'bad'], unknown: ['❔', 'unk'], info: ['📷', 'info'] };
+  const FIXBTN = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish bor'] };
+  function verifyBox(S, p) {
+    const v = S.verify[p.id] || {}, r = v.res, FIX = FIXBTN[p.type];
+    if (v.busy) return `<div class="vbox"><div class="spinner sm"></div> Real suratlar tekshirilmoqda…</div>`;
+    if (v.err) return `<div class="vbox"><p class="small bad-text">⚠️ ${E(v.err)}</p><button class="btn xs" data-act="verify" data-pid="${p.id}">Qayta urinish</button></div>`;
+    if (!r) return '';
+    const st = VST[r.status] || VST.info;
+    const sub = (k, label) => {
+      const x = v[k] || {};
+      if (x.busy) return `<div class="vpart"><div class="spinner sm"></div> ${label}…</div>`;
+      if (x.err) return `<div class="vpart small bad-text">⚠️ ${E(x.err)}</div>`;
+      return '';
+    };
+    return `<div class="vbox">
+      <p class="vverdict ${st[1]}">${st[0]} ${E(r.text)}</p>
+      ${r.photo ? `<a class="vphoto" href="${E(r.photo.link)}" target="_blank" rel="noopener"><img src="${E(r.photo.url)}" alt="Joyning real surati" loading="lazy"><span>📷 Real surat · ${E(r.photo.when)} · ${r.photo.d} m · Mapillary ↗</span></a>` : ''}
+      ${r.status === 'ok' && FIX ? `<button class="btn xs primary" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]} — xaritani tuzatish</button>` : ''}
+      <div class="vacts">
+        ${r.photo ? `<button class="btn xs" data-act="verify-ai" data-pid="${p.id}" ${v.ai && v.ai.busy ? 'disabled' : ''}>🤖 AI suratni tahlil qilsin</button>` : ''}
+        <button class="btn xs" data-act="verify-web" data-pid="${p.id}" ${v.web && v.web.busy ? 'disabled' : ''}>🌐 Internetdan qidirish</button>
+        <button class="btn xs" data-act="verify-img" data-pid="${p.id}" ${v.img && v.img.busy ? 'disabled' : ''}>🎨 Yechim rasmi (AI)</button>
+      </div>
+      ${sub('ai', 'AI suratni koʻrmoqda')}${v.ai && v.ai.text ? `<div class="vpart"><b>🤖 AI tahlili</b><div class="ai-text">${NX.ai.render(v.ai.text)}</div></div>` : ''}
+      ${sub('web', 'Internetdan qidirilmoqda')}${v.web && v.web.text != null ? `<div class="vpart"><b>🌐 Ochiq manbalar</b><div class="ai-text">${NX.ai.render(v.web.text || 'Hech narsa topilmadi.')}</div>${v.web.sources.length ? `<ul class="vsrc">${v.web.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div>` : ''}
+      ${sub('img', 'AI rasm chizmoqda (1 daqiqagacha)')}${v.img && v.img.src ? `<figure class="vgen"><img src="${v.img.src}" alt="AI chizgan yechim"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b> ${v.img.edited ? 'Real surat ustiga taklif qilingan yechim chizilgan.' : 'Taklif qilingan yechimning taxminiy koʻrinishi.'}</figcaption></figure>` : ''}
+    </div>`;
+  }
+  function locRow(S, p) {
+    const FIX = FIXBTN[p.type], v = S.verify[p.id], st = v && v.res ? VST[v.res.status] : null, open = S.verifyOpen === p.id;
+    return `<li class="locrow${S.focusPid === p.id ? ' on' : ''}${open ? ' open' : ''}" data-row="${p.id}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">${st ? st[0] : '📍'}</span>${E(p.title)}</button>
+        <div class="loc-acts">${NX.mly.available() ? `<button class="btn xs${open ? ' primary' : ''}" data-act="verify" data-pid="${p.id}">🔎 Tekshirish</button>` : ''}${NX.pano.btn(p.lat, p.lon, p.title, 'btn xs', '📷')}${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div>
+        ${open ? verifyBox(S, p) : ''}</li>`;
+  }
+  function verifySummary(S, items) {
+    const b = S.verifyBatch && S.verifyBatch.type === items[0].type ? S.verifyBatch : null;
+    const done = items.filter(p => S.verify[p.id] && S.verify[p.id].res);
+    if (!b && !done.length) return '';
+    const n = k => done.filter(p => S.verify[p.id].res.status === k).length;
+    return `<p class="vsum small">${b && b.busy ? `<span class="spinner sm"></span> Tekshirilmoqda: ${b.done}/${b.total} · ` : ''}✅ ${n('ok')} ta joyda bor · ❌ ${n('bad')} ta tasdiqlandi · ❔ ${n('unknown')} ta surat yoʻq</p>`;
+  }
+
   function problems(S) {
     const M = S.model;
     const groups = Object.keys(NX.PROBLEM).map(t => ({ t, meta: NX.PROBLEM[t], items: M.problems.filter(p => p.type === t) })).filter(g => g.items.length)
@@ -263,16 +306,16 @@
     return `
     <section class="card">
       <h2>Muammolar va yechimlar</h2>
-      <p class="small muted">Joy nomini bosing — xaritada koʻrsatiladi. Xarita xato boʻlsa — “Muammo emas”.</p>
+      <p class="small muted">Joy nomini bosing — xaritada koʻrsatiladi. “🔎 Tekshirish” — joyning real surati: svetofor, zebra bormi; AI tahlili va maslahat.</p>
     </section>
     ${groups.map(g => {
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
-      const FIX = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish bor'] }[g.t];
-      const list = g.items.map(p => `<li class="locrow${S.focusPid === p.id ? ' on' : ''}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button>
-        <div class="loc-acts">${NX.pano.btn(p.lat, p.lon, p.title, 'btn xs')}${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div></li>`);
+      const list = g.items.map(p => locRow(S, p));
+      const canBatch = NX.mly.available() && (g.t === 'junction' || g.t === 'school' || g.t === 'crossings');
       return `<section class="card prob" style="--c:${g.meta.color}">
         <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy · ~${F.uzs(qty * g.meta.cost)}</small></div></div>
         <p class="fix"><b>Yechim:</b> ${E(g.meta.fix)}</p>
+        ${canBatch ? `<button class="btn xs" data-act="verify-all" data-type="${g.t}" ${S.verifyBatch && S.verifyBatch.busy ? 'disabled' : ''}>🔎 Hammasini real surat bilan tekshirish</button>${verifySummary(S, g.items)}` : ''}
         <ul class="locs">${list.slice(0, 3).join('')}</ul>
         ${list.length > 3 ? `<details class="more"><summary>Yana ${list.length - 3} ta joy</summary><ul class="locs">${list.slice(3, 60).join('')}</ul></details>` : ''}
       </section>`;
@@ -456,5 +499,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, problems, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, problems, locRow, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

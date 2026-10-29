@@ -14,6 +14,7 @@
     fc: { street: null, d: now.getDay(), h: now.getHours() },
     measuring: null, measureErr: null, batch: null, batchErr: null,
     chat: { msgs: [], busy: null }, chatStreet: null, segment: null, segPick: null,
+    verify: {}, verifyOpen: null, verifyBatch: null,
     calib: null, calibBusy: null, load: null, yandexOn: null, yandexMain: false, widgetOn: false, yandexState: null,
     live: { last: null, next: null, busy: null, err: null },
     weather: null, incidents: null,
@@ -132,6 +133,43 @@
   function focusPanel() {
     if (window.matchMedia('(max-width: 820px)').matches) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else panel.scrollTop = 0;
+  }
+
+  // ---------- Muammoni real surat bilan tekshirish ----------
+  const probById = pid => S.model && S.model.problems.find(x => x.id === pid);
+  function renderRow(pid) {
+    if (S.tab !== 'problems') return;
+    const p = probById(pid), li = p && panel.querySelector(`li[data-row="${CSS.escape(pid)}"]`);
+    if (li) li.outerHTML = V.locRow(S, p);
+  }
+  function renderKeepScroll() { const y = panel.scrollTop, wy = window.scrollY; render(); panel.scrollTop = y; window.scrollTo(0, wy); }
+  async function verifyCheck(p) {
+    const v = S.verify[p.id] = Object.assign(S.verify[p.id] || {}, { busy: true, err: null });
+    renderRow(p.id);
+    try { v.res = await NX.mly.check(p); } catch (e) { v.err = e.message; }
+    v.busy = false;
+    renderRow(p.id);
+    return v;
+  }
+  async function verifyPart(pid, k, fn) {
+    const p = probById(pid), v = S.verify[pid];
+    if (!p || !v || (v[k] && v[k].busy)) return;
+    v[k] = { busy: true };
+    renderRow(pid);
+    try { v[k] = Object.assign({ busy: false }, await fn(p, v.res)); } catch (e) { v[k] = { busy: false, err: e.message }; }
+    renderRow(pid);
+  }
+  async function verifyAll(type) {
+    const items = S.model.problems.filter(p => p.type === type).slice(0, 60);
+    const b = S.verifyBatch = { type, busy: true, done: 0, total: items.length };
+    renderKeepScroll();
+    let i = 0;
+    const worker = async () => { while (i < items.length) { const p = items[i++]; await verifyCheck(p); b.done++; const el = panel.querySelector('.vsum'); if (el && S.tab === 'problems' && b.done % 5 === 0) renderKeepScroll(); } };
+    await Promise.all([worker(), worker(), worker()]);
+    b.busy = false;
+    renderKeepScroll();
+    const ok = items.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'ok').length;
+    toast(`Tekshirildi: ${items.length} ta joy. ${ok ? ok + ' tasida suratda bor — xaritani tuzatish mumkin.' : ''}`, 'ok');
   }
 
   // ---------- Koʻchaning bir qismi ----------
@@ -659,6 +697,20 @@
           NX.view.selectStreet(id, true);
           if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
           break;
+        case 'verify': {
+          const p = probById(b.dataset.pid);
+          if (!p) break;
+          const prev = S.verifyOpen;
+          S.verifyOpen = prev === p.id && S.verify[p.id] && S.verify[p.id].res ? null : p.id;
+          if (prev && prev !== p.id) renderRow(prev);
+          renderRow(p.id);
+          if (S.verifyOpen && !(S.verify[p.id] && S.verify[p.id].res)) verifyCheck(p);
+          break;
+        }
+        case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
+        case 'verify-ai': verifyPart(b.dataset.pid, 'ai', async (p, r) => ({ text: await NX.ai.vision(p, S.model, r) })); break;
+        case 'verify-web': verifyPart(b.dataset.pid, 'web', (p, r) => NX.ai.webSearch(p, S.model, r)); break;
+        case 'verify-img': verifyPart(b.dataset.pid, 'img', (p, r) => NX.ai.solutionImage(p, r)); break;
         case 'fix':
           onFix({ action: b.dataset.fix, pid: b.dataset.pid });
           if (/^pick-/.test(b.dataset.fix) && window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });

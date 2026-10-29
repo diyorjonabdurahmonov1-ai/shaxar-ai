@@ -120,13 +120,13 @@ Qoidalar:
   const proxyUrl = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim();
   const aiAvailable = () => !!(userKey() || proxyUrl());
 
-  async function callOpenAI(key, ctx, onModel, history) {
+  async function callOpenAI(key, ctx, onModel, history, messages) {
     let lastErr = null;
     for (const model of NX.config.openaiModels) {
       onModel && onModel(model);
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
-      const body = { model, messages: [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
+      const body = { model, messages: messages || [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
       if (/^gpt-5/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       let r;
       try {
@@ -237,5 +237,94 @@ Qoidalar:
     return NX.esc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, _core: core };
+  // ---------- Muammoni real surat bilan tekshirish ----------
+  // Worker yangi versiyadami (surat, qidiruv, rasm)? Eski Worker /version ga javob bermaydi.
+  let proxyV = null;
+  async function proxyReady() {
+    if (userKey()) return true;
+    if (!proxyUrl()) return false;
+    if (proxyV == null) {
+      try { const r = await NX.fetchJSON(proxyUrl() + '/version', {}, 10000); proxyV = r.ok && r.data && r.data.v >= 2 ? r.data.v : 0; } catch (e) { proxyV = null; return false; }
+    }
+    return proxyV >= 2;
+  }
+  const OLD_WORKER = 'Bu funksiya uchun Cloudflare Worker kodini yangilash kerak (worker/ai-proxy.js).';
+
+  function problemFacts(p, M, chk) {
+    const meta = NX.PROBLEM[p.type], s = p.street != null ? M.streets[p.street] : null;
+    return {
+      muammo: meta.short, joy: p.title, tavsif: meta.what, taklif_yechim: meta.fix, tafsilot: p.detail || null,
+      koʻcha: s ? { nomi: s.name, turi: NX.HW[s.hw].uz, polosalar_osm: s.lanes || null, harakat: s.oneway === 'yes' ? 'bir tomonlama' : 'ikki tomonlama', avtobus_liniyalari: s.busRefs } : null,
+      mapillary: chk ? { xulosa: chk.text, svetoforlar_topildi: chk.signals, piyoda_otish_topildi: chk.crossings, surat_sanasi: chk.photo && chk.photo.when, surat_masofa_m: chk.photo && chk.photo.d } : null,
+    };
+  }
+  const VISION = `Sen Samarqand hokimiyati uchun yoʻl harakati mutaxassisisan. Senga joyning real koʻcha surati (Mapillary) va saytdagi maʼlumot beriladi.
+Oʻzbek tilida (lotin), qisqa va aniq yoz. Faqat suratda KOʻRINGAN narsani “suratda” deb yoz; koʻrinmasa — “suratda koʻrinmayapti” de, taxmin qilma.
+Tuzilma (har biri 1 qator):
+**Svetofor:** bor / yoʻq / koʻrinmayapti
+**Piyoda oʻtish (zebra):** bor / yoʻq / koʻrinmayapti
+**Yoʻl:** necha polosa, holati (chuqur, chiziqlar oʻchganmi), toʻxtab turgan mashinalar
+**Harakat (surat olingan paytda):** mashinalar kam / oʻrtacha / koʻp
+**Xulosa:** muammo haqiqatan bormi
+**Nima qilish kerak:** 2–3 ta amaliy qadam (ustuvorlik tartibida)
+**Boshqacha yoʻl:** agar taklif qilingan yechimdan yaxshiroq variant boʻlsa — bitta gap.
+Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.”`;
+
+  async function vision(p, M, chk) {
+    if (!(chk && chk.photo)) throw new Error('Bu joyda surat yoʻq.');
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const facts = problemFacts(p, M, chk);
+    const messages = [{ role: 'system', content: VISION.replace('${sana}', chk.photo.when || 'nomaʼlum sana') },
+      { role: 'user', content: [{ type: 'text', text: 'Joy haqida maʼlumot (JSON):\n' + JSON.stringify(facts) }, { type: 'image_url', image_url: { url: chk.photo.url, detail: 'low' } }] }];
+    const r = await callOpenAI(userKey(), null, null, null, messages);
+    return r.text;
+  }
+
+  async function webSearch(p, M, chk) {
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const meta = NX.PROBLEM[p.type];
+    const q = `Samarqand: ${p.title} — “${meta.short}”. Ochiq manbalarda bu joy haqida nima bor: svetofor yoki piyoda oʻtish joyi oʻrnatish rejalari, taʼmir ishlari, yoʻl-transport hodisalari, hokimiyat qarorlari, aholining shikoyatlari? Oxirgi 3 yil.`;
+    const ctx = JSON.stringify(problemFacts(p, M, chk));
+    const key = userKey();
+    let r;
+    if (key) {
+      const body = { model: 'gpt-5.4-mini', instructions: 'Oʻzbek tilida (lotin), qisqa yoz. Faqat manbada bor narsani yoz; topilmasa “Ochiq manbalarda topilmadi” de.', input: q + '\n\n' + ctx, tools: [{ type: 'web_search' }], reasoning: { effort: 'low' } };
+      r = await NX.fetchJSON('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 90000);
+      if (r.ok && r.data) {
+        let text = ''; const sources = [];
+        (r.data.output || []).forEach(o => (o.content || []).forEach(c => { if (c.type === 'output_text') { text += c.text; (c.annotations || []).forEach(a => a.url && !sources.some(x => x.url === a.url) && sources.push({ url: a.url, title: a.title || a.url })); } }));
+        return { text, sources };
+      }
+    } else {
+      r = await NX.fetchJSON(proxyUrl() + '/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q, context: ctx }) }, 90000);
+      if (r.ok && r.data) return { text: r.data.text || '', sources: r.data.sources || [] };
+    }
+    const e = r.data && r.data.error;
+    throw new Error(r.status === 429 ? 'Qidiruv limiti tugadi, keyinroq urinib koʻring.' : 'Qidiruv ishlamadi: ' + ((e && e.message) || 'HTTP ' + r.status));
+  }
+
+  // Yechimning AI rasmi (rasm modeli uchun inglizcha tavsif)
+  const IMG = {
+    junction: 'Add a modern traffic light (signal heads on poles at the corners) and white zebra pedestrian crossings at this intersection.',
+    school: 'Add a raised zebra pedestrian crossing with yellow-green "children" warning signs and a 30 km/h speed limit sign in front of the school entrance.',
+    crossings: 'Add clearly marked white zebra pedestrian crossings with pedestrian crossing signs along this street.',
+    congestion: 'Add a dedicated red-painted bus lane, no-parking signs along the curb and smoothly flowing traffic.',
+    coverage: 'Add a modern covered bus stop shelter with a bench, a bus stop sign and a small bus pull-in bay.',
+    spacing: 'Add a modern covered bus stop shelter with a bench and a bus stop sign at the curb.',
+  };
+  async function solutionImage(p, chk) {
+    if (userKey() && !proxyUrl()) throw new Error('AI rasm faqat sayt serveri (Worker) orqali ishlaydi.');
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const what = IMG[p.type] || 'Show the proposed road safety improvement.';
+    const photo = chk && chk.photo ? chk.photo.url : null;
+    const prompt = photo
+      ? `Edit this real street photo from Samarkand, Uzbekistan. ${what} Keep the same viewpoint, buildings, weather and everything else unchanged; photorealistic.`
+      : `Photorealistic street-level view of a street in the historic center of Samarkand, Uzbekistan (low buildings, plane trees, blue domes far away). ${what}`;
+    const r = await NX.fetchJSON(proxyUrl() + '/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, photo }) }, 180000);
+    if (r.ok && r.data && r.data.b64) return { src: 'data:image/png;base64,' + r.data.b64, edited: !!r.data.edited };
+    const e = r.data && r.data.error;
+    throw new Error(r.status === 429 ? ((e && e.message) || 'Rasm limiti tugadi.') : 'Rasm chizilmadi: ' + ((e && e.message) || 'HTTP ' + r.status));
+  }
+
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webSearch, solutionImage, _core: core };
 })();

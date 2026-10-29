@@ -57,7 +57,7 @@
     if (isFinite(lat) && isFinite(lon)) open(lat, lon, b.dataset.panoTitle);
   });
 
-  const btn = (lat, lon, title, cls) => `<button type="button" class="${cls || 'btn sm'}" data-pano="${lat.toFixed(6)},${lon.toFixed(6)}" data-pano-title="${NX.esc(title || '')}">📷 Real koʻrinish</button>`;
+  const btn = (lat, lon, title, cls, label) => `<button type="button" class="${cls || 'btn sm'}" data-pano="${lat.toFixed(6)},${lon.toFixed(6)}" data-pano-title="${NX.esc(title || '')}" title="Yandex panorama">${label || '📷 Real koʻrinish'}</button>`;
 
   NX.pano = { open, btn, yandexUrl };
 })();
