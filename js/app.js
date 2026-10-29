@@ -296,7 +296,7 @@
 
   // ---------- 2D fizik model (LISFLOOD-FP): vaqt boʻyicha suv ----------
   // series: [{ t0, t1, mmh }] soniyalarda; label — “50 mm / 1 soat” yoki “Real prognoz”
-  async function twinFlood2d(series, label, t0ms) {
+  async function twinFlood2d(series, label, t0ms, drainOverride) {
     const T = twinState();
     if (T.dynBusy) return T.dyn;
     T.dynBusy = 'Relyef tayyorlanmoqda'; renderKeepScroll();
@@ -304,7 +304,7 @@
       await loadTwin();
       T.d40 = T.d40 || await NX.twin.grid40(t => { T.dynBusy = t; renderKeepScroll(); });
       T.dynBusy = 'Suv oqimi hisoblanmoqda (2D model) 0%'; renderKeepScroll();
-      const R = await NX.twin.flood2d(T.d40, T.roads || [], series, { drainMm: NX.systems.get('sewer') ? 15 : 10 }, p => { T.dynBusy = `Suv oqimi hisoblanmoqda (2D model) ${Math.round(p * 100)}%`; const el = panel.querySelector('#dynBusy'); if (el) el.textContent = T.dynBusy + '…'; });
+      const R = await NX.twin.flood2d(T.d40, T.roads || [], series, { drainMm: drainOverride != null ? drainOverride : NX.systems.get('sewer') ? 15 : 10 }, p => { T.dynBusy = `Suv oqimi hisoblanmoqda (2D model) ${Math.round(p * 100)}%`; const el = panel.querySelector('#dynBusy'); if (el) el.textContent = T.dynBusy + '…'; });
       R.label = label; R.t0ms = t0ms || null;
       T.dyn = R; T.dynFrame = R.frames.indexOf(R.peak);
       twinShowFrame(T.dynFrame, true);
@@ -368,6 +368,8 @@
     const busyTick = setInterval(() => { if (T0.busy && C.busy) { C.busy = T0.busy; renderKeepScroll(); } }, 1500);
     try {
       await wait(loadTwin(), 40000);
+      // Koʻchalar avval yuklanmagan boʻlsa — qayta soʻraladi
+      if (!T0.roads && T0.roadsErr) { T0.roadsErr = null; T0.roadsP = NX.twin.roads(t => { T0.busy = t; }).then(r => { T0.roads = r; }, e => { T0.roadsErr = e.message; }); }
       if (!T0.roads && T0.roadsP) await wait(T0.roadsP, 25000);
     } finally { clearInterval(busyTick); }
     const n = q.toLowerCase();
@@ -385,8 +387,14 @@
       const sc = rainScen(mm);
       // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
-      const R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
+      let R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
       extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
+      // Kichik yomgʻir: kanalizatsiya ishlasa suv qolmaydi — ariqlar tiqilgan holat ham hisoblanadi (xaritada shu koʻrsatiladi)
+      if (R && R.peak.km < 0.5 && mm <= 30) {
+        C.busy = `Ariqlar tiqilgan holat hisoblanmoqda`; renderKeepScroll();
+        const R0 = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda — ariqlar tiqilgan boʻlsa`, null, 0);
+        if (R0) extra.ariqlar_tiqilgan_holat = dynFacts(R0);
+      }
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }

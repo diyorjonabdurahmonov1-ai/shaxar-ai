@@ -500,6 +500,7 @@ Qoidalar:
 - Faqat savolga javob ber. 1-qator: aniq xulosa raqam bilan (masalan: “50 mm yomgʻirda ~12 ga suv ostida qoladi, eng xavfli — X koʻchasi, 60 sm gacha”).
 - Keyin: **Xavfli joylar** (koʻcha — chuqurlik, uzunlik), **Odamlar va binolar** (nechta bino, qaysi maktab/shifoxona), **Hozir nima qilish kerak** (ariq va kollektorlarni tozalash, nasoslar, ogohlantirish, yoʻl yopish — qayerda), **Uzoq muddatli yechim**.
 - Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
+- “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
 - Zilzila soʻralsa: faqat berilgan maʼlumot (binolar qavati, maktab/shifoxonalar soni) asosida qaysi turdagi binolar koʻproq xavf ostida ekanini ayt; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt va uni qayerdan olish kerakligini (kadastr, qurilish inspeksiyasi) ayt. Raqam oʻylab topma.
 - Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv, chuqurligi rang bilan; zilzilada qizil — maktab/shifoxona, toʻq sariq — 5+ qavat).
 - JSON kalit nomlarini, texnik soʻzlarni yozma. Cheklovlarni faqat bir gapda ayt (relyef ~30 m, kanalizatsiya sigʻimi taxminiy).

@@ -8,7 +8,8 @@
     street: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'], attribution: '© Esri, OpenStreetMap hissadorlari' },
   };
 
-  const colorHeight = lv => (lv >= 9 ? '#7c3aed' : lv >= 5 ? '#2563eb' : lv >= 3 ? '#0ea5e9' : lv >= 2 ? '#94a3b8' : '#cbd5e1');
+  // Balandlik — kulrang/bej tuslar (koʻk rang faqat suv uchun)
+  const colorHeight = lv => (lv >= 9 ? '#57534e' : lv >= 5 ? '#a8a29e' : lv >= 3 ? '#d6d3d1' : lv >= 2 ? '#e7e5e4' : '#f5f5f4');
   const colorSolar = kwh => (kwh >= 50000 ? '#b45309' : kwh >= 20000 ? '#f59e0b' : kwh >= 8000 ? '#fcd34d' : kwh >= 3000 ? '#fde68a' : '#e5e7eb');
 
   // Suv ostidagi kataklar (stsenariy boʻlsa — undan, boʻlmasa doimiy xavf xaritasidan)
