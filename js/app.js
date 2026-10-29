@@ -49,7 +49,7 @@
       S.fc.street = (M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value)[0] || M.streets[0]).id;
       NX.view.clearDeltas();
       NX.view.setModel(M);
-      NX.view.drawFixes(NX.fixes.list());
+      NX.view.drawFixes(shownFixes());
       setStatus(res.source, res.data.ts);
       render();
       if (res.warning) toast(res.warning, 'warn');
@@ -59,11 +59,11 @@
       // Boshqa foydalanuvchilar saqlagan tuzatishlar (svetofor bor, muammo emas…) serverdan olinadi
       NX.fixes.loadShared().then(() => { if (NX.fixes.list().length) rebuildModel(); }, () => {}).then(() => {
         // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta); AI koʻrigi — sayt egasi brauzerida (PIN bor)
-        if (!S.reviewStarted) { S.reviewStarted = true; review({ ai: !!NX.fixes.pin() }); }
+        if (!S.reviewStarted) { S.reviewStarted = true; review(); }
       });
       // Asosiy xarita — Yandex (real tirbandlik + tahlil). Ishlamasa — zaxira xarita va probkalar tugmasi
       if (S.yandexOn == null) setYandex(true);
-      else if (S.yandexMain) NX.view.syncYandex(M, NX.fixes.list());
+      else if (S.yandexMain) NX.view.syncYandex(M, shownFixes());
     } catch (e) {
       console.warn(e);
       S.load = 'error';
@@ -122,12 +122,16 @@
   const renderActions = () => { const s = ctxStreet(); if (s) swap('#whatif', V.actions(S, s)); };
   const renderAI = () => swap('#aiBox', V.aiBox(S, ctxStreet()));
 
+  // Xaritada foydalanuvchi qoʻygan belgilar; Muammolar boʻlimida — faqat muammolar, avtomatik tekshiruv belgilari hech qachon
+  const shownFixes = () => (S.tab === 'problems' ? [] : NX.fixes.list().filter(x => x.id[0] !== 'a'));
   function setTab(t) {
     if (t !== 'map') ensureLeaflet();
     if (S.segPick) { NX.view.cancelPick(); S.segPick = null; }
     // Bashorat boʻlimida xarita bashorat boʻyicha boʻyaladi — eski simulyatsiya qatlami olib tashlanadi
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
+    const wasProblems = S.tab === 'problems';
     S.tab = t;
+    if (wasProblems !== (t === 'problems')) NX.view.drawFixes(shownFixes());
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
     render();
     panel.scrollTop = 0;
@@ -266,20 +270,22 @@
     await Promise.all([run(), run(), run()]);
     const resolved = items.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === 'ok').map(p => ({ p, by: 'Mapillary', r: S.verify[p.id].res }));
     // 2) AI suratni koʻradi — obyekt topilmagan, lekin surati bor joylar
-    if (opt.ai) {
-      if (!(await NX.ai.proxyReady())) R.err = 'AI koʻrigi uchun Cloudflare Worker’ni yangilash kerak (worker/ai-proxy.js).';
+    if (opt.ai !== false) {
+      if (!(await NX.ai.proxyReady())) R.err = 'AI tekshiruvi ishlamayapti: Cloudflare’dagi Worker kodi eski — yangisini qoʻyish kerak (worker/ai-proxy.js).';
       else {
-        const todo = items.filter(p => { const v = S.verify[p.id]; return v && v.res && v.res.status === 'bad' && v.res.photo; }).slice(0, opt.aiMax || 40);
+        let shared = {};
+        try { shared = (await NX.ai.photoChecksAll()) || {}; } catch (e) { shared = {}; }
+        const todo = items.filter(p => { const v = S.verify[p.id]; return v && v.res && v.res.status === 'bad' && v.res.photo; }).slice(0, opt.aiMax || 80);
         Object.assign(R, { stage: 'AI suratlarni koʻrib chiqmoqda', done: 0, total: todo.length });
         renderReview();
         let k = 0;
         const runAI = async () => {
           while (k < todo.length) {
             const p = todo[k++], v = S.verify[p.id];
-            let a = NX.mly.aiGet(p, v.res);
+            let a = shared[p.key] || NX.mly.aiGet(p, v.res);
             if (!a) {
               try { a = await NX.ai.photoCheck(p, v.res); NX.mly.aiSet(p, v.res, a); }
-              catch (e) { R.err = e.message; if (/Worker|limit|kalit|kredit/i.test(e.message)) k = todo.length; a = null; }
+              catch (e) { R.err = e.message; if (/Worker|limit|kalit|kredit|quota/i.test(e.message)) k = todo.length; a = null; }
             }
             if (a) {
               const what = p.type === 'junction' ? 'svetofor' : 'piyoda oʻtish joyi';
@@ -573,7 +579,7 @@
     NX.analysis.refresh(M);
     S.model = M;
     NX.view.setModel(M);
-    NX.view.drawFixes(NX.fixes.list());
+    NX.view.drawFixes(shownFixes());
     if (S.street != null) NX.view.selectStreet(S.street, false);
     render();
   }
@@ -620,7 +626,7 @@
         S.yandexMain = true;
         $('.map-wrap').classList.add('ya-on');
         btn.hidden = true;
-        NX.view.syncYandex(S.model, NX.fixes.list());
+        NX.view.syncYandex(S.model, shownFixes());
         NX.view.showProblems(S.tab === 'problems');
         if (S.street != null) NX.view.selectStreet(S.street, false);
         NX.map.updateLegend();

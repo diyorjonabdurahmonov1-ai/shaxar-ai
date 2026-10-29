@@ -248,7 +248,7 @@ Qoidalar:
     }
     return proxyV >= 2;
   }
-  const OLD_WORKER = 'Bu funksiya uchun Cloudflare Worker kodini yangilash kerak (worker/ai-proxy.js).';
+  const OLD_WORKER = 'AI tekshiruvi ishlamayapti: Cloudflare’dagi Worker kodi eski — yangisini qoʻyish kerak (worker/ai-proxy.js).';
 
   function problemFacts(p, M, chk) {
     const meta = NX.PROBLEM[p.type], s = p.street != null ? M.streets[p.street] : null;
@@ -285,8 +285,21 @@ Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.
 Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda_otish":"bor|yoq|noaniq","izoh":"oʻzbekcha 1 qisqa gap"}
 “bor” — faqat suratda aniq koʻrinsa (svetofor chirogʻi yoki ustuni; oq-qora zebra chiziqlari). Koʻrinmasa yoki surat boshqa tomonga qaragan boʻlsa — “noaniq”.
 “yoq” — chorraha/yoʻl aniq koʻrinib turibdi, lekin svetofor (yoki zebra) yoʻq.`;
+  // Worker v3: natijalar umumiy (har bir joy bir marta tekshiriladi, hamma koʻradi)
+  const sharedChecks = async () => proxyUrl() && (await proxyReady()) && proxyV >= 3;
+  async function photoChecksAll() {
+    if (!(await sharedChecks())) return null;
+    const r = await NX.fetchJSON(proxyUrl() + '/photo-checks', {}, 15000);
+    return r.ok && r.data ? r.data.items || {} : null;
+  }
   async function photoCheck(p, chk) {
     if (!(chk && chk.photo)) throw new Error('Surat yoʻq.');
+    if (await sharedChecks()) {
+      const r = await NX.fetchJSON(proxyUrl() + '/photo-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: p.key, title: p.title, photoId: chk.photo.id, photos: [chk.photo, chk.photo2].filter(Boolean).map(x => x.url) }) }, 60000);
+      if (r.ok && r.data && r.data.signal) return r.data;
+      const e = r.data && r.data.error;
+      throw new Error(r.status === 429 ? 'AI tekshiruv limiti tugadi (keyinroq davom etadi).' : 'AI tekshiruvi: ' + ((e && e.message) || 'HTTP ' + r.status));
+    }
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
     const imgs = [chk.photo, chk.photo2].filter(Boolean).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }));
     const messages = [{ role: 'system', content: PHOTO_CHECK }, { role: 'user', content: [{ type: 'text', text: `Joy: ${p.title}. Muammo: ${NX.PROBLEM[p.type].short}.` }].concat(imgs) }];
@@ -395,5 +408,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, proxyReady, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, photoCheck, photoChecksAll, proxyReady, webSearch, solutionImage, areaAsk, areaFacts, _core: core };
 })();

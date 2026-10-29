@@ -482,13 +482,21 @@ async function clickStreet(page, name) {
     const [w, so, e, n] = u.searchParams.get('bbox').split(',').map(Number), c = [(w + e) / 2, (so + n) / 2];
     if (/\/images/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: [{ id: '123', captured_at: Date.UTC(2025, 5, 1), thumb_1024_url: 'https://scontent.example.fbcdn.net/t.jpg', computed_geometry: { type: 'Point', coordinates: [c[0] + 0.0001, c[1]] } }] }) });
     featCalls++;
-    route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: featCalls % 2 ? [{ id: 'f1', object_value: 'object--traffic-light--general-upright', geometry: { type: 'Point', coordinates: c }, last_seen_at: Date.UTC(2025, 5, 1) }] : [] }) });
+    route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ data: (Math.round(c[0] * 1e4) + Math.round(c[1] * 1e4)) % 3 === 0 ? [{ id: 'f1', object_value: 'object--traffic-light--general-upright', geometry: { type: 'Point', coordinates: c }, last_seen_at: Date.UTC(2025, 5, 1) }] : [] }) });
   });
   await ctx8.route(/fbcdn\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   const px = { chat: [], search: 0, image: [] };
+  const pc = { store: {}, posts: 0 };
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
-    if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 2 }) });
+    if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 3 }) });
+    if (path === '/photo-checks') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ items: pc.store }) });
+    if (path === '/photo-check') {
+      const q = JSON.parse(req.postData()); pc.posts++;
+      const it = { signal: pc.posts % 2 ? 'bor' : 'yoq', crossing: 'noaniq', note: 'Sinov.', photoId: q.photoId };
+      pc.store[q.key] = it;
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify(it) });
+    }
     if (path === '/corrections' || path === '/reports') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: '{"items":[]}' });
     const b = JSON.parse(req.postData() || '{}');
     if (path === '/search') { px.search++; return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ text: 'Hokimiyat 2026-yilda svetofor qoʻyishni rejalashtirgan.', sources: [{ url: 'https://samarkand.uz/news/1', title: 'Samarqand hokimligi' }] }) }); }
@@ -502,16 +510,17 @@ async function clickStreet(page, name) {
   await p8.goto(BASE);
   await p8.waitForSelector('#panel .live', { timeout: 20000 });
   await p8.click('.tabs [data-tab=problems]');
-  // Avtomatik tekshiruv: sahifa ochilganda Mapillary suratlari koʻriladi, svetofor topilgan joylar roʻyxatdan olinadi
+  // Avtomatik tekshiruv: sahifa ochilganda Mapillary + AI; muammo emaslari olib tashlanadi
   await p8.waitForFunction(() => NX.state.review && !NX.state.review.busy, null, { timeout: 60000 });
-  const rv = await p8.evaluate(() => ({ fixed: NX.state.review.fixed.length, keys: NX.state.review.fixed.map(f => f.key), left: NX.state.model.problems.filter(p => p.type === 'junction').length }));
-  const gone = await p8.evaluate(keys => keys.every(k => !NX.state.model.problems.some(p => p.key === k)) && keys.every(k => NX.fixes.list().some(f => f.key === k && f.kind !== 'dismiss')), rv.keys);
-  ok('Avtomatik: suratda svetofor bor joylar muammolardan olinadi (xaritada 🚦 belgisi)', rv.fixed > 0 && gone && rv.left > 0, JSON.stringify({ fixed: rv.fixed, left: rv.left }));
-  ok('Tekshiruv natijasi kartasi (✅/❌/❔)', /roʻyxatdan olindi/.test(await p8.textContent('#reviewCard')) && (await p8.isVisible('#reviewCard [data-act=review-ai]')));
+  const rv = await p8.evaluate(() => ({ fixed: NX.state.review.fixed.length, by: [...new Set(NX.state.review.fixed.map(f => f.by))], keys: NX.state.review.fixed.map(f => f.key), left: NX.state.model.problems.filter(p => p.type === 'junction').length }));
+  const gone = await p8.evaluate(keys => keys.every(k => !NX.state.model.problems.some(p => p.key === k)), rv.keys);
+  ok('Avtomatik (tugmasiz): Mapillary va AI suratda svetofor koʻrgan joylar olib tashlanadi', rv.fixed > 0 && gone && rv.by.includes('Mapillary') && rv.by.includes('AI') && rv.left > 0 && pc.posts > 0, JSON.stringify(rv.by) + ' qoldi: ' + rv.left);
+  ok('Olib tashlangan joylar xaritada yashil belgi boʻlib qolmaydi', (await p8.$$('.leaflet-marker-icon.fixmk')).length === 0);
+  ok('Tekshiruv kartasida soʻrovchi tugma yoʻq', !(await p8.$('#reviewCard [data-act=review-ai]')) && /olib tashlandi/.test(await p8.textContent('#reviewCard')));
   const jCard = '.prob:has-text("Svetoforsiz chorraha")';
   await p8.click(`${jCard} [data-act=verify] >> nth=0`);
   await p8.waitForSelector(`${jCard} .vbox .vverdict`, { timeout: 15000 });
-  ok('🔎 Tekshirish: Mapillary xulosasi va real surat', (await p8.isVisible(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
+  ok('🔎 Tekshirish: xulosa va real surat', (await p8.isVisible(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
   await p8.click(`${jCard} [data-act=verify-ai]`);
   await p8.waitForSelector(`${jCard} .vpart .ai-text`, { timeout: 15000 });
   const vb = px.chat[px.chat.length - 1];
@@ -523,17 +532,20 @@ async function clickStreet(page, name) {
   await p8.click(`${jCard} [data-act=verify-img]`);
   await p8.waitForSelector(`${jCard} .vgen img`, { timeout: 15000 });
   ok('🎨 AI rasm: real surat ustiga, “haqiqiy emas” belgisi bilan', /haqiqiy emas/.test(await p8.textContent(`${jCard} .vgen`)) && px.image[0] && /fbcdn/.test(px.image[0].photo));
-  // AI koʻrigi: Mapillary obyekt topmagan joylarni AI suratdan koʻradi
-  await p8.click('#reviewCard [data-act=review-ai]');
-  await p8.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.model.problems.filter(p => p.type === 'junction').length === 0, null, { timeout: 60000 });
-  const checks = px.chat.filter(b => /Faqat JSON/.test(b.messages[0].content)).length;
-  ok('AI suratlarni koʻrib chiqadi — svetofor koʻrgan joylar ham olinadi', checks === rv.left && (await p8.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `AI soʻrovlari: ${checks}`);
   if (process.env.SHOT) { await p8.evaluate(() => document.querySelector('#reviewCard').scrollIntoView()); await p8.screenshot({ path: process.env.SHOT }); }
   await p8.click('#reviewCard details summary');
   await p8.click('#reviewCard [data-act=review-undo] >> nth=0');
   await p8.waitForTimeout(500);
-  const und = await p8.evaluate(() => { const keep = JSON.parse(localStorage.getItem('nx:review:keep') || '[]'); return { keep, back: keep.filter(k => NX.state.model.problems.some(p => p.key === k)).length, near: keep.map(k => { const [, la, lo] = k.split(':').map(Number); const [x, y] = NX.geo.xy(la, lo); return Math.min(...NX.state.model.signals.map(s => Math.hypot(s.x - x, s.y - y))); }) }; });
+  const und = await p8.evaluate(() => { const keep = JSON.parse(localStorage.getItem('nx:review:keep') || '[]'); return { keep, back: keep.filter(k => NX.state.model.problems.some(p => p.key === k)).length }; });
   ok('“Baribir muammo” — joy qaytariladi', und.back === 1, JSON.stringify(und));
+  // Ikkinchi foydalanuvchi: AI natijalari umumiy — qayta pul sarflanmaydi
+  const postsBefore = pc.posts;
+  const p8b = await ctx8.newPage();
+  await p8b.addInitScript(() => localStorage.clear());
+  await p8b.goto(BASE);
+  await p8b.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.review.ts, null, { timeout: 60000 });
+  ok('AI natijasi umumiy: boshqa foydalanuvchida qayta soʻralmaydi', pc.posts === postsBefore && (await p8b.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `yangi soʻrovlar: ${pc.posts - postsBefore}`);
+  await p8b.close();
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
   // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------

@@ -306,18 +306,17 @@
     const items = M.problems.filter(p => p.type === 'junction' || p.type === 'school');
     const n = k => items.filter(p => S.verify[p.id] && S.verify[p.id].res && S.verify[p.id].res.status === k).length;
     const fixed = R ? R.fixed : [];
-    const local = NX.fixes.list().filter(x => !x.shared && x.id[0] === 'a').length;
     return `<section class="card review" id="reviewCard">
       <h3>🔎 Real suratlar bilan tekshiruv</h3>
       ${R && R.busy ? progress({ p: R.total ? R.done / R.total : 0, label: `${R.stage}: ${R.done}/${R.total}` }) : ''}
       ${R ? `<ul class="rv-sum">
-        <li>✅ <b>${fixed.length}</b> ta joyda suratda svetofor yoki piyoda oʻtish bor ekan — roʻyxatdan olindi (xaritada 🚦/🚶 belgisi).</li>
-        <li>❌ <b>${n('bad')}</b> ta joyda suratda koʻrinmadi — muammo tasdiqlanmoqda.</li>
-        <li>❔ <b>${n('unknown')}</b> ta joyda surat yoʻq yoki aniq emas.</li></ul>` : '<p class="small muted">Tekshiruv boshlanmoqda…</p>'}
+        <li>🗑 <b>${fixed.length}</b> ta joy muammo emas ekan (suratda svetofor yoki piyoda oʻtish bor) — olib tashlandi.</li>
+        <li>❌ <b>${n('bad')}</b> ta joyda suratda ham yoʻq — muammo tasdiqlandi.</li>
+        <li>❔ <b>${n('unknown')}</b> ta joyda surat yoʻq yoki aniq emas — xarita maʼlumotiga koʻra koʻrsatilmoqda.</li></ul>` : '<p class="small muted">Tekshiruv boshlanmoqda…</p>'}
       ${R && R.err ? `<p class="small warn-line">⚠️ ${E(R.err)}</p>` : ''}
-      ${R && !R.busy ? `<div class="row-btns">${n('bad') ? `<button class="btn xs primary" data-act="review-ai">🤖 AI suratlarni koʻrib chiqsin (${Math.min(40, n('bad'))} ta)</button>` : ''}${local && NX.fixes.pin() ? `<button class="btn xs" data-act="review-share">💾 Hamma uchun saqlash (${local})</button>` : ''}</div>` : ''}
-      ${fixed.length ? `<details class="more"><summary>Roʻyxatdan olinganlar (${fixed.length})</summary><ul class="locs">${fixed.map(f => `<li class="locrow"><span>${f.kind === 'signal' ? '🚦' : '🚶'} ${E(f.title)} <small class="muted">— ${E(f.by)}</small></span><div class="loc-acts">${f.photo ? `<a class="btn xs" href="${E(f.photo.link)}" target="_blank" rel="noopener">📷 Surat</a>` : ''}<button class="btn xs" data-act="review-undo" data-fid="${E(f.id)}">Baribir muammo</button></div></li>`).join('')}</ul></details>` : ''}
-      <p class="small muted">Mapillary — odamlar olgan ochiq koʻcha suratlari. Surat eski boʻlishi mumkin; har bir joyni “🔎 Tekshirish” bilan koʻrish mumkin.</p>
+
+      ${fixed.length ? `<details class="more"><summary>Olib tashlanganlar (${fixed.length})</summary><ul class="locs">${fixed.map(f => `<li class="locrow"><span>${f.kind === 'signal' ? '🚦' : '🚶'} ${E(f.title)} <small class="muted">— ${E(f.by)}</small></span><div class="loc-acts">${f.photo ? `<a class="btn xs" href="${E(f.photo.link)}" target="_blank" rel="noopener">📷 Surat</a>` : ''}<button class="btn xs" data-act="review-undo" data-fid="${E(f.id)}">Baribir muammo</button></div></li>`).join('')}</ul></details>` : ''}
+      <p class="small muted">Har gal sayt ochilganda avtomatik: Mapillary ochiq koʻcha suratlari + AI. Surat eski boʻlishi mumkin.</p>
     </section>`;
   }
 

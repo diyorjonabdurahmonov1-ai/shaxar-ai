@@ -1,6 +1,9 @@
 /* City Jam — AI proksi va xarita tuzatishlari (Cloudflare Worker).
    /corrections — foydalanuvchilar “svetofor bor”, “muammo emas” kabi tuzatishlari (KV: CORRECTIONS, yozish ADMIN_PIN bilan).
    /reports — odamlarning “hozir bu yerda tirbandlik” xabarlari (KV: CORRECTIONS, kalit "reports"; PINsiz, IP boʻyicha limit).
+   /photo-check — muammo joyining real suratini (Mapillary) AI koʻradi: svetofor / piyoda oʻtish bormi. Natija KV’da saqlanadi —
+                  har bir joy faqat bir marta tekshiriladi (pul bir marta sarflanadi), natijani hamma foydalanuvchi koʻradi.
+   /photo-checks — saqlangan barcha natijalar (GET).
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
    Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
@@ -45,7 +48,8 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
-    if (path === '/version') return json({ v: 2, features: ['vision', 'search', 'image'] }, 200, cors);
+    if (path === '/version') return json({ v: 3, features: ['vision', 'search', 'image', 'photo-check'] }, 200, cors);
+    if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
@@ -199,4 +203,52 @@ async function image(b, env, cors, ip) {
     if (!(r.status === 400 || r.status === 404) || !/model/i.test(JSON.stringify((d && d.error) || ''))) break;
   }
   return json({ error: (last && last.d && last.d.error) || { message: 'Rasm chizilmadi' } }, (last && last.status) || 500, cors);
+}
+
+// ---------- Muammo joyining surati: svetofor / piyoda oʻtish bormi (AI, natija umumiy) ----------
+const PC_PER_IP_HOUR = 80, PC_PER_DAY = 400;
+const PC_PROMPT = `Senga chorraha yoki maktab yonidagi real koʻcha surati (1–2 ta, Mapillary) beriladi.
+Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda_otish":"bor|yoq|noaniq","izoh":"oʻzbekcha 1 qisqa gap"}
+“bor” — faqat suratda aniq koʻrinsa (svetofor chirogʻi yoki ustuni; oq-qora zebra chiziqlari). Koʻrinmasa yoki surat boshqa tomonga qaragan boʻlsa — “noaniq”.
+“yoq” — chorraha/yoʻl aniq koʻrinib turibdi, lekin svetofor (yoki zebra) yoʻq.`;
+async function photoChecks(req, env, cors, okOrigin, path) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  const all = JSON.parse((await env.CORRECTIONS.get('photochecks')) || '{}');
+  if (path === '/photo-checks') return json({ items: all }, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
+  let b;
+  try { b = JSON.parse(await req.text()); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
+  const key = String(b.key || '').slice(0, 80), photos = (Array.isArray(b.photos) ? b.photos : []).filter(PHOTO_OK).slice(0, 2);
+  const pid = String(b.photoId || '').slice(0, 40);
+  if (!/^(junction|school):/.test(key) || !photos.length) return json({ error: { code: 'bad_item', message: 'Notoʻgʻri soʻrov' } }, 400, cors);
+  // Shu joy shu surat bilan avval tekshirilgan boʻlsa — saqlangan natija (pul sarflanmaydi)
+  if (all[key] && all[key].photoId === pid) return json(Object.assign({ cached: true }, all[key]), 200, cors);
+  const ip = req.headers.get('CF-Connecting-IP') || 'x';
+  if (limit('pc:' + ip, PC_PER_IP_HOUR)) return json({ error: { code: 'proxy_rate_limit', message: 'Soatlik limit tugadi' } }, 429, cors);
+  const dk = 'pcday:' + new Date().toISOString().slice(0, 10), used = +((await env.CORRECTIONS.get(dk)) || 0);
+  if (used >= PC_PER_DAY) return json({ error: { code: 'proxy_rate_limit', message: 'Bugungi limit tugadi' } }, 429, cors);
+  await env.CORRECTIONS.put(dk, String(used + 1), { expirationTtl: 3 * 86400 });
+  const content = [{ type: 'text', text: 'Joy: ' + String(b.title || '').slice(0, 120) + '. Muammo: ' + (key.startsWith('junction') ? 'svetoforsiz chorraha' : 'maktab oldida xavfsiz oʻtish yoʻq') + '.' }]
+    .concat(photos.map(u => ({ type: 'image_url', image_url: { url: u, detail: 'low' } })));
+  let last = null;
+  for (const model of MODELS) {
+    const body = { model, messages: [{ role: 'system', content: PC_PROMPT }, { role: 'user', content }], max_completion_tokens: 600 };
+    if (/^gpt-5/.test(model)) body.reasoning_effort = 'low'; else body.temperature = 0;
+    const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => null);
+    if (!r.ok) { last = { status: r.status, d }; if (r.status === 400 || r.status === 404) continue; break; }
+    const t = (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
+    let j = null;
+    try { j = JSON.parse((t.match(/\{[\s\S]*\}/) || [''])[0]); } catch (e) { j = null; }
+    if (!j) { last = { status: 502, d: { error: { message: 'AI javobi tushunarsiz' } } }; continue; }
+    const v = x => (/^bor/i.test(x || '') ? 'bor' : /^yo/i.test(x || '') ? 'yoq' : 'noaniq');
+    const item = { signal: v(j.svetofor), crossing: v(j.piyoda_otish), note: String(j.izoh || '').slice(0, 200), photoId: pid, ts: Date.now() };
+    const fresh = JSON.parse((await env.CORRECTIONS.get('photochecks')) || '{}');
+    fresh[key] = item;
+    await env.CORRECTIONS.put('photochecks', JSON.stringify(fresh));
+    return json(item, 200, cors);
+  }
+  return json({ error: (last && last.d && last.d.error) || { message: 'Tekshiruv ishlamadi' } }, (last && last.status) || 500, cors);
 }
