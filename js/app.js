@@ -391,20 +391,39 @@
     focusProblem(p);
     render(); panel.scrollTop = 0;
     const v = S.verify[p.id] = S.verify[p.id] || {};
+    // Chorrahadagi har bir koʻcha oqimi (harakat modeli, tigʻiz soat) va real sunʼiy yoʻldosh surati
+    if (p.streets && !v.flows) {
+      try {
+        await NX.sim.whenReady(); S.simInfo = NX.sim.info();
+        const fl = await NX.sim.flows({ demand: S.demand, iters: 10 }), [cx, cy] = NX.geo.xy(p.lat, p.lon), M = S.model;
+        v.flows = p.streets.map(sid => {
+          let sum = 0, n = 0;
+          S.simInfo.pieces.forEach(([wi, i0, i1], idx) => { const w = M.ways[wi]; if (w.street !== sid) return; const a = w.xy[i0], c = w.xy[i1]; if (Math.min(Math.hypot(a[0] - cx, a[1] - cy), Math.hypot(c[0] - cx, c[1] - cy)) < 40) { sum += fl[idx]; n++; } });   // chorrahaga tutashgan boʻlaklar
+          return { street: sid, name: M.streets[sid].name || 'nomsiz yoʻl', hw: M.streets[sid].hw, flow: n ? Math.round(sum / n) : null };
+        });
+      } catch (e) { v.flows = null; }
+      renderRow(p.id);
+    }
+    if (!v.sat && (p.type === 'junction' || p.type === 'priority' || p.type === 'school')) {
+      v.sat = { busy: true }; renderRow(p.id);
+      try { v.sat = await NX.plan.satellite(S.model, V.effP(S, p)); } catch (e) { v.sat = { err: e.message }; }
+      renderRow(p.id);
+    }
     if (!NX.mly.available()) return;
     if (!v.res && !v.busy) await verifyCheck(p);
     if (!v.views) {
       v.views = { busy: true }; renderRow(p.id);
-      try { v.views = { list: await NX.mly.views4(p) }; } catch (e) { v.views = { err: e.message, list: [] }; }
+      const onRoad = (lat, lon) => { const [x, y] = NX.geo.xy(lat, lon); let best = null, bd = 10; S.model.streetsNear(x, y, 10).forEach((d, sid) => { if (d < bd) { bd = d; best = sid; } }); return best; };
+      try { v.views = { list: await NX.mly.views4(p, onRoad, [p.major, p.street].filter(x => x != null)) }; } catch (e) { v.views = { err: e.message, list: [] }; }
       renderRow(p.id);
     }
     // AI xulosasi — avtomatik; bir marta koʻrilgan suratlar uchun saqlanadi
     const list = v.views.list && v.views.list.length ? v.views.list : null;
     if (!v.ai && NX.ai.available() && (list || (v.res && v.res.photo))) {
-      const ck = 'pvai:' + p.key + ':' + (list || [v.res.photo]).map(x => x.id).join(',');
+      const ck = 'pvai2:' + p.key + ':' + (list || [v.res.photo]).map(x => x.id).join(',');
       const hit = NX.store.get(ck, null);
       if (hit) { v.ai = { text: hit }; renderRow(p.id); }
-      else verifyPart(p.id, 'ai', async () => { const text = await NX.ai.vision(p, S.model, v.res, list); NX.store.set(ck, text); return { text }; });
+      else verifyPart(p.id, 'ai', async () => { const text = await NX.ai.vision(V.effP(S, p), S.model, v.res, list, { flows: v.flows }); NX.store.set(ck, text); return { text }; });
     }
   }
 
@@ -1030,7 +1049,7 @@
         case 'problem-close': S.problemOpen = null; render(); break;
         case 'pimg': {
           const pid = b.dataset.pid, mode = b.dataset.mode, v = S.verify[pid] || {};
-          verifyPart(pid, mode === 'top' ? 'top' : 'photo', async (p, r) => NX.ai.solutionImage(p, r, { mode, views: v.views && v.views.list, plan: mode === 'top' ? await NX.plan.png(S.model, p) : null }));
+          verifyPart(pid, mode === 'top' ? 'top' : 'photo', async (p, r) => NX.ai.solutionImage(V.effP(S, p), r, { mode, views: v.views && v.views.list, sat: mode === 'top' && v.sat && v.sat.ok ? v.sat.data : null, plan: mode === 'top' ? await NX.plan.png(S.model, V.effP(S, p)) : null }));
           break;
         }
         case 'problem': {

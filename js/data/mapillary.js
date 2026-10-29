@@ -79,24 +79,28 @@
 
   // Joyga 4 tomondan qaragan suratlar: har bir yondashuv (shimol/sharq/janub/gʻarb) uchun joyga qarab olingan eng yaxshisi
   const SIDES = ['shimoldan', 'sharqdan', 'janubdan', 'gʻarbdan'];
-  async function views4(p) {
-    const ck = 'mly4:' + p.key, hit = NX.store.get(ck, null);
+  // onRoad(lat, lon) → shu nuqtaga eng yaqin koʻcha id (yoki null) — faqat avtomobil yoʻlida olingan suratlar
+  async function views4(p, onRoad, prefer) {
+    const ck = 'mly5:' + p.key, hit = NX.store.get(ck, null);
     if (hit && Date.now() - hit.ts < DAY) return hit.list;
     const ph = await photos(p.lat, p.lon, 90);
     const [px, py] = NX.geo.xy(p.lat, p.lon);
     const best = [null, null, null, null];
     ph.forEach(x => {
       if (x.d < 5 || x.d > 90) return;
+      const road = onRoad ? onRoad(x.lat, x.lon) : 0;
+      if (road == null) return;                                             // piyoda yoʻlagi, hovli, bogʻ — olinmaydi
       const [qx, qy] = NX.geo.xy(x.lat, x.lon);
       const fromP = (Math.atan2(qx - px, qy - py) * 180) / Math.PI;          // joydan suratgacha (shimoldan soat yoʻnalishida)
       const side = Math.round((((fromP % 360) + 360) % 360) / 90) % 4;       // surat qaysi tomonda turibdi
       const toP = (fromP + 180) % 360;                                      // suratdan joyga qarash yoʻnalishi
       const off = x.ca == null ? 90 : Math.abs((((x.ca - toP) % 360) + 540) % 360 - 180);
       if (off > 60) return;                                                 // kamera joyga qaramagan
-      const score = off + x.d * 0.6 - (x.date || 0) / (365 * DAY) * 10;
-      if (!best[side] || score < best[side].score) best[side] = Object.assign({ score, side: SIDES[side] }, x);
+      const score = off + x.d * 0.6 - (x.date || 0) / (365 * DAY) * 10 - (prefer && prefer.includes(road) ? 15 : 0);
+      if (!best[side] || score < best[side].score) best[side] = Object.assign({ score, side: SIDES[side], road }, x);
     });
-    const list = best.filter(Boolean).map(x => ({ id: x.id, url: x.url, when: when(x.date), d: Math.round(x.d), side: x.side, link: link(x.id) }));
+    // Birinchisi — asosiy koʻchadan, chorrahaga qarab olingan surat (real suratga chizish uchun)
+    const list = best.filter(Boolean).sort((a, b) => a.score - b.score).map(x => ({ id: x.id, url: x.url, when: when(x.date), d: Math.round(x.d), side: x.side, link: link(x.id), road: x.road }));
     NX.store.set(ck, { ts: Date.now(), list });
     return list;
   }

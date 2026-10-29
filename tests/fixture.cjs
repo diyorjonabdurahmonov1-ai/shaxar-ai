@@ -40,7 +40,7 @@ function build() {
       ids.push(nid(i, j));
     }
     ids.forEach(id => geom.push(nodes.get(id)));
-    const hw = j % 4 === 1 ? 'tertiary' : j % 4 === 3 ? 'unclassified' : 'residential';
+    const hw = j === 5 || j === 9 ? 'secondary' : j % 4 === 1 ? 'tertiary' : j % 4 === 3 ? 'unclassified' : 'residential';
     const tags = { highway: hw };
     if (j !== 10) tags.name = `Sinov tor koʻchasi ${j + 1}`;
     ways.push({ type: 'way', id: wid++, nodes: ids, geometry: geom, tags });

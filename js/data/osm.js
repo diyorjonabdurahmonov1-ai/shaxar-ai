@@ -3,7 +3,7 @@
   'use strict';
   const NX = window.NX;
   const cfg = NX.config;
-  const CACHE_KEY = 'osm:v1';
+  const CACHE_KEY = 'osm:v2';
   const HW_RE = 'trunk|primary|secondary|tertiary|unclassified|residential|living_street';
   const WAY_TAGS = ['highway', 'name', 'name:uz', 'name:ru', 'name:en', 'oneway', 'junction', 'lanes', 'lanes:forward', 'lanes:backward', 'maxspeed'];
 
@@ -20,6 +20,7 @@ out body geom;
   node["public_transport"="stop_position"]["bus"="yes"](${s});
   node["highway"="traffic_signals"](${a});
   node["highway"="crossing"](${a});
+  node["highway"~"^(give_way|stop)$"](${a});
   nwr["amenity"="school"](${a});
   nwr["amenity"="kindergarten"](${a});
 );
@@ -103,6 +104,7 @@ out body geom(${a});`;
       if (t.highway === 'traffic_signals') pts.push(Object.assign({ k: 'signal' }, base));
       if (t.highway === 'crossing' || (t.highway === 'traffic_signals' && t.crossing)) pts.push(Object.assign({ k: 'crossing', sig: t.crossing === 'traffic_signals' || t.highway === 'traffic_signals' ? 1 : 0 }, base));
       if (t.highway === 'crossing' && t.crossing === 'traffic_signals') pts.push(Object.assign({ k: 'signal' }, base));
+      if (t.highway === 'give_way' || t.highway === 'stop') pts.push(Object.assign({ k: 'priority', sign: t.highway }, base));
       if (t.highway === 'bus_stop' || (t.public_transport === 'platform' && t.bus === 'yes')) pts.push(Object.assign({ k: 'stop', p: 1 }, base));
       else if (t.public_transport === 'stop_position' && t.bus === 'yes') pts.push(Object.assign({ k: 'stop', p: 0 }, base));
     }

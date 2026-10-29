@@ -39,7 +39,7 @@ async function setupRoutes(ctx, opts = {}) {
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nSinov javobi.\n\n**Nima boʻladi**\n…\n\n**Xavflar**\n…\n\n**Eng yaxshi yechim**\n1. …' } }] }) });
   });
   await ctx.route(/yandex\.uz\/map-widget/, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Yandex</body></html>' }));
-  await ctx.route(/tile\.openstreetmap\.org|arcgisonline/, route => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  await ctx.route(/tile\.openstreetmap\.org|arcgisonline/, route => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG }));
 }
 
 // JS xatolari va oʻz fayllarimizning 4xx/5xx javoblari. Soxta tashqi xizmatlar ataylab qaytargan
@@ -217,6 +217,15 @@ async function clickStreet(page, name) {
   ok('Muammo paneli: faqat shu muammo — nima qilish kerak (qadamlar) va tepadan reja', (await page.$$('#panel .prob')).length === 1 && (await page.$$('#panel .steps li')).length >= 3 && !!(await page.$('#panel .plan-svg path')) && /svetofor/.test(await page.textContent('#panel .plan-wrap + p')));
   await page.click('[data-act=problem-close]');
   ok('“Barcha muammolar” — roʻyxatga qaytadi', (await page.$$('#panel .prob')).length > 1);
+  // Kichik koʻcha katta koʻchaga ulanadigan joy — svetofor emas, ustuvorlik belgilari
+  const cls = await page.evaluate(() => { const M = NX.state.model, R = s => M.streets[s].rank; return { j: M.problems.filter(p => p.type === 'junction').every(p => R(p.major) >= 5 && R(p.minor) >= 5), pr: M.problems.filter(p => p.type === 'priority').length, minor: M.problems.filter(p => p.type === 'priority').every(p => R(p.minor) < 5) }; });
+  ok('Chorrahalar ajratiladi: svetofor — faqat ikki katta koʻcha; kichik koʻcha ulanishi — ustuvorlik belgilari', cls.j && cls.pr > 0 && cls.minor, JSON.stringify(cls));
+  await page.click('.prob:has-text("Ustuvorlik belgisi yoʻq") .loc >> nth=0');
+  await page.waitForSelector('#panel .plan-svg', { timeout: 5000 });
+  const prTxt = await page.textContent('#panel .steps');
+  if (process.env.SHOT7) { await page.locator('#panel .plan-wrap').screenshot({ path: process.env.SHOT7 }); await page.locator('#panel .steps').screenshot({ path: process.env.SHOT7.replace('.png', '-s.png') }); }
+  ok('Ustuvorlik paneli: “Asosiy yoʻl” va “Yoʻl bering” koʻcha nomlari bilan, svetofor kerak emas', /Asosiy yoʻl/.test(prTxt) && /Yoʻl bering/.test(prTxt) && /Svetofor kerak emas/.test(prTxt) && (await page.$$('#panel .plan-svg path[stroke="#dc2626"]')).length > 0);
+  await page.click('[data-act=problem-close]');
   await page.click('.tabs [data-tab=report]');
   ok('Boshqa boʻlimda muammo belgilari yashiriladi', (await page.$$('.pmk:not(.inc):not(.fixmk)')).length === 0);
   // Kalitsiz Yandex vidjeti: probkalar + yoʻl hodisalari
@@ -551,12 +560,13 @@ async function clickStreet(page, name) {
   await p8.click(`${jCard} .loc >> nth=1`);
   await p8.waitForSelector('#panel .views4 img', { timeout: 15000 });
   await p8.waitForSelector('#panel .ai-text', { timeout: 15000 });
-  const vis = px.chat.slice(chatBefore).find(b => /Svetofor:/.test(b.messages[0].content) || /mutaxassis/.test(b.messages[0].content));
+  const vis = px.chat.slice(chatBefore).find(b => /muhandis/.test(b.messages[0].content));
   ok('Muammo paneli: 4 tomondan real suratlar va AI xulosasi (avtomatik)', (await p8.$$('#panel .views4 img')).length >= 2 && vis && vis.messages[1].content.filter(x => x.type === 'image_url').length >= 2, 'suratlar: ' + (await p8.$$('#panel .views4 img')).length);
   await p8.click('#panel [data-act=pimg][data-mode=top]');
   await p8.waitForSelector('#panel .vgen img', { timeout: 20000 });
   const topReq = px.image[px.image.length - 1];
-  ok('🛰 Tepadan koʻrinish: AI’ga reja (OSM) va real suratlar yuboriladi', /^data:image\/png;base64,/.test(topReq.plan || '') && (topReq.photos || []).length >= 2 && /top-down/.test(topReq.prompt) && /haqiqiy emas/.test(await p8.textContent('#panel .vgen')));
+  ok('🛰 Tepadan koʻrinish: AI’ga real sunʼiy yoʻldosh surati (yechim belgilari bilan) yuboriladi', /^data:image\/png;base64,/.test(topReq.plan || '') && /REAL satellite/.test(topReq.prompt) && /haqiqiy emas/.test(await p8.textContent('#panel .vgen')));
+  ok('Muammo paneli: real sunʼiy yoʻldosh surati va chorrahaga xos qadamlar (koʻcha nomlari, oqim)', !!(await p8.$('#panel .sat-img')) && /mashina\/soat/.test(await p8.textContent('#panel .steps')), JSON.stringify({ sat: !!(await p8.$('#panel .sat-img')), sw: !!(await p8.$('#panel .sat-wrap')), steps: (await p8.textContent('#panel .steps')).slice(0, 200), fl: await p8.evaluate(() => NX.sim.flows({ demand: NX.state.demand, iters: 10 }).then(x => x.length + ' ' + x[0]).catch(e => 'ERR ' + e.message)), vf: await p8.evaluate(() => JSON.stringify(NX.state.verify[NX.state.problemOpen].flows)) }));
   if (process.env.SHOT) { await p8.evaluate(() => { document.getElementById('panel').scrollTop = 0; }); await p8.screenshot({ path: process.env.SHOT }); }
   if (process.env.SHOT3) await p8.locator('#panel .plan-wrap').screenshot({ path: process.env.SHOT3 });
   await p8.click('[data-act=problem-close]');

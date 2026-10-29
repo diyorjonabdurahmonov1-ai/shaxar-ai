@@ -20,6 +20,12 @@
       fix: 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan), “Bolalar” belgisi va 30 km/soat tezlik cheklovi qoʻyish.',
       steps: ['Joyni koʻrish: bolalar yoʻlni qayerdan kesib oʻtadi (ertalab 7:30–8:30).', 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan) va zebra chizish.', '“Bolalar” (1.23) belgisi va 30 km/soat tezlik cheklovi; kechasi yoritish.', 'Agar yoʻl 4 polosali boʻlsa — tugmali piyoda svetofori.'],
     },
+    priority: {
+      uz: 'Ustuvorlik belgisi yoʻq chorraha', short: 'Ustuvorlik belgisi yoʻq', icon: '🔻', color: '#d97706', weight: 45, cost: 4e6, unit: 'chorraha',
+      what: 'Koʻchalar kesishadi, lekin qaysi yoʻl asosiy ekani belgilanmagan. Haydovchilar kim birinchi oʻtishini bilmaydi — toʻqnashuv xavfi. Bu yerga svetofor kerak emas.',
+      fix: 'Asosiy koʻchaga “Asosiy yoʻl” (2.1), ulanadigan koʻchaga “Yoʻl bering” (2.4) belgisi; koʻrinish yomon boʻlsa — “STOP” (2.5) va toʻxtash chizigʻi.',
+      steps: ['Asosiy koʻchada (rejada sariq romb) har ikki tomondan “Asosiy yoʻl” (2.1) belgisi.', 'Ulanadigan koʻcha chiqishida (rejada qizil uchburchak) “Yoʻl bering” (2.4) belgisi va toʻxtash chizigʻi.', 'Burchakda daraxt yoki devor koʻrinishni yopsa — “STOP” (2.5) va koʻzgu.', 'Svetofor kerak emas: bu kichik koʻcha chorrahasi.'],
+    },
     junction: {
       uz: 'Svetoforsiz yirik chorraha', short: 'Svetoforsiz chorraha', icon: '🚦', color: '#dc2626', weight: 80, cost: 600e6, unit: 'chorraha',
       what: 'Ikki katta koʻcha kesishadi, lekin svetofor yoʻq. Tigʻiz soatlarda tiqilinch va avariya xavfi yuqori.',
@@ -118,7 +124,7 @@
     const nearestStreet = (x, y, r) => { let best = -1, bd = Infinity; M.streetsNear(x, y, r).forEach((d, s) => { if (d < bd) { bd = d; best = s; } }); return best; };
 
     // ---- 4. Nuqtali obyektlar ----
-    const P = { stop: [], signal: [], crossing: [], school: [] };
+    const P = { stop: [], signal: [], crossing: [], school: [], priority: [] };
     const stopGrid = new NX.Grid(200);
     const stopById = new Map();
     const rawStops = raw.pts.filter(p => p.k === 'stop').sort((a, b) => (b.p || 0) - (a.p || 0));
@@ -140,7 +146,7 @@
       const [x, y] = G.xy(p.lat, p.lon);
       P[k].push({ id: p.id, kind: p.k, name: p.name, lat: p.lat, lon: p.lon, x, y, sig: p.sig, fix: p.fix });
     }
-    M.stops = P.stop; M.signals = P.signal; M.crossings = P.crossing; M.schools = P.school;
+    M.stops = P.stop; M.signals = P.signal; M.crossings = P.crossing; M.schools = P.school; M.prioritySigns = P.priority;
     M.stopGrid = stopGrid;
     const sigGrid = new NX.Grid(100); P.signal.forEach(s => sigGrid.addPoint(s.x, s.y, s));
     const safeGrid = new NX.Grid(100); P.signal.concat(P.crossing).forEach(s => safeGrid.addPoint(s.x, s.y, s));
@@ -249,11 +255,39 @@
       j = { x, y, streets: new Set(set) };
       junctions.push(j); jGrid.addPoint(x, y, j);
     });
+    const prioGrid = new NX.Grid(100); P.priority.forEach(s => prioGrid.addPoint(s.x, s.y, s));
+    // Chorraha tarmoqlari: har bir yoʻnalish (20 m), koʻcha turi va polosalar — T-shakl / toʻrt tarmoqli, asosiy / ikkinchi darajali
+    const legsAt = (cx, cy) => {
+      const legs = [];
+      M.streetsNear(cx, cy, 25).forEach((d0, sid) => streets[sid].ways.forEach(wi => {
+        const w = ways[wi];
+        let bi = -1, bd = 25;
+        w.xy.forEach((q, i) => { const d = G.d(q[0], q[1], cx, cy); if (d < bd) { bd = d; bi = i; } });
+        if (bi < 0) return;
+        [1, -1].forEach(dir => {
+          let acc = 0, i = bi;
+          while (i + dir >= 0 && i + dir < w.xy.length && acc < 25) { acc += G.d(w.xy[i][0], w.xy[i][1], w.xy[i + dir][0], w.xy[i + dir][1]); i += dir; }
+          const vx = w.xy[i][0] - cx, vy = w.xy[i][1] - cy, l = Math.hypot(vx, vy);
+          if (i === bi || l < 6) return;
+          const u = [vx / l, vy / l];
+          if (legs.some(o => o.d[0] * u[0] + o.d[1] * u[1] > 0.87)) return;
+          legs.push({ d: u, street: sid, hw: w.hw, rank: NX.HW[w.hw].rank, lanes: w.lanes || null, oneway: w.oneway });
+        });
+      }));
+      return legs;
+    };
     junctions.forEach(j => {
       [j.lat, j.lon] = G.ll(j.x, j.y);
       j.signalised = anyWithin(sigGrid, j.x, j.y, R.junctionSignal);
       j.streets = [...j.streets];
       j.name = j.streets.map(s => streets[s].name || 'nomsiz yoʻl').join(' × ');
+      j.legs = legsAt(j.x, j.y);
+      j.kind = j.legs.length === 3 ? 'T' : j.legs.length >= 4 ? 'X' : 'boshqa';
+      j.prio = anyWithin(prioGrid, j.x, j.y, 40);
+      // Asosiy koʻcha — eng yuqori darajali; ikkinchi darajali — qolganlarning eng yuqorisi
+      const rs = j.streets.map(s => ({ s, r: streets[s].rank })).sort((a, b) => b.r - a.r);
+      j.major = rs[0] ? rs[0].s : null; j.minor = rs[1] ? rs[1].s : null;
+      j.r1 = rs[0] ? rs[0].r : 0; j.r2 = rs[1] ? rs[1].r : 0;
     });
     M.junctions = junctions;
 
@@ -349,8 +383,13 @@
     });
     M.junctions.forEach(j => {
       if (j.signalised) return;
-      const top = Math.max(...j.streets.map(s => M.streets[s].rank));
-      add('junction', { lat: j.lat, lon: j.lon, sev: top >= 6 ? 3 : 2, title: j.name, detail: `${R.junctionSignal} m ichida svetofor yoʻq.`, streets: j.streets });
+      const kind = j.kind === 'T' ? 'T-shaklidagi chorraha (bir koʻcha ikkinchisiga ulanadi)' : j.kind === 'X' ? `${j.legs.length} tarmoqli chorraha` : 'chorraha';
+      const mj = M.streets[j.major], mn = M.streets[j.minor];
+      const who = mj && mn ? `${mj.name || 'nomsiz yoʻl'} (${NX.HW[mj.hw].uz.toLowerCase()}) va ${mn.name || 'nomsiz yoʻl'} (${NX.HW[mn.hw].uz.toLowerCase()})` : '';
+      const extra = { streets: j.streets, kind: j.kind, legs: j.legs.length, major: j.major, minor: j.minor };
+      // Ikki katta koʻcha (2-darajali va undan yuqori) — svetofor nomzodi; qolganlari — ustuvorlik belgilari yetarli
+      if (j.r2 >= 5) add('junction', Object.assign({ lat: j.lat, lon: j.lon, sev: j.r1 >= 6 ? 3 : 2, title: j.name, detail: `${kind}: ${who}. ${R.junctionSignal} m ichida svetofor yoʻq.` }, extra));
+      else if (!j.prio) add('priority', Object.assign({ lat: j.lat, lon: j.lon, sev: 1, title: j.name, detail: `${kind}: ${who}. “Asosiy yoʻl” / “Yoʻl bering” belgilari xaritada yoʻq.` }, extra));
     });
     M.streets.forEach(s => {
       if (s.tomtom && s.tomtom.congestion >= R.congestion) add('congestion', { lat: s.center[0], lon: s.center[1], sev: s.tomtom.congestion >= 50 ? 3 : 2, title: nameOf(s), detail: `TomTom: tirbandlik ${NX.fmt.pct(s.tomtom.congestion)} (${NX.fmt.time(s.tomtom.ts)}).`, street: s.id });

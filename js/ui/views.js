@@ -350,12 +350,33 @@
     return `<p class="vsum small">${b && b.busy ? `<span class="spinner sm"></span> Tekshirilmoqda: ${b.done}/${b.total} · ` : ''}✅ ${n('ok')} ta joyda bor · ❌ ${n('bad')} ta tasdiqlandi · ❔ ${n('unknown')} ta surat yoʻq</p>`;
   }
 
+  // Koʻchalar darajasi teng boʻlsa — oqimi kattasi asosiy yoʻl
+  function effP(S, p) {
+    const v = S.verify[p.id] || {}, M = S.model;
+    if (!v.flows || p.major == null || p.minor == null || M.streets[p.major].rank !== M.streets[p.minor].rank) return p;
+    const f = sid => (v.flows.find(x => x.street === sid) || {}).flow || 0;
+    return f(p.minor) > f(p.major) * 1.3 ? Object.assign({}, p, { major: p.minor, minor: p.major }) : p;
+  }
+
   // ---------- Bitta muammo: faqat shu joy haqida ----------
-  function problem(S, p) {
+  function problem(S, p0) {
+    const p = effP(S, p0);
     const meta = NX.PROBLEM[p.type], v = S.verify[p.id] || {}, r = v.res, FIX = FIXBTN[p.type];
     const st = r ? VST[r.status] || VST.info : null;
     const busy = (x, t) => (x && x.busy ? `<p class="small muted"><span class="spinner sm"></span> ${t}…</p>` : x && x.err ? `<p class="small bad-text">⚠️ ${E(x.err)}</p>` : '');
-    const plan = (p.type === 'junction' || p.type === 'school') ? NX.plan.svg(S.model, p) : null;
+    const plan = (p.type === 'junction' || p.type === 'priority' || p.type === 'school') ? NX.plan.svg(S.model, p) : null;
+    const M = S.model, nm = sid => (sid != null && M.streets[sid] ? M.streets[sid].name || 'nomsiz yoʻl' : '');
+    const fl = sid => { const f = v.flows && v.flows.find(x => x.street === sid); return f && f.flow != null ? f.flow : null; };
+    const fq = sid => (fl(sid) != null ? ` (hisob: ~${F.int(fl(sid))} mashina/soat)` : '');
+    // Shu chorrahaga xos qadamlar — koʻcha nomlari va oqim bilan
+    let steps = meta.steps || [meta.fix];
+    if (p.type === 'priority' && p.major != null) steps = [`“Asosiy yoʻl” (2.1) — ${nm(p.major)} boʻylab, chorrahadan oldin har ikki tomonda${fq(p.major)}.`, `“Yoʻl bering” (2.4) va toʻxtash chizigʻi — ${nm(p.minor)} chiqishida${fq(p.minor)}.`, 'Burchakda koʻrinish yopilgan boʻlsa — “STOP” (2.5) va qavariq koʻzgu.', 'Svetofor kerak emas — kichik koʻcha ulanishi.'];
+    if (p.type === 'junction' && p.major != null) {
+      const a = fl(p.major), b = fl(p.minor), big = a != null && b != null && a >= 600 && b >= 150;
+      steps = [`Tigʻiz soatda (8:00–9:00, 17:00–19:00) sanoq: ${nm(p.major)}${fq(p.major)} va ${nm(p.minor)}${fq(p.minor)}.`,
+        big ? `Hisob boʻyicha ikkala koʻchada ham oqim katta — svetofor nomzodi: ${p.kind === 'T' ? '2 fazali (asosiy yoʻl / burilish)' : 'har bir tarmoqda'}, toʻxtash chiziqlari va zebra.` : `Hisob boʻyicha ${nm(p.minor)} dan oqim kichik — avval ustuvorlik belgilari: ${nm(p.major)} ga “Asosiy yoʻl” (2.1), ${nm(p.minor)} ga “Yoʻl bering” (2.4). Svetofor sanoq natijasiga koʻra.`,
+        p.kind === 'X' ? 'Joy keng boʻlsa — svetofor oʻrniga aylanma harakat (halqa) varianti.' : 'T-shaklida: burilish uchun alohida polosa boʻlsa, tirbandlik kamayadi.'];
+    }
     const views = v.views && v.views.list ? v.views.list : [];
     const fig = (x, cap) => x && x.src ? `<figure class="vgen"><img src="${x.src}" alt="AI chizgan yechim"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b> ${cap}</figcaption></figure>` : '';
     return `
@@ -366,15 +387,21 @@
       <h4>Muammo</h4>
       <p>${E(meta.what)}</p>${p.detail ? `<p class="small muted">${E(p.detail)}</p>` : ''}
       <h4>Nima qilish kerak</h4>
-      <ol class="steps">${(meta.steps || [meta.fix]).map(x => `<li>${E(x)}</li>`).join('')}</ol>
+      <ol class="steps">${steps.map(x => `<li>${E(x)}</li>`).join('')}</ol>
       <p class="small muted">Oʻrtacha narxi: ~${F.uzs((p.qty || 1) * meta.cost)}</p>
       <div class="row-btns">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button>${NX.pano.btn(p.lat, p.lon, p.title, 'btn xs', '📷 Yandex panorama')}</div>
     </section>
+    ${v.sat ? `<section class="card">
+      <h3>🛰 Tepadan — real sunʼiy yoʻldosh surati</h3>
+      ${v.sat.busy ? '<p class="small muted"><span class="spinner sm"></span> Surat yuklanmoqda…</p>' : v.sat.ok ? `<img class="sat-img" src="${v.sat.data}" alt="Sunʼiy yoʻldosh surati va yechim">` : v.sat.tiles ? `<div class="sat-wrap">${v.sat.tiles.map(t => `<img src="${E(t.url)}" alt="" style="left:${t.left}%;top:${t.top}%;width:${t.size}%;height:${t.size}%">`).join('')}${v.sat.overlay}</div>` : '<p class="small muted">Surat yuklanmadi.</p>'}
+      ${v.sat.note ? `<p class="small">${E(v.sat.note)}</p>` : ''}
+      <p class="small muted">Surat: Esri World Imagery (real). Belgilar — saytning taklifi. Surat bir necha oy yoki yil oldin olingan boʻlishi mumkin.</p>
+    </section>` : ''}
     ${plan ? `<section class="card">
-      <h3>📐 Qanday boʻlishi kerak — tepadan ${B('osm')}</h3>
+      <h3>📐 Qanday boʻlishi kerak — sxema ${B('osm')}</h3>
       <div class="plan-wrap">${plan.svg}</div>
       <p class="small">${E(plan.note)}</p>
-      <p class="plan-leg small"><span><i class="lg-y"></i>yangi svetofor</span><span><i class="lg-z"></i>yangi zebra va toʻxtash chizigʻi</span><span><i class="lg-s"></i>mavjud svetofor</span><span><i class="lg-c"></i>mavjud oʻtish</span></p>
+      <p class="plan-leg small">${p.type === 'priority' ? '<span><i class="lg-yd"></i>“Yoʻl bering” (2.4)</span><span><i class="lg-m"></i>“Asosiy yoʻl” (2.1)</span><span><i class="lg-z"></i>toʻxtash chizigʻi</span>' : '<span><i class="lg-y"></i>yangi svetofor</span><span><i class="lg-z"></i>yangi zebra va toʻxtash chizigʻi</span>'}<span><i class="lg-s"></i>mavjud svetofor</span><span><i class="lg-c"></i>mavjud oʻtish</span></p>
       <p class="small muted">Yoʻllar OpenStreetMap’dagi real geometriya va polosalar soni boʻyicha, masshtabda.</p>
     </section>` : ''}
     ${NX.mly.available() ? `<section class="card">
@@ -677,5 +704,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, alertsCard, systems, area, problems, problem, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();

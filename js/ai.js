@@ -263,33 +263,43 @@ Qoidalar:
   }
   const OLD_WORKER = 'AI tekshiruvi ishlamayapti: Cloudflare’dagi Worker kodi eski — yangisini qoʻyish kerak (worker/ai-proxy.js).';
 
-  function problemFacts(p, M, chk) {
-    const meta = NX.PROBLEM[p.type], s = p.street != null ? M.streets[p.street] : null;
+  function problemFacts(p, M, chk, extra) {
+    const meta = NX.PROBLEM[p.type], s = p.street != null ? M.streets[p.street] : null, X = extra || {};
+    const st = sid => { const q = M.streets[sid]; return q ? { nomi: q.name || 'nomsiz yoʻl', turi: NX.HW[q.hw].uz, polosalar_osm: q.lanes || null, harakat: q.oneway === 'yes' ? 'bir tomonlama' : 'ikki tomonlama', avtobuslar: q.busRefs, tezlik_chegarasi: q.maxspeed || null } : null; };
     return {
+      chorraha: p.streets ? {
+        shakli: p.kind === 'T' ? 'T-shaklida (bir koʻcha ikkinchisiga ulanadi, 3 tarmoq)' : p.kind === 'X' ? `${p.legs} tarmoqli (kesishma)` : 'boshqa',
+        asosiy_koʻcha: st(p.major), ulanadigan_koʻcha: st(p.minor),
+        oqim_hisob_mashina_soat: X.flows ? X.flows.map(f => ({ koʻcha: f.name, oqim: f.flow })) : null,
+        sayt_tavsiyasi: p.type === 'priority' ? 'ustuvorlik belgilari (svetofor emas)' : 'svetofor nomzodi — avval sanoq',
+      } : null,
       muammo: meta.short, joy: p.title, tavsif: meta.what, taklif_yechim: meta.fix, tafsilot: p.detail || null,
       koʻcha: s ? { nomi: s.name, turi: NX.HW[s.hw].uz, polosalar_osm: s.lanes || null, harakat: s.oneway === 'yes' ? 'bir tomonlama' : 'ikki tomonlama', avtobus_liniyalari: s.busRefs } : null,
       mapillary: chk ? { xulosa: chk.text, svetoforlar_topildi: chk.signals, piyoda_otish_topildi: chk.crossings, surat_sanasi: chk.photo && chk.photo.when, surat_masofa_m: chk.photo && chk.photo.d } : null,
     };
   }
-  const VISION = `Sen Samarqand hokimiyati uchun yoʻl harakati mutaxassisisan. Senga joyning real koʻcha surati (Mapillary) va saytdagi maʼlumot beriladi.
-Oʻzbek tilida (lotin), qisqa va aniq yoz. Faqat suratda KOʻRINGAN narsani “suratda” deb yoz; koʻrinmasa — “suratda koʻrinmayapti” de, taxmin qilma.
-Tuzilma (har biri 1 qator):
-**Svetofor:** bor / yoʻq / koʻrinmayapti
-**Piyoda oʻtish (zebra):** bor / yoʻq / koʻrinmayapti
-**Yoʻl:** necha polosa, holati (chuqur, chiziqlar oʻchganmi), toʻxtab turgan mashinalar
-**Harakat (surat olingan paytda):** mashinalar kam / oʻrtacha / koʻp
-**Xulosa:** muammo haqiqatan bormi
-**Nima qilish kerak:** 2–3 ta amaliy qadam (ustuvorlik tartibida)
-**Boshqacha yoʻl:** agar taklif qilingan yechimdan yaxshiroq variant boʻlsa — bitta gap.
+  const VISION = `Sen Samarqand hokimiyati uchun yoʻl harakatini tashkil etish muhandisisan. Senga shu joyning real koʻcha suratlari (Mapillary, turli tomonlardan) va xarita maʼlumoti (chorraha shakli, koʻchalar turi, polosalar, oqim hisobi) beriladi.
+Oʻzbek tilida (lotin), londa yoz. Faqat suratda KOʻRINGAN narsani “suratda” deb yoz; koʻrinmasa — “suratda koʻrinmayapti” de.
+Muhandislik qoidalari:
+- Svetofor — faqat ikki katta koʻcha (2-darajali va yuqori) kesishib, ikkala yoʻnalishda ham oqim katta boʻlsa (asosiy ~600+, ulanadigan ~150–200+ mashina/soat).
+- Kichik koʻcha katta koʻchaga ulansa (ayniqsa T-shaklida) — svetofor emas: asosiy koʻchaga “Asosiy yoʻl” (2.1), ulanadigan koʻchaga “Yoʻl bering” (2.4), koʻrinish yomon boʻlsa “STOP” (2.5) va toʻxtash chizigʻi. Qaysi koʻchaga qaysi belgi — nomi bilan ayt.
+- Turar-joy ichki yoʻllarida svetofor tavsiya qilma.
+- Suratdagi holat xarita maʼlumotiga mos kelmasa (masalan, xaritada chorraha, suratda oddiy yoʻl) — buni aniq ayt.
+Tuzilma (har biri 1–2 qator):
+**Joy:** chorraha shakli va koʻchalar (asosiy / ulanadigan), suratda koʻringani
+**Hozir:** svetofor, belgilar, zebra, polosalar, yoʻl holati, harakat (surat olingan paytda)
+**Xulosa:** muammo bormi va qanchalik jiddiy
+**Yechim:** aniq — qaysi koʻchaga qanday belgi / chiziq / svetofor, nechta, qayerga (masalan: “Universitet bulvari chiqishida 2.4 va toʻxtash chizigʻi”)
+**Svetofor kerakmi:** ha / yoʻq va bir gapda nega
 Oxirida: “Surat ${'$'}{sana} da olingan — hozirgi holat farq qilishi mumkin.”`;
 
   // views — 4 tomondan suratlar (boʻlmasa — eng yaqin surat)
-  async function vision(p, M, chk, views) {
+  async function vision(p, M, chk, views, extra) {
     const list = views && views.length ? views : chk && chk.photo ? [Object.assign({ side: '' }, chk.photo)] : [];
     if (!list.length) throw new Error('Bu joyda surat yoʻq.');
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
     const n = proxyV >= 4 || userKey() ? 4 : 2;
-    const facts = Object.assign(problemFacts(p, M, chk), { suratlar: list.slice(0, n).map((x, i) => `${i + 1}-surat: ${x.side || 'yaqin'} (${x.d} m, ${x.when})`) });
+    const facts = Object.assign(problemFacts(p, M, chk, extra), { suratlar: list.slice(0, n).map((x, i) => `${i + 1}-surat: ${x.side || 'yaqin'} (${x.d} m, ${x.when})`) });
     const messages = [{ role: 'system', content: VISION.replace('${sana}', list[0].when || 'nomaʼlum sana') + '\nBir nechta surat boʻlsa — ular bitta joyning turli tomonlari; hammasiga qarab xulosa qil.' },
       { role: 'user', content: [{ type: 'text', text: 'Joy haqida maʼlumot (JSON):\n' + JSON.stringify(facts) }].concat(list.slice(0, n).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }))) }];
     const r = await callOpenAI(userKey(), null, null, null, messages);
@@ -362,6 +372,7 @@ Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda
   };
   // Real surat ustiga aniq, kichik oʻzgarish (svetofor ustuni, zebra) — qolgan hamma narsa oʻzgarmaydi
   const EDIT = {
+    priority: 'Add ONE standard "Yield / Give way" traffic sign (white inverted triangle with a thick red border, about 70 cm, on a grey steel pole 2.2 m high) at the right edge of the side road where it joins the main road, facing drivers on the side road, plus a white dashed give-way line across the side road. On the main road add a "Priority road" sign (yellow diamond with white border) on a pole. Correct perspective and real-world scale.',
     junction: 'Add ONE standard vehicle traffic signal (three-section red-yellow-green head, black housing) on a grey steel pole about 3 m high at the near corner of the intersection on the right side of the road, facing oncoming traffic, with correct perspective and real-world scale. Paint white zebra crossing stripes across the road at the intersection entrance and a solid white stop line 2 m before it.',
     school: 'Paint a white zebra pedestrian crossing across the road in front of the school entrance on a slightly raised speed table (yellow edge markings), add a blue square "pedestrian crossing" sign on each side and a round "30" speed limit sign, with correct perspective and real-world scale.',
     crossings: 'Paint a white zebra pedestrian crossing across the road with a blue square "pedestrian crossing" sign on each side, correct perspective and scale.',
@@ -374,9 +385,19 @@ Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda
     const views = (opt.views || []).slice(0, proxyV >= 4 ? 4 : 1);
     const best = views[0] || (chk && chk.photo) || null;
     let body;
-    if (opt.mode === 'top') {
+    if (opt.mode === 'top' && opt.sat) {
       if (proxyV < 4) throw new Error(OLD_WORKER);
-      const what = p.type === 'school' ? 'a raised zebra crossing (yellow edges) in front of the school, "children" signs and 30 km/h signs' : 'a traffic signal at every red marker, a solid white stop line and a white zebra crossing on every approach';
+      const what = p.type === 'priority' ? 'a "Yield" sign at each red triangle, a "Priority road" sign at each yellow diamond and a white give-way line where shown — NO traffic lights'
+        : p.type === 'school' ? 'a raised zebra crossing (yellow edges) where the white stripes are, with signs' : 'a traffic signal pole at every red/yellow light marker, white stop lines and zebra crossings where drawn';
+      body = {
+        plan: opt.sat, quality: 'medium',
+        prompt: `Image 1 is a REAL satellite photo (top-down, north up) of this exact place in Samarkand, Uzbekistan, with the proposed changes drawn on it as simple symbols.
+Produce the SAME satellite image, photorealistic, with the proposed changes actually built: ${what}.
+Keep EVERYTHING else exactly as in the photo: the same roads and their shape (do not add or remove roads or turn a T-junction into a crossroads), buildings, roofs, trees, cars, shadows, colours and scale. Remove the drawn symbols and the caption; show the real objects instead. No text, no labels.`,
+      };
+    } else if (opt.mode === 'top') {
+      if (proxyV < 4) throw new Error(OLD_WORKER);
+      const what = p.type === 'school' ? 'a raised zebra crossing (yellow edges) in front of the school, "children" signs and 30 km/h signs' : p.type === 'priority' ? '"Yield" signs and give-way lines on the side road, a "Priority road" sign on the main road — no traffic lights' : 'a traffic signal at every red marker, a solid white stop line and a white zebra crossing on every approach';
       body = {
         plan: opt.plan, photos: views.map(x => x.url), quality: 'medium',
         prompt: `Create a photorealistic aerial top-down view (satellite style, camera straight down, north up) of THIS real place in Samarkand, Uzbekistan.

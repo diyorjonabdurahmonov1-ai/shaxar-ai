@@ -561,3 +561,9 @@ details.pgroup .pill { margin-left: auto; }
 .dopt.lv1 { border-left-color: #f59e0b; } .dopt.lv2 { border-left-color: #dc2626; }
 .dopt.on { outline: 2px solid var(--accent, #0f766e); }
 .dopt small { color: var(--muted, #64748b); font-size: 11px; }
+.sat-img { display: block; width: 100%; border-radius: 10px; border: 1px solid var(--border); }
+.sat-wrap { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 10px; border: 1px solid var(--border); background: #1f2937; }
+.sat-wrap img { position: absolute; display: block; }
+.sat-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.plan-leg .lg-yd { border-radius: 0; border: 0; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 12px solid #dc2626; }
+.plan-leg .lg-m { border-radius: 2px; transform: rotate(45deg); background: #facc15; width: 10px; height: 10px; }

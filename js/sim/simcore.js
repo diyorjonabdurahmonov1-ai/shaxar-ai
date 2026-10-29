@@ -412,5 +412,13 @@ function NXSimFactory() {
     return { ok: true, best, table: table.map(t => ({ factor: t.factor, demand: t.demand, rmse: t.rmse })), base: table.find(t => t.factor === 1) || null };
   }
 
-  return { build, run, calibrate };
+  // Bazaviy holatdagi oqim: har bir boʻlak uchun ikki yoʻnalish yigʻindisi (mashina/soat)
+  function flows(opt) {
+    const b = baseline(opt.demand, opt.iters || 10);
+    const out = new Float32Array(N.P);
+    for (let p = 0; p < N.P; p++) out[p] = b.x[2 * p] + b.x[2 * p + 1];
+    return out;
+  }
+
+  return { build, run, calibrate, flows };
 }
