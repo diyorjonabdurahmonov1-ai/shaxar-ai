@@ -120,14 +120,20 @@ Qoidalar:
   const proxyUrl = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim();
   const aiAvailable = () => !!(userKey() || proxyUrl());
 
-  async function callOpenAI(key, ctx, onModel, history, messages, models) {
+  // Mavjud emas deb javob bergan modellar 1 kun qayta soʻralmaydi (har safar ortiqcha kutish boʻlmasin)
+  const badModels = () => { const b = NX.store.get('ai:bad', {}); Object.keys(b).forEach(k => { if (Date.now() - b[k] > 86400e3) delete b[k]; }); return b; };
+  const markBad = m => { const b = badModels(); b[m] = Date.now(); NX.store.set('ai:bad', b); };
+  async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
     let lastErr = null;
-    for (const model of (models || NX.config.openaiModels)) {
+    const bad = badModels(), list = (models || NX.config.openaiModels).filter(m => !bad[m]);
+    for (const model of (list.length ? list : NX.config.openaiModels)) {
       onModel && onModel(model);
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
       const body = { model, messages: messages || [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
-      if (/^gpt-5/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
+      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
+      // Prompt caching: oʻzgarmas qism (system) boshida turadi; bir xil turdagi soʻrovlar bitta kalit bilan — takroriy kirish arzonroq
+      body.prompt_cache_key = 'cityjam-' + (cacheKey || 'chat');
       let r;
       try {
         r = key
@@ -148,7 +154,7 @@ Qoidalar:
       if (r.status === 401) throw new Error('OpenAI kaliti notoʻgʻri yoki bekor qilingan. Sozlamalarda kalitni tekshiring.');
       if (code === 'insufficient_quota') throw new Error('OpenAI hisobingizda kredit qolmagan (insufficient_quota). Balansni toʻldiring.');
       if (r.status === 429) throw new Error('OpenAI soʻrovlar limiti oshdi. Birozdan keyin qayta urinib koʻring.');
-      if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test((err && err.message) || ''))) { lastErr = new Error(`“${model}” modeli mavjud emas.`); continue; }
+      if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test((err && err.message) || ''))) { markBad(model); lastErr = new Error(`“${model}” modeli mavjud emas.`); continue; }
       if (r.status === 400 && /reasoning_effort|max_completion_tokens|temperature/.test((err && err.message) || '')) { lastErr = new Error('Parametr mos kelmadi'); continue; }
       lastErr = new Error('OpenAI xatosi: ' + ((err && err.message) || 'HTTP ' + r.status));
     }
@@ -329,7 +335,7 @@ Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda
     if (!(await proxyReady())) throw new Error(OLD_WORKER);
     const imgs = [chk.photo, chk.photo2].filter(Boolean).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }));
     const messages = [{ role: 'system', content: PHOTO_CHECK }, { role: 'user', content: [{ type: 'text', text: `Joy: ${p.title}. Muammo: ${NX.PROBLEM[p.type].short}.` }].concat(imgs) }];
-    const r = await callOpenAI(userKey(), null, null, null, messages);
+    const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiLight, 'photo');
     const m = r.text.match(/\{[\s\S]*\}/);
     let j = null;
     try { j = m && JSON.parse(m[0]); } catch (e) { j = null; }
@@ -346,7 +352,7 @@ Faqat JSON qaytar, boshqa hech narsa yozma: {"svetofor":"bor|yoq|noaniq","piyoda
     const key = userKey();
     let r;
     if (key) {
-      const body = { model: 'gpt-5.4-mini', instructions: 'Oʻzbek tilida (lotin), qisqa yoz. Faqat manbada bor narsani yoz; topilmasa “Ochiq manbalarda topilmadi” de.', input: q + '\n\n' + ctx, tools: [{ type: 'web_search' }], reasoning: { effort: 'low' } };
+      const body = { model: 'gpt-6-luna', instructions: 'Oʻzbek tilida (lotin), qisqa yoz. Faqat manbada bor narsani yoz; topilmasa “Ochiq manbalarda topilmadi” de.', input: q + '\n\n' + ctx, tools: [{ type: 'web_search' }], reasoning: { effort: 'low' } };
       r = await NX.fetchJSON('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 90000);
       if (r.ok && r.data) {
         let text = ''; const sources = [];
@@ -470,7 +476,7 @@ Qoidalar:
   async function deepAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: DEEP }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
-    const r = await callOpenAI(userKey(), null, null, null, messages, ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini']);
+    const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'deep');
     return { text: r.text, src: 'ai', model: r.model };
   }
   // 3D egizak: suv toshqini, zilzila, quyosh — stsenariy natijalari asosida
@@ -487,7 +493,7 @@ Qoidalar:
   async function twinAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
-    const r = await callOpenAI(userKey(), null, null, null, messages, ['gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini']);
+    const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'twin');
     return { text: r.text, src: 'ai' };
   }
 

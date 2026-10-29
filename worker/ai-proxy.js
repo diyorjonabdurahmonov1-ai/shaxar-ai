@@ -15,7 +15,9 @@
    Himoya: faqat sayt domenidan soʻrov, faqat ruxsat etilgan modellar, soʻrov hajmi va javob uzunligi cheklangan,
    bir IP manzildan soatiga cheklangan miqdordagi savol. Qoʻshimcha himoya uchun OpenAI panelida oylik budjet limitini qoʻying. */
 const ALLOWED_ORIGINS = ['https://diyorjonabdurahmonov1-ai.github.io'];
-const MODELS = ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'];
+// Ruxsat etilgan modellar. GPT-6 Sol — asosiy, Luna — arzon (koʻp sonli oddiy soʻrovlar), qolganlari — zaxira
+const MODELS = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'];
+const LIGHT = ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'];
 const PER_IP_PER_HOUR = 20;
 const MAX_BODY_CHARS = 30000;
 const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
@@ -51,7 +53,7 @@ export default {
     };
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
-    if (path === '/version') return json({ v: 5, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/version') return json({ v: 6, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -89,7 +91,9 @@ export default {
     }
     const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user', content: cleanContent(m.content) })) };
     out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 2500);
-    if (/^gpt-5/.test(body.model)) out.reasoning_effort = 'low'; else out.temperature = 0.3;
+    if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = 'low'; else out.temperature = 0.3;
+    // Prompt caching: bir turdagi soʻrovlar bitta kalit bilan (oʻzgarmas system prompt boshida)
+    if (typeof body.prompt_cache_key === 'string') out.prompt_cache_key = body.prompt_cache_key.slice(0, 64);
 
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -156,9 +160,10 @@ async function search(b, env, cors, ip) {
   const instructions = 'Sen Samarqand shahri hokimiyati uchun transport tahlilchisisan. Internetdan faqat ochiq, ishonchli manbalarni qidir (yangiliklar, hokimiyat va vazirlik saytlari, OpenStreetMap, ilmiy ishlar). '
     + 'Javobni oʻzbek tilida (lotin), qisqa (3–6 gap yoki nuqtalar) yoz. Faqat manbada bor narsani yoz, oʻylab topma; topilmasa “Ochiq manbalarda topilmadi” de. Har bir faktdan keyin manbani koʻrsat.';
   let last = null;
-  for (const model of ['gpt-5.4-mini', 'gpt-4.1-mini']) {
+  for (const model of LIGHT) {
     const body = { model, instructions, input: q + (context ? '\n\nJoy haqida maʼlumot:\n' + context : ''), tools: [{ type: 'web_search' }], max_output_tokens: 1500 };
-    if (/^gpt-5/.test(model)) body.reasoning = { effort: 'low' };
+    if (/^gpt-[56]/.test(model)) body.reasoning = { effort: 'low' };
+    body.prompt_cache_key = 'cityjam-search';
     const r = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => null);
     if (!r.ok) { last = { status: r.status, d }; if (r.status === 400 || r.status === 404) continue; break; }
@@ -242,9 +247,10 @@ async function photoChecks(req, env, cors, okOrigin, path) {
   const content = [{ type: 'text', text: 'Joy: ' + String(b.title || '').slice(0, 120) + '. Muammo: ' + (key.startsWith('junction') ? 'svetoforsiz chorraha' : 'maktab oldida xavfsiz oʻtish yoʻq') + '.' }]
     .concat(photos.map(u => ({ type: 'image_url', image_url: { url: u, detail: 'low' } })));
   let last = null;
-  for (const model of MODELS) {
+  for (const model of LIGHT) {
     const body = { model, messages: [{ role: 'system', content: PC_PROMPT }, { role: 'user', content }], max_completion_tokens: 600 };
-    if (/^gpt-5/.test(model)) body.reasoning_effort = 'low'; else body.temperature = 0;
+    if (/^gpt-[56]/.test(model)) body.reasoning_effort = 'low'; else body.temperature = 0;
+    body.prompt_cache_key = 'cityjam-photo';
     const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => null);
     if (!r.ok) { last = { status: r.status, d }; if (r.status === 400 || r.status === 404) continue; break; }

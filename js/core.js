@@ -21,7 +21,10 @@
     tomtomUrl: 'https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json',
     tomtomTimeoutMs: 15000,
     openaiUrl: 'https://api.openai.com/v1/chat/completions',
-    openaiModels: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'],
+    // Asosiy — GPT-6 Sol (kuchli, Astra’dan 5 baravar arzon); mavjud boʻlmasa — eski modellar
+    openaiModels: ['gpt-6-sol', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'],
+    openaiDeep: ['gpt-6-sol', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini'],
+    openaiLight: ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'],   // koʻp sonli oddiy soʻrovlar (suratda svetofor bormi)
     weatherUrl: 'https://api.open-meteo.com/v1/forecast',
     tomtomIncidentsUrl: 'https://api.tomtom.com/traffic/services/5/incidentDetails',
     tomtomFlowTiles: 'https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png',

@@ -76,7 +76,7 @@ async function setupRoutes(ctx, opts = {}) {
   await ctx.route(/api\.openai\.com/, route => {
     const b = JSON.parse(route.request().postData());
     ctx.openaiBodies.push(b);
-    if (b.model === 'gpt-5.4-mini') return route.fulfill({ status: 404, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: { code: 'model_not_found', message: 'The model does not exist' } }) });
+    if (b.model === 'gpt-5.4-mini' || /^gpt-6/.test(b.model || '')) return route.fulfill({ status: 404, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: { code: 'model_not_found', message: 'The model does not exist' } }) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nSinov javobi.\n\n**Nima boʻladi**\n…\n\n**Xavflar**\n…\n\n**Eng yaxshi yechim**\n1. …' } }] }) });
   });
   await ctx.route(/yandex\.uz\/map-widget/, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Yandex</body></html>' }));
@@ -354,6 +354,7 @@ async function clickStreet(page, name) {
   const genMsg = gen.messages[gen.messages.length - 1].content;
   ok('Umumiy savolda AI ga ob-havo, tirbandlik, hodisalar, avtobuslar beriladi', /ob_havo/.test(genMsg) && /hozirgi_tirbandlik/.test(genMsg) && /avtobus_liniyalari/.test(genMsg) && /muammolar/.test(genMsg), 'xabarlar: ' + gen.messages.length);
   ok('AI: model ketma-ketligi (404 → keyingisi)', ctx.openaiBodies.some(b => b.model === 'gpt-5.4-mini') && gen.model === 'gpt-5.5');
+  ok('AI: avval GPT-6 Sol soʻraladi; mavjud boʻlmasa — keyin qayta soʻralmaydi; prompt caching kaliti', ctx.openaiBodies.filter(b => b.messages)[0].model === 'gpt-6-sol' && ctx.openaiBodies.filter(b => b.model === 'gpt-6-sol').length === 1 && /^cityjam-/.test(gen.prompt_cache_key || ''), ctx.openaiBodies.map(b => b.model).join(','));
   ok('Oldingi savol-javob eslab qolinadi', gen.messages.length === 4 && gen.messages[1].role === 'user');
   ok('Soʻrov hajmi proksi limitidan kichik (30 000)', JSON.stringify(gen).length < 30000, String(JSON.stringify(gen).length));
   ok('Konsolda xato yoʻq (desktop)', errs.length === 0, errs.join(' || '));
@@ -671,7 +672,7 @@ async function clickStreet(page, name) {
   await p8.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.some(m => m.role === 'ai'), null, { timeout: 120000 });
   const deepReq = px.chat.slice(chat0).find(b => /bosh tahlilchisan/.test(b.messages[0].content));
   const deepFacts = deepReq && JSON.parse(deepReq.messages[deepReq.messages.length - 1].content.split('(JSON):\n')[1]);
-  ok('Chuqur tahlil: variantlar hisoblanadi, internet qidiriladi, kuchli model', deepReq && deepReq.model === 'gpt-5.5' && deepFacts.variantlar_hisob.length >= 2 && px.search > srch0 && (await p8.evaluate(() => NX.map.hasDeltas())), deepFacts ? deepFacts.variantlar_hisob.map(v => v.variant + ' ' + v.umumiy_yol_vaqti_foiz).join(' | ') : 'yoʻq');
+  ok('Chuqur tahlil: variantlar hisoblanadi, internet qidiriladi, kuchli model', deepReq && deepReq.model === 'gpt-6-sol' && deepReq.prompt_cache_key === 'cityjam-deep' && deepFacts.variantlar_hisob.length >= 2 && px.search > srch0 && (await p8.evaluate(() => NX.map.hasDeltas())), deepFacts ? deepFacts.variantlar_hisob.map(v => v.variant + ' ' + v.umumiy_yol_vaqti_foiz).join(' | ') : 'yoʻq');
   // Hudud chatida chuqur tahlil: variantlar tugmalari (xaritada koʻrsatish)
   await p8.click('.tabs [data-tab=map]');
   await p8.evaluate(c => { const poly = [[c[0] - 0.002, c[1] - 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] - 0.002]]; const st = NX.area.stats(NX.state.model, poly); st.systems = []; const A0 = {}; Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; }); NX.state.area = { st, spec: { flats: 500, floors: 9 }, A: A0, res: null, busy: null, qa: [], qaBusy: null }; }, await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center));
