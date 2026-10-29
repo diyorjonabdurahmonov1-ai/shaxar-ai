@@ -137,15 +137,22 @@ async function clickStreet(page, name) {
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');
   ok('Toshqin rejimi: koʻchalardagi suv xaritada (30 mm)', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length > 0));
-  if (process.env.SHOT9) { await page.click('[data-act=twin-rain][data-mm="80"]'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT9 }); }
+  // 2D fizik model (LISFLOOD-FP): vaqt boʻyicha, koʻchalar boʻylab
   await page.click('[data-act=twin-rain][data-mm="80"]');
-  const sc80 = await page.evaluate(() => { const s = NX.state.twin.scen; return { mode: s.mode, km: s.km, st: s.streets.length, max: Math.max(0, ...s.segs.map(c => c.d)), lines: NX.map3d.map().getSource('water')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length, top: s.streets[0] && s.streets[0].name }; });
+  await page.waitForFunction(() => NX.state.twin.dyn && !NX.state.twin.dynBusy, null, { timeout: 180000 });
+  const d80 = await page.evaluate(() => { const R = NX.state.twin.dyn; return { frames: R.frames.length, peak: R.peak.km, steps: R.steps, st: R.streets.length, top: R.streets[0] && R.streets[0].name, lines: NX.map3d.map().getSource('water')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length }; });
+  ok('2D fizik model: suv vaqt boʻyicha (LISFLOOD-FP), real koʻchalar boʻylab, kvadratsiz', d80.frames > 5 && d80.steps > 50 && d80.peak > 0 && d80.st > 0 && d80.lines > 0 && d80.sq === 0 && /koʻchasi/.test(d80.top), JSON.stringify(d80));
+  await page.fill('[data-input=twin-t]', '1');
+  await page.dispatchEvent('[data-input=twin-t]', 'input');
+  const early = await page.evaluate(() => ({ f: NX.state.twin.dynFrame, n: NX.map3d.map().getSource('water')._data.features.length }));
+  ok('Vaqt shkalasi: boshida suv kam, eng yuqori paytda koʻp; ▶ tugmasi bor', early.f === 1 && early.n <= d80.lines && !!(await page.$('[data-act=twin-play]')), JSON.stringify(early));
+  if (process.env.SHOT9) { await page.evaluate(() => document.querySelector('#dynInfo').scrollIntoView()); await page.fill('[data-input=twin-t]', '7'); await page.dispatchEvent('[data-input=twin-t]', 'input'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT9 }); }
   await page.click('[data-act=twin-rain][data-mm="10"]');
-  const sc10 = await page.evaluate(() => NX.state.twin.scen.km);
-  ok('“N mm yomgʻir”: suv real koʻchalar boʻylab chiziladi (kvadratsiz), koʻp yomgʻir — koʻproq koʻcha', sc80.mode === 'street' && sc80.km > 0 && sc80.st > 0 && sc80.lines > 0 && sc80.sq === 0 && sc10 < sc80.km && /koʻchasi/.test(sc80.top), JSON.stringify({ sc80, sc10 }));
+  await page.waitForFunction(() => NX.state.twin.dyn && NX.state.twin.dyn.label === '10 mm, 1 soatda' && !NX.state.twin.dynBusy, null, { timeout: 180000 });
+  ok('Kam yomgʻir — kamroq suvli koʻcha', await page.evaluate(p => NX.state.twin.dyn.peak.km < p, d80.peak));
   await page.click('#twinChat [data-act=twin-ask] >> nth=0');
-  await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 60000 });
-  ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.scen.rain === 50 && NX.map3d.mode() === 'flood')));
+  await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
+  ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
   await page.click('.tabs [data-tab=map]');
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
   ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));

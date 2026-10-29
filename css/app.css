@@ -573,3 +573,6 @@ details.pgroup .pill { margin-left: auto; }
 #map3d[hidden] { display: none; }
 .map-wrap.twin-on .map-draw, .map-wrap.twin-on .map-toggle { display: none; }
 .chip.on { background: var(--accent, #0f766e); color: #fff; border-color: transparent; }
+.dyn-bar { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.dyn-bar input[type=range] { flex: 1; accent-color: #2563eb; }
+.dyn { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 6px; }

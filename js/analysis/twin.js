@@ -78,8 +78,9 @@
     if (!r.ok || !r.data || !r.data.hourly) throw new Error('Yogʻin prognozi olinmadi.');
     const now = Date.now(), t = r.data.hourly.time.map(x => new Date(x + ':00+05:00').getTime()), p = r.data.hourly.precipitation;
     let d24 = 0, d48 = 0, maxH = 0, maxAt = null;
-    t.forEach((ts, i) => { const dt = ts - now; if (dt < 0 || dt > 48 * 3600e3) return; if (dt <= 24 * 3600e3) d24 += p[i] || 0; d48 += p[i] || 0; if ((p[i] || 0) > maxH) { maxH = p[i]; maxAt = ts; } });
-    rainCache = { ts: now, d24: +d24.toFixed(1), d48: +d48.toFixed(1), maxH: +maxH.toFixed(1), maxAt };
+    const hours = [];
+    t.forEach((ts, i) => { const dt = ts - now; if (dt < -3600e3 || dt > 48 * 3600e3) return; if (dt >= 0 && dt <= 24 * 3600e3) d24 += p[i] || 0; if (dt >= 0) d48 += p[i] || 0; if ((p[i] || 0) > maxH) { maxH = p[i]; maxAt = ts; } if (dt <= 24 * 3600e3) hours.push({ ts, mm: p[i] || 0 }); });
+    rainCache = { ts: now, d24: +d24.toFixed(1), d48: +d48.toFixed(1), maxH: +maxH.toFixed(1), maxAt, hours };
     return rainCache;
   }
 
@@ -161,6 +162,75 @@
     const zs = Array.from(D.z).filter(isFinite).sort((a, b) => a - b);
     return { cells: hot, hot, basins: hot.length, streets: s50.streets, zmin: zs[0], zmax: zs[zs.length - 1], step: D.step, src: D.src };
   }
+  // ---------- 2D fizik model (LISFLOOD-FP) uchun tayyorlash va natijani koʻchalarga bogʻlash ----------
+  async function grid40(onStep) {
+    const hit = await NX.bigStore.get('dem40:v1');
+    if (hit && hit.z && hit.z.length) return hit;
+    const step = 40, [x0, y0] = G.xy(CITY.s, CITY.w), [x1, y1] = G.xy(CITY.n, CITY.e);
+    const nx = Math.ceil((x1 - x0) / step), ny = Math.ceil((y1 - y0) / step), f = await terrarium(onStep), z = new Float32Array(nx * ny), q = step / 3;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let s = 0, n = 0;
+      for (const a of [-1, 0, 1]) for (const b of [-1, 0, 1]) { const ll = G.ll(x0 + (i + 0.5) * step + a * q, y0 + (j + 0.5) * step + b * q), e = f(ll[0], ll[1]); if (isFinite(e)) { s += e; n++; } }
+      z[j * nx + i] = n ? s / n : NaN;
+    }
+    // Boʻsh qiymatlar — qoʻshnidan
+    for (let k = 0; k < z.length; k++) if (!isFinite(z[k])) z[k] = z[k - 1] || z[k + 1] || 700;
+    const out = { nx, ny, step, x0, y0, z, src: 'AWS Terrain Tiles (SRTM ~30 m)' };
+    NX.bigStore.set('dem40:v1', out);
+    return out;
+  }
+  // rain: [{ t0, t1 (soniya), mmh }]; drainMm — soatiga kanalizatsiya/ariqlar olib ketadigan
+  async function flood2d(D, roadList, rain, opt, onProgress) {
+    const o = Object.assign({ drainMm: 10, infilMm: 8, after: 2 * 3600, snapMin: 10 }, opt || {});
+    // SRTM’dagi soxta chuqurlar (bino, daraxt, koʻprik izlari) — 2 m dan sayozlari toʻldiriladi; chuqurroqlari (karyer, jar) qoladi
+    const Fh = hydro(D).F;
+    const N = D.nx * D.ny, z = Float32Array.from(D.z, (v, k) => (Fh[k] - v < 2 ? Fh[k] : v)), nArr = new Float32Array(N).fill(0.05), loss = new Float32Array(N).fill(o.infilMm / 1000 / 3600);
+    const cellOf = (lat, lon) => { const [x, y] = G.xy(lat, lon), i = Math.floor((x - D.x0) / D.step), j = Math.floor((y - D.y0) / D.step); return i < 0 || j < 0 || i >= D.nx || j >= D.ny ? -1 : j * D.nx + i; };
+    // Binolar — gʻadir-budir (suv sekin oʻtadi), oʻtkazmaydigan sirt
+    (NX.buildings.get() || []).forEach(b => { const k = cellOf(b.c[0], b.c[1]); if (k >= 0) { nArr[k] = 0.08; loss[k] = o.drainMm / 1000 / 3600; } });
+    // Koʻchalar — silliq kanal (n = 0.016), relyefga 15 sm “oʻyilgan”; har segment qaysi kataklardan oʻtishi
+    const segs = [], roadCell = new Uint8Array(N);
+    (roadList || []).forEach(w => { for (let i = 1; i < w.ll.length; i++) {
+      const a = w.ll[i - 1], b = w.ll[i], [ax, ay] = G.xy(a[0], a[1]), [bx, by] = G.xy(b[0], b[1]), len = Math.hypot(bx - ax, by - ay), st = Math.max(1, Math.round(len / 15)), cells = new Set();
+      for (let t = 0; t <= st; t++) { const ll = G.ll(ax + (bx - ax) * t / st, ay + (by - ay) * t / st), k = cellOf(ll[0], ll[1]); if (k >= 0) cells.add(k); }
+      if (!cells.size) continue;
+      cells.forEach(k => { if (!roadCell[k]) { roadCell[k] = 1; z[k] -= 0.15; } nArr[k] = 0.016; loss[k] = o.drainMm / 1000 / 3600; });
+      const za = zAt(D, a[0], a[1]), zb = zAt(D, b[0], b[1]);
+      segs.push({ c: za >= zb ? [[a[1], a[0]], [b[1], b[0]]] : [[b[1], b[0]], [a[1], a[0]]], cells: [...cells], name: w.name, len, w: ROAD_W[w.hw] || 8, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
+    } });
+    const tEnd = Math.max(...rain.map(r => r.t1), 0);
+    const res = await NX.flood2d.run({ nx: D.nx, ny: D.ny, dx: D.step, z, n: nArr, loss, rain, duration: tEnd + o.after, snapEvery: o.snapMin * 60 }, onProgress);
+    // Har bir vaqt qadamida har bir koʻcha segmentidagi eng katta chuqurlik
+    const frames = res.snaps.map(sn => {
+      const m = new Map(); for (let i = 0; i < sn.idx.length; i++) m.set(sn.idx[i], sn.d[i]);
+      const d = new Float32Array(segs.length);
+      segs.forEach((sg, i) => { let x = 0; sg.cells.forEach(k => { const v = m.get(k) || 0; if (v > x) x = v; }); d[i] = x; });
+      const km = segs.reduce((t2, sg, i) => t2 + (d[i] >= 0.1 ? sg.len : 0), 0) / 1000;
+      return { t: sn.t, d, km: +km.toFixed(1) };
+    });
+    // Koʻchalar boʻyicha: eng chuqur va qachon
+    const byName = new Map();
+    segs.forEach((sg, i) => {
+      if (!sg.name) return;
+      let best = 0, bt = 0; frames.forEach(f => { if (f.d[i] > best) { best = f.d[i]; bt = f.t; } });
+      if (best < 0.1) return;
+      const v = byName.get(sg.name) || { name: sg.name, max: 0, at: null, t: 0, len: 0 };
+      v.len += sg.len; if (best > v.max) { v.max = best; v.at = sg.mid; v.t = bt; }
+      byName.set(sg.name, v);
+    });
+    const streets = [...byName.values()].map(v => Object.assign(v, { max: +v.max.toFixed(2), len: Math.round(v.len) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
+    const peak = frames.reduce((b, f) => (f.km > b.km ? f : b), frames[0] || { km: 0, t: 0 });
+    // Eng yuqori nuqtada suv yetadigan binolar
+    const hmax = res.hmax, wetB = (NX.buildings.get() || []).filter(b => { const k = cellOf(b.c[0], b.c[1]); return k >= 0 && hmax[k] >= 0.2; });
+    return { mode: 'dynamic', rain, drain: o.drainMm, segs, frames, streets, peak, steps: res.steps, buildings: wetB.length, wetIds: new Set(wetB.map(b => b.id)), critical: wetB.filter(b => /school|kindergarten|hospital|clinic/.test(b.kind)).map(b => b.name || ({ school: 'maktab', kindergarten: 'bogʻcha', hospital: 'shifoxona', clinic: 'poliklinika' })[b.kind]).slice(0, 10) };
+  }
+  // Vaqt qadami → xarita uchun koʻcha segmentlari (≥ 5 sm)
+  function frameSegs(R, fi) {
+    const f = R.frames[Math.max(0, Math.min(R.frames.length - 1, fi))], out = [];
+    R.segs.forEach((sg, i) => { if (f.d[i] >= 0.05) out.push({ c: sg.c, d: +Math.min(1.5, f.d[i]).toFixed(2), w: sg.w }); });
+    return out;
+  }
+
   // ---------- Koʻchalar boʻylab suv (shahar suvi asosan koʻchalar orqali oqadi) ----------
   const ROAD_W = { trunk: 22, primary: 20, secondary: 16, tertiary: 12, unclassified: 9, residential: 8, living_street: 6 };
   async function roads(onStep) {
@@ -306,5 +376,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { dem, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();

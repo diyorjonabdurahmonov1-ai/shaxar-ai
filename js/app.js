@@ -220,6 +220,49 @@
     if (top && top.at) NX.map3d.flyTo(top.at[0], top.at[1], 15.5);
     return T.scen;
   }
+  // ---------- 2D fizik model (LISFLOOD-FP): vaqt boʻyicha suv ----------
+  // series: [{ t0, t1, mmh }] soniyalarda; label — “50 mm / 1 soat” yoki “Real prognoz”
+  async function twinFlood2d(series, label, t0ms) {
+    const T = twinState();
+    if (T.dynBusy) return T.dyn;
+    T.dynBusy = 'Relyef tayyorlanmoqda'; renderKeepScroll();
+    try {
+      await loadTwin();
+      T.d40 = T.d40 || await NX.twin.grid40(t => { T.dynBusy = t; renderKeepScroll(); });
+      T.dynBusy = 'Suv oqimi hisoblanmoqda (2D model) 0%'; renderKeepScroll();
+      const R = await NX.twin.flood2d(T.d40, T.roads || [], series, { drainMm: NX.systems.get('sewer') ? 15 : 10 }, p => { T.dynBusy = `Suv oqimi hisoblanmoqda (2D model) ${Math.round(p * 100)}%`; const el = panel.querySelector('#dynBusy'); if (el) el.textContent = T.dynBusy + '…'; });
+      R.label = label; R.t0ms = t0ms || null;
+      T.dyn = R; T.dynFrame = R.frames.indexOf(R.peak);
+      twinShowFrame(T.dynFrame, true);
+    } catch (e) { console.error(e); toast('2D model xatosi: ' + e.message, 'bad'); }
+    T.dynBusy = null; renderKeepScroll();
+    return T.dyn;
+  }
+  function twinShowFrame(i, fly) {
+    const T = twinState(), R = T.dyn; if (!R) return;
+    T.dynFrame = Math.max(0, Math.min(R.frames.length - 1, i));
+    NX.map3d.setMode('flood');
+    NX.map3d.set({ scen: { mode: 'street', segs: NX.twin.frameSegs(R, T.dynFrame), wetIds: R.wetIds } });
+    if (fly && R.streets[0] && R.streets[0].at) NX.map3d.flyTo(R.streets[0].at[0], R.streets[0].at[1], 15.3);
+    const el = panel.querySelector('#dynInfo'); if (el) el.outerHTML = V.dynInfo(S); const rg = panel.querySelector('[data-input=twin-t]'); if (rg && +rg.value !== T.dynFrame) rg.value = T.dynFrame;
+  }
+  let dynTimer = null;
+  function twinPlay() {
+    const T = twinState();
+    if (dynTimer) { clearInterval(dynTimer); dynTimer = null; T.playing = false; renderKeepScroll(); return; }
+    if (!T.dyn) return;
+    T.playing = true; if (T.dynFrame >= T.dyn.frames.length - 1) T.dynFrame = 0; renderKeepScroll();
+    dynTimer = setInterval(() => { if (T.dynFrame >= T.dyn.frames.length - 1 || S.tab !== 'twin') { clearInterval(dynTimer); dynTimer = null; T.playing = false; renderKeepScroll(); return; } twinShowFrame(T.dynFrame + 1); }, 700);
+  }
+  const dynFacts = R => ({
+    model: '2D fizik model (LISFLOOD-FP, 40 m katak, vaqt boʻyicha)', yomgir: R.label, kanalizatsiya_mm_soat: R.drain,
+    eng_yuqori_payt: { vaqt: fmtT(R, R.peak.t), suvli_koʻchalar_km: R.peak.km },
+    vaqt_boʻyicha_km: R.frames.filter((f, i) => i % 3 === 0).map(f => ({ vaqt: fmtT(R, f.t), km: f.km })),
+    koʻchalar: R.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), qachon: fmtT(R, x.t), suvli_qismi_m: x.len })),
+    suv_yetadigan_binolar: R.buildings, maktab_shifoxona: R.critical,
+  });
+  const fmtT = (R, t) => (R.t0ms ? new Date(R.t0ms + t * 1000 + 5 * 3600e3).toISOString().slice(11, 16) : `+${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`);
+
   // Koʻchalar yuklangan boʻlsa — suv koʻchalar boʻylab; aks holda relyef kataklari boʻyicha
   function rainScen(mm) {
     const T = twinState(), drain = NX.systems.get('sewer') ? 15 : 10;
@@ -253,8 +296,11 @@
       const mm = mmM ? parseFloat(mmM[1].replace(',', '.')) : /sel|juda kuchli/.test(n) ? 80 : /kuchli|jala/.test(n) ? 50 : 30;
       C.busy = `${mm} mm yomgʻir hisoblanmoqda`; renderKeepScroll();
       const variants = [...new Set([Math.round(mm / 2), mm, mm * 2])].filter(x => x > 0).map(x => scenFacts(rainScen(x)));
-      const sc = twinRain(mm);
-      extra = { savoldagi_stsenariy: scenFacts(sc), solishtirish_uchun: variants };
+      const sc = rainScen(mm);
+      // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
+      C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
+      const R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
+      extra = { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants };
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
@@ -1199,9 +1245,17 @@
         case 'verify-all': if (!(S.verifyBatch && S.verifyBatch.busy)) verifyAll(b.dataset.type); break;
         case 'review-ai': review({ ai: true }); break;
         case 'sys-show': sysShow(b.dataset.sys); break;
-        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && !twinState().scen && twinState().dem) twinRain(30); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
+        case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood') { if (twinState().dyn) twinShowFrame(twinState().dynFrame); else if (!twinState().scen && twinState().dem) twinRain(30); } if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
-        case 'twin-rain': { const sc = twinRain(+b.dataset.mm); if (sc) renderKeepScroll(); else toast('Relyef hali yuklanmadi.', 'warn'); break; }
+        case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
+        case 'twin-forecast': {
+          const R0 = twinState().rain;
+          if (!R0 || !R0.hours || !R0.hours.length) { toast('Prognoz hali olinmadi.', 'warn'); break; }
+          const t0 = R0.hours[0].ts;
+          twinFlood2d(R0.hours.filter(h => h.mm > 0).map(h => ({ t0: (h.ts - t0) / 1000, t1: (h.ts - t0) / 1000 + 3600, mmh: h.mm })), 'Real prognoz (Open-Meteo, 24 soat)', t0);
+          break;
+        }
+        case 'twin-play': twinPlay(); break;
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
@@ -1272,6 +1326,8 @@
         panel.querySelectorAll('[data-out=demand]').forEach(o => (o.textContent = F.int(S.demand)));
       } else if (t.dataset.input === 'route-q') {
         S.routeQ = t.value; $('#routeList').innerHTML = V.routeList(S);
+      } else if (t.dataset.input === 'twin-t') {
+        twinShowFrame(+t.value);
       } else if (t.dataset.input === 'fc-hour') {
         S.fc.h = +t.value;
         panel.querySelector('[data-out=fc-hour]').textContent = F.hour(S.fc.h);

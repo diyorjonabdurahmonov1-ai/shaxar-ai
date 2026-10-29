@@ -56,9 +56,12 @@
       <h3>🌧 Suv toshqini xavfi ${B('meteo')}</h3>
       ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
       ${fl ? `<p class="small">Relyef boʻyicha katta maydondan suv oqib keladigan va sekin oqadigan <b>${fl.basins}</b> ta joy bor. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
-        <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa (bosing — xaritada koʻrinadi):</b></p>
-        <div class="chips">${[10, 30, 50, 80, 120].map(mm => `<button class="chip${T.scen && T.scen.rain === mm ? ' on' : ''}" data-act="twin-rain" data-mm="${mm}">${mm} mm</button>`).join('')}</div>
-        ${T.scen ? `<p><b>${T.scen.rain} mm</b> yomgʻirda (1 soatda): ${T.scen.mode === 'street' ? `<b>${T.scen.km} km</b> koʻchada 10 sm dan chuqur suv` : `~<b>${T.scen.areaHa} ga</b> da 10 sm+ suv`}, <b>${T.scen.buildings}</b> ta bino oldida 20 sm+${T.scen.critical.length ? `, shu jumladan: ${T.scen.critical.map(E).join(', ')}` : ''}.</p>
+        <h4>⏱ 2D fizik model — suv vaqt boʻyicha</h4>
+        <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa</b> (bosing — suv qanday tarqalishi soatma-soat hisoblanadi, ~10 soniya):</p>
+        <div class="chips">${[10, 30, 50, 80, 120].map(mm => `<button class="chip${T.dyn && T.dyn.label === mm + ' mm, 1 soatda' ? ' on' : ''}" data-act="twin-rain" data-mm="${mm}" ${T.dynBusy ? 'disabled' : ''}>${mm} mm</button>`).join('')}<button class="chip" data-act="twin-forecast" ${T.dynBusy ? 'disabled' : ''}>🌦 Real prognoz boʻyicha (24 soat)</button></div>
+        ${T.dynBusy ? `<p class="small"><span class="spinner sm"></span> <span id="dynBusy">${E(T.dynBusy)}…</span></p>` : ''}
+        ${T.dyn ? dynInfo(S) : ''}
+        ${T.scen && !T.dyn ? `<p><b>${T.scen.rain} mm</b> yomgʻirda (1 soatda): ${T.scen.mode === 'street' ? `<b>${T.scen.km} km</b> koʻchada 10 sm dan chuqur suv` : `~<b>${T.scen.areaHa} ga</b> da 10 sm+ suv`}, <b>${T.scen.buildings}</b> ta bino oldida 20 sm+${T.scen.critical.length ? `, shu jumladan: ${T.scen.critical.map(E).join(', ')}` : ''}.</p>
           ${T.scen.streets.length ? `<ul class="locs">${T.scen.streets.slice(0, 10).map(x => `<li class="locrow"><button class="loc" ${x.at ? `data-act="twin-fly" data-lat="${x.at[0]}" data-lon="${x.at[1]}"` : ''}>💧 <b>${E(x.name)}</b> <small class="muted">— ${Math.round(x.max * 100)} sm gacha, ${F.int(x.len)} m</small></button></li>`).join('')}</ul>` : '<p class="small ok-text">Koʻchalarda suv toʻplanmaydi.</p>'}
           <p class="plan-leg small"><span><i style="background:#7dd3fc"></i>&lt;30 sm</span><span><i style="background:#2563eb"></i>30–60 sm</span><span><i style="background:#1e3a8a"></i>&gt;60 sm</span><span><i style="background:#60a5fa;border-radius:2px"></i>suv yetadigan bino</span></p>
           ${T.scen.mode !== 'street' ? '<p class="small warn-line">⚠️ Shahar koʻchalari hali yuklanmadi — natija relyef kataklari boʻyicha.</p>' : ''}` : ''}
@@ -78,6 +81,20 @@
         <p class="small muted">Binafsha — rejadagi bino, kulrang — qishki soya va soyada qoladigan binolar (“🏗 Yangi bino va soya” rejimi).</p>`
         : '<p class="small muted">Xarita boʻlimida “✏️ Hudud belgilash” → AI’ga “… xonadonli … qavatli dom qursam?” deb yozing — bino va soyasi shu yerda 3D koʻrinadi.</p>'}
     </section>`;
+  }
+
+  // 2D model natijasi: vaqt shkalasi, ▶, shu paytdagi holat va koʻchalar (eng chuqur payti bilan)
+  function dynInfo(S) {
+    const T = S.twin, R = T.dyn, f = R.frames[T.dynFrame] || R.frames[0];
+    const tl = t => (R.t0ms ? new Date(R.t0ms + t * 1000 + 5 * 3600e3).toISOString().slice(11, 16) : `+${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`);
+    return `<div id="dynInfo" class="dyn">
+      <p class="small"><b>${E(R.label)}</b> · eng yuqori payt: <b>${tl(R.peak.t)}</b> — ${R.peak.km} km koʻchada 10 sm+ suv · ${R.buildings} ta binoga suv yetadi${R.critical.length ? ` (${R.critical.map(E).join(', ')})` : ''}</p>
+      <div class="dyn-bar"><button class="btn xs" data-act="twin-play">${T.playing ? '⏸' : '▶'}</button><input type="range" min="0" max="${R.frames.length - 1}" value="${T.dynFrame}" data-input="twin-t" aria-label="Vaqt"><b>${tl(f.t)}</b></div>
+      <p class="small">Shu paytda: <b>${f.km} km</b> koʻchada 10 sm dan chuqur suv.</p>
+      ${R.streets.length ? `<ul class="locs">${R.streets.slice(0, 10).map(x => `<li class="locrow"><button class="loc" ${x.at ? `data-act="twin-fly" data-lat="${x.at[0]}" data-lon="${x.at[1]}"` : ''}>💧 <b>${E(x.name)}</b> <small class="muted">— ${Math.round(x.max * 100)} sm gacha, ${tl(x.t)} da, ${F.int(x.len)} m</small></button></li>`).join('')}</ul>` : '<p class="small ok-text">Koʻchalarda suv toʻplanmaydi.</p>'}
+      <p class="plan-leg small"><span><i style="background:#7dd3fc"></i>&lt;30 sm</span><span><i style="background:#2563eb"></i>30–60 sm</span><span><i style="background:#1e3a8a"></i>&gt;60 sm</span><span><i style="background:#60a5fa;border-radius:2px"></i>suv yetadigan bino</span></p>
+      <p class="small muted">LISFLOOD-FP usuli: har ${R.steps ? Math.round((R.frames[R.frames.length - 1].t) / R.steps) : '—'} soniyada suv sathi va oqim hisoblandi (${F.int(R.steps)} qadam), relyef 40 m katak, koʻchalar silliq kanal, binolar toʻsiq.</p>
+    </div>`;
   }
 
   function twinChat(S) {
@@ -765,5 +782,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, alertsCard, systems, twin, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, twin, dynInfo, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();
