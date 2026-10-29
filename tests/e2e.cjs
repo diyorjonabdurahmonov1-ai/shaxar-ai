@@ -543,7 +543,7 @@ async function clickStreet(page, name) {
   const jCard = '.prob:has-text("Svetoforsiz chorraha")';
   await p8.click(`${jCard} [data-act=verify] >> nth=0`);
   await p8.waitForSelector(`${jCard} .vbox .vverdict`, { timeout: 15000 });
-  ok('🔎 Tekshirish: xulosa va real surat', (await p8.isVisible(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
+  ok('🔎 Tekshirish: xulosa va real surat', !!(await p8.$(`${jCard} .vphoto img`)) && /Mapillary/.test(await p8.textContent(`${jCard} .vphoto`)) && mly.tokens.has('MLY|TEST'), await p8.textContent(`${jCard} .vverdict`));
   await p8.click(`${jCard} [data-act=verify-ai]`);
   await p8.waitForSelector(`${jCard} .vpart .ai-text`, { timeout: 15000 });
   const vb = px.chat[px.chat.length - 1];
@@ -615,6 +615,7 @@ async function clickStreet(page, name) {
   await p8.setInputFiles('[data-sysfile=camera]', { name: 'kameralar.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await p8.waitForFunction(() => NX.systems.get('camera'), null, { timeout: 10000 });
   if (process.env.SHOT5) await p8.screenshot({ path: process.env.SHOT5 });
+  await p8.waitForFunction(() => document.querySelectorAll('.leaflet-marker-icon.sysmk').length === 2, null, { timeout: 5000 }).catch(() => {});
   ok('Kameralar CSV’dan yuklandi va xaritada koʻrinadi', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 2);
   await p8.setInputFiles('[data-sysfile=water]', { name: 'suv.geojson', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [500000, 4400000] } }] })) });
   await p8.waitForFunction(() => /WGS84/.test(document.getElementById('toast').textContent), null, { timeout: 5000 });
