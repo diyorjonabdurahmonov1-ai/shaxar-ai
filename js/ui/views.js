@@ -144,7 +144,7 @@
     const C = S.twinChat || { msgs: [], busy: null };
     return `<section class="card chat" id="twinChat">
       <h3>🤖 AI</h3>
-      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' 3D xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' 3D xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
       <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Savol yoki topshiriq…" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
     </section>`;
   }
@@ -637,6 +637,12 @@
     }).join('') || '<section class="card"><p>Muammo topilmadi.</p></section>'}`;
   }
 
+  // AI tavsiya qilgan joylar (xaritada raqamli belgilar)
+  function annList(m) {
+    if (!m.actions || !m.actions.length) return '';
+    return `<div class="deep-opts"><b class="small">📍 Xaritada belgilandi:</b>${m.actions.map((a, i) => { const p = a.kind === 'line' ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon]; return `<button class="dopt lv0" data-act="ann-fly" data-lat="${p[0]}" data-lon="${p[1]}"><span><b>${i + 1}. ${E(a.title)}</b></span><small>${E(a.note || '')}</small></button>`; }).join('')}</div>`;
+  }
+
   // Chuqur tahlil variantlari: raqamlar (sayt hisobi) va xaritada koʻrsatish tugmasi
   function deepOpts(A, m) {
     if (!m.opts || !m.opts.length) return '';
@@ -652,7 +658,7 @@
     st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
     const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
     const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
-      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${deepOpts(A, m)}</div></div>`).join('');
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${annList(m)}${deepOpts(A, m)}${!m.opts && m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div></div>`).join('');
     const sugg = ['Bu yerda doim tirbandlik — nima qilsak boʻladi?', 'Soatbay bir tomonlama qilsak-chi?', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'];
     const L = A.live, min = s => Math.max(1, Math.round(s / 60));
     const live = !L ? '' : L.busy ? '<p class="small muted"><span class="spinner sm"></span> Yandex’dan hozirgi yoʻl vaqtlari olinmoqda…</p>'

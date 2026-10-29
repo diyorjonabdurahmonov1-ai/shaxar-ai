@@ -65,7 +65,7 @@
         // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
         // Prognozdagi yomgʻir boʻyicha qaysi koʻchalarda suv toʻplanishi (relyef saqlangan boʻlsa)
         const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = rainScen(T.rain.d24); if (S.tab === 'map') renderKeepScroll(); };
-        NX.bigStore.get('roads:v2').then(R => { if (R && R.list) { twinState().roads = R.list; alertScen(); } });
+        if (!twinState().roads) twinState().roads = NX.twin.roadsFromModel(S.model);
         NX.twin.rain().then(r => { twinState().rain = r; alertScen(); }).catch(() => {});
         NX.bigStore.get('dem:v2').then(D => { if (D && D.z && !twinState().flood) { twinState().dem = D; twinState().flood = NX.twin.flood(D, S.model); alertScen(); } });
       });
@@ -203,6 +203,15 @@
   }
 
   // ---------- 3D raqamli egizak: binolar, relyef (toshqin), quyosh, soya ----------
+  // Koʻchalar: darhol — markaz (sayt modeli); fon rejimida — butun shahar (9 qism), kelgan qismlar qoʻshib boriladi
+  function loadRoads(step) {
+    const T = twinState(), base = NX.twin.roadsFromModel(S.model);
+    if (!T.roads) T.roads = base;
+    T.roadsLoading = true;
+    return NX.twin.roads(step, l => { T.roads = l; }, base).then(r => {
+      T.roads = r; T.roadsErr = r.complete ? null : `Shahar koʻchalarining ${r.parts}/9 qismi yuklandi (qolganlari keyin qayta soʻraladi; markaz koʻchalari bor).`;
+    }, e => { T.roadsErr = e.message; }).then(() => { T.roadsLoading = false; });
+  }
   const twinState = () => (S.twin = S.twin || {});
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('vaqt tugadi')), ms))]);
   async function loadTwin() {
@@ -225,7 +234,7 @@
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
     // Butun shahar koʻchalari — fon rejimida (chat ularni cheksiz kutmaydi)
-    T.roadsP = NX.twin.roads(step).then(r => { T.roads = r; T.roadsErr = null; }, e => { T.roadsErr = e.message; });
+    T.roadsP = loadRoads(step);
     await Promise.all(jobs);
     T.loading = false; fin();
     await T.roadsP;
@@ -369,8 +378,8 @@
     try {
       await wait(loadTwin(), 40000);
       // Koʻchalar avval yuklanmagan boʻlsa — qayta soʻraladi
-      if (!T0.roads && T0.roadsErr) { T0.roadsErr = null; T0.roadsP = NX.twin.roads(t => { T0.busy = t; }).then(r => { T0.roads = r; }, e => { T0.roadsErr = e.message; }); }
-      if (!T0.roads && T0.roadsP) await wait(T0.roadsP, 25000);
+      if (T0.roadsErr && !T0.roadsLoading) T0.roadsP = loadRoads(t => { T0.busy = t; });
+      if (T0.roadsLoading) await wait(T0.roadsP, 25000);
     } finally { clearInterval(busyTick); }
     const n = q.toLowerCase();
     const mmM = n.match(/(\d+(?:[.,]\d+)?)\s*(mm|millimetr)/);
@@ -397,12 +406,20 @@
       }
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
+    // Ochiq manbalar: Samarqanddagi oʻtgan toshqinlar / zilzilalar haqida yangiliklar — model natijasini real hodisalar bilan solishtirish uchun
+    if ((rainQ || quakeQ) && NX.ai.available()) {
+      C.busy = 'Internetdan oʻtgan hodisalar qidirilmoqda'; renderKeepScroll();
+      try {
+        const w = await Promise.race([NX.ai.webSearchQ(rainQ ? 'Samarqand shahrida kuchli yomgʻir, sel va suv toshqini: qaysi koʻcha va mahallalarni suv bosgan (yangiliklar, FVV, hokimiyat xabarlari, oxirgi 10 yil)' : 'Samarqand zilzila xavfi: seysmik zona, oʻtgan zilzilalar, binolar mustahkamligi boʻyicha rasmiy maʼlumotlar', ''), NX.sleep(45000).then(() => null)]);
+        if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) };
+      } catch (e) { /* qidiruv ishlamadi */ }
+    }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
     try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
     catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
@@ -448,6 +465,7 @@
   function clearArea() {
     NX.draw.stop();
     S.area = null;
+    NX.view.showActions(null);
     NX.view.drawArea(null);
     NX.view.clearDeltas();
     render();
@@ -595,6 +613,12 @@
       renderKeepScroll();
       await runBuild();
     }
+    // Xaritada koʻrsatish uchun real nomzod joylar (boʻsh yerlar, berk koʻchalar, muammolar) — bir marta
+    if (!A.cand) {
+      A.qaBusy = 'Hududdagi real joylar aniqlanmoqda (boʻsh yerlar, berk koʻchalar)…'; renderKeepScroll();
+      try { A.cand = await Promise.race([NX.area.candidates(S.model, A.st), NX.sleep(30000).then(() => null)]); } catch (e) { A.cand = null; }
+    }
+    const candFacts = A.cand ? { L_boʻsh_yerlar: A.cand.L.map(x => ({ id: x.id, turi: x.turi, maydon_m2: x.maydon_m2, nomi: x.nomi })), C_yangi_yoʻl_variantlari: A.cand.C.map(x => ({ id: x.id, qaysi: x.qaysi, uzunlik_m: x.uzunlik_m })), P_muammolar: A.cand.P.map(x => ({ id: x.id, nima: x.nima, joy: x.joy })), S_koʻchalar: A.cand.S.map(x => ({ id: x.id, nomi: x.nomi, turi: x.turi })) } : null;
     // Tirbandlik / bir tomonlama / svetofor savoli — chuqur tahlil (variantlar, Yandex real vaqt, internet, xarita)
     let r = null;
     if (!pb && TRAFFIC_Q.test(q) && NX.ai.available()) {
@@ -604,18 +628,30 @@
         if (dp) {
           A.deep = dp;
           step('AI xulosa yozmoqda (chuqur tahlil)');
-          r = await NX.ai.deepAsk(q, Object.assign({ hudud: NX.ai.areaFacts(A, areaExtra()).hudud_osm, shahar_tizimlari: NX.ai.systemsFacts(A.st) }, dp.facts), prev);
+          r = await NX.ai.deepAsk(q, Object.assign({ hudud: NX.ai.areaFacts(A, areaExtra()).hudud_osm, shahar_tizimlari: NX.ai.systemsFacts(A.st), nomzod_joylar: candFacts }, dp.facts), prev);
           r.opts = dp.opts.map((o, i) => ({ i, label: o.label, tt: o.r.ttChangePct, vc: o.r.target ? [o.r.target.baseVC, o.r.target.scenVC] : null, over: o.r.overloadedCount, level: o.v.level, best: o === dp.best }));
           r.sources = dp.web && dp.web.sources ? dp.web.sources.slice(0, 5) : [];
         }
       } catch (e) { console.warn(e); r = null; }
     }
     if (!r) {
+      // Ochiq manbalardan ham qidiriladi (hudud koʻchalari va savol boʻyicha)
+      let internet = null;
+      if (NX.ai.available()) {
+        A.qaBusy = 'Internetdan ochiq maʼlumot qidirilmoqda…'; renderKeepScroll();
+        const names = A.st.streets.filter(s => s.name).slice(0, 4).map(s => s.name).join(', ');
+        try { const w = await Promise.race([NX.ai.webSearchQ(`Samarqand shahri, ${names} atrofi: ${q} — rasmiy qarorlar, qurilish rejalari, yangiliklar`, ''), NX.sleep(45000).then(() => null)]); if (w && w.text) internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) }; } catch (e) { internet = null; }
+      }
       A.qaBusy = 'AI javob yozmoqda…';
       renderKeepScroll();
-      r = await NX.ai.areaAsk(q, A, prev, areaExtra());
+      r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet }));
+      if (internet && !r.sources) r.sources = internet.manbalar;
     }
-    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources });
+    // AI belgilagan joylar — xaritada (faqat real nomzodlardan)
+    const pa = NX.area.actionsFrom(r.text, A.cand);
+    r.text = pa.text;
+    if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
+    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;
     if (S.tab === 'map' && S.area === A) { renderKeepScroll(); const c = $('#areaChat'); if (c) c.scrollIntoView({ block: 'end' }); }
   }
@@ -1346,6 +1382,7 @@
         case 'area-clear': clearArea(); break;
         case 'area-redraw': drawArea(); break;
         case 'area-ask': areaAsk(b.dataset.q); break;
+        case 'ann-fly': NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
         case 'area-opt': {
           const o = S.area && S.area.deep && S.area.deep.opts[+b.dataset.i];
           if (o) { ensureLeaflet(); NX.view.showDeltas(o.r, S.simInfo.pieces); NX.view.selectStreet(S.area.deep.sid, false); NX.view.drawArea(S.area.st.poly, null, false); S.area.deep.shown = +b.dataset.i; renderKeepScroll(); }

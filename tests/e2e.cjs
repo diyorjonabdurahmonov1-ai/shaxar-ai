@@ -622,6 +622,7 @@ async function clickStreet(page, name) {
     if (path === '/search') { px.search++; return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ text: 'Hokimiyat 2026-yilda svetofor qoʻyishni rejalashtirgan.', sources: [{ url: 'https://samarkand.uz/news/1', title: 'Samarqand hokimligi' }] }) }); }
     if (path === '/image') { px.image.push(b); return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ b64: PNG.toString('base64'), edited: !!b.photo }) }); }
     px.chat.push(b);
+    if (/nomzod_joylar/.test(b.messages[0].content) && /S_koʻchalar/.test(JSON.stringify(b.messages[b.messages.length - 1].content))) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: 'Tavsiya: S1 koʻchasida belgi.\n```json\n{"belgilar":[{"id":"S1","nima":"Asosiy yoʻl belgisi","izoh":"sinov"},{"id":"X9","nima":"oʻylab topilgan","izoh":"qabul qilinmasligi kerak"}]}\n```' } }] }) });
     if (/Faqat JSON/.test(b.messages[0].content)) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: '{"svetofor":"bor","piyoda_otish":"noaniq","izoh":"Chorrahada svetofor ustuni koʻrinadi."}' } }] }) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ choices: [{ message: { content: '**Svetofor:** suratda koʻrinmayapti\n**Nima qilish kerak:** sanash.' } }] }) });
   });
@@ -695,8 +696,10 @@ async function clickStreet(page, name) {
   await p8.click('.tabs [data-tab=map]');
   await p8.fill('#areaChat textarea[name=aq]', 'Bu yerda doim tirbandlik — nima qilsak boʻladi?'); await p8.click('#areaChat form button');
   await p8.waitForFunction(() => NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 120000 });
-  const nOpt = (await p8.$$('#areaChat .dopt')).length;
-  await p8.click('#areaChat .dopt >> nth=1');
+  const nOpt = (await p8.$$('#areaChat .dopt[data-act=area-opt]')).length;
+  await p8.click('#areaChat .dopt[data-act=area-opt] >> nth=1');
+  const ann = await p8.evaluate(() => { const m = NX.state.area.qa[1]; return { n: (m.actions || []).length, ids: (m.actions || []).map(a => a.id), dom: document.querySelectorAll('.leaflet-marker-icon.ann').length, json: /belgilar/.test(m.text) }; });
+  ok('AI tavsiyasi xaritada: faqat real nomzod joylardan (oʻylab topilgan id rad etiladi), JSON matndan olib tashlanadi', ann.n === 1 && ann.ids[0] === 'S1' && ann.dom === 1 && !ann.json, JSON.stringify(ann));
   ok('Hudud: chuqur tahlil variantlari raqamlar bilan, bosilsa xaritada koʻrinadi', nOpt >= 3 && (await p8.evaluate(() => NX.state.area.deep.shown === 1 && NX.map.hasDeltas())), 'variantlar: ' + nOpt);
   if (process.env.SHOT6) { await p8.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p8.screenshot({ path: process.env.SHOT6 }); }
   await p8.click('[data-act=area-clear]');
@@ -835,7 +838,7 @@ async function clickStreet(page, name) {
   await p10.click('#twinChat form button');
   await p10.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 150000 });
   const dt10 = Math.round((Date.now() - t10) / 1000);
-  ok('Koʻchalar serveri javob bermasa ham chat ~1 daqiqada javob beradi (cheksiz kutmaydi)', dt10 < 110 && (await p10.evaluate(() => !NX.state.twin.roads)), dt10 + ' s');
+  ok('Koʻchalar serveri javob bermasa ham chat ~1 daqiqada javob beradi; markaz koʻchalari darhol ishlatiladi', dt10 < 110 && (await p10.evaluate(() => NX.state.twin.roads && NX.state.twin.roads.length > 0 && String(NX.state.twin.roads[0].id)[0] === 'm')), dt10 + ' s');
   await ctx10.close();
 
   await browser.close();

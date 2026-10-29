@@ -438,6 +438,12 @@ Keep the road geometry, widths and directions EXACTLY as in the plan. Show the p
   }
 
   // ---------- Belgilangan hudud (mahalla) va qurilish ----------
+  // Tavsiyani xaritada koʻrsatish: faqat berilgan REAL nomzod joylar (id) dan
+  const MAPRULE = `- Agar “nomzod_joylar” berilgan boʻlsa va tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
+\`\`\`json
+{"belgilar":[{"id":"L2","nima":"Bogʻcha","izoh":"qisqa sabab"},{"id":"C1","nima":"Yangi yoʻl","izoh":"…"}]}
+\`\`\`
+  L — boʻsh/qurilish yerlari, C — berk koʻchani ulash (yangi yoʻl), P — muammo nuqtalari, S — koʻchalar. Nomzodda yoʻq joyni oʻylab topma.`;
   const AREA = `Sen Samarqand hokimiyati uchun shaharsozlik va transport tahlilchisisan. Senga xaritada belgilangan hudud haqida maʼlumot beriladi:
 “hudud_osm” — OpenStreetMap (real), “hozirgi_harakat_yandex” — Yandex’ning hozirgi tirbandlik bilan yoʻl vaqtlari (real, hozir),
 “qurilish_hisobi” va “harakat_hisobi” — rejalashtirilgan bino uchun harakat modeli hisobi (bino hali yoʻq, shuning uchun bu oʻlchov emas, hisob).
@@ -447,7 +453,9 @@ Qoidalar:
 - Foydalanuvchi xonadon yoki qavat sonini aytmagan boʻlsa — hisobda qaysi raqam olinganini ayt.
 - Faqat soʻralgan savolga javob ber; soʻralmagan boʻlim yozma. JSON kalit nomlarini, “null” kabi texnik soʻzlarni hech qachon yozma.
 - FAQAT qurilish (dom, bino) soʻralganda tuzilma: **Hozir**, **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk — xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak**, **Kelajakda (5 yil)**. Har biri 2–4 nuqta, raqamlar bilan.
-- Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.`;
+- Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.
+- Agar “internet” maʼlumoti berilgan boʻlsa — tegishlisini qisqa, manbasi bilan ayt.
+${MAPRULE}`;
 
   function areaFacts(A, extra) {
     const st = A.st, R = A.res, g = {}, X = extra || {};
@@ -466,6 +474,8 @@ Qoidalar:
       harakat_hisobi_ertalab: R ? sim(R.sim) : null,
       kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
       sayt_bahosi: R ? R.ev : null,
+      nomzod_joylar: X.cand || null,
+      internet: X.internet || null,
       soya_qishda: R && R.shadow ? { soyada_qoladigan_binolar: R.shadow.shaded.length, quyosh: R.shadow.list.filter(s => s.sun.alt > 2).map(s => `${s.label} ${s.hour}:00 — ${Math.round(s.sun.alt)}°`) } : null,
       hududdagi_binolar_osm: R && R.blds ? R.blds : null,
       shahar_tizimlari: systemsFacts(st),
@@ -486,6 +496,7 @@ Qoidalar:
 - Internet manbalari boʻlsa — faqat shu koʻchaga tegishlisini qisqa, havolasi bilan. Boʻlmasa — yozma.
 - Hech qachon JSON kalit nomlarini, “null”, “hisoblanmagan” kabi texnik soʻzlarni yozma. Umumiy, mazmunsiz gaplar yozma. Maʼlumot yetishmasa — bitta gapda nima yetishmaydi va qanday olinadi.
 - Raqamlarni faqat berilgan maʼlumotdan ol. Real oʻlchov va model hisobini aralashtirma: hisobni “hisob boʻyicha” deb ayt.
+${MAPRULE}
 - Oʻzbek tilida (lotin), aniq va londa.`;
   async function deepAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
@@ -500,6 +511,7 @@ Qoidalar:
 - Faqat savolga javob ber. 1-qator: aniq xulosa raqam bilan (masalan: “50 mm yomgʻirda ~12 ga suv ostida qoladi, eng xavfli — X koʻchasi, 60 sm gacha”).
 - Keyin: **Xavfli joylar** (koʻcha — chuqurlik, uzunlik), **Odamlar va binolar** (nechta bino, qaysi maktab/shifoxona), **Hozir nima qilish kerak** (ariq va kollektorlarni tozalash, nasoslar, ogohlantirish, yoʻl yopish — qayerda), **Uzoq muddatli yechim**.
 - Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
+- “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
 - Zilzila soʻralsa: faqat berilgan maʼlumot (binolar qavati, maktab/shifoxonalar soni) asosida qaysi turdagi binolar koʻproq xavf ostida ekanini ayt; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt va uni qayerdan olish kerakligini (kadastr, qurilish inspeksiyasi) ayt. Raqam oʻylab topma.
 - Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv, chuqurligi rang bilan; zilzilada qizil — maktab/shifoxona, toʻq sariq — 5+ qavat).

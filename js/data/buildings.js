@@ -27,11 +27,12 @@
       if (Math.abs(A) < 8) return;
       const lv = parseFloat(t['building:levels']), h = parseFloat(t.height);
       const kind = t.building || 'yes';
-      const levels = isFinite(lv) && lv > 0 ? lv : isFinite(h) && h > 0 ? Math.max(1, Math.round(h / 3.2)) : null;
+      // OSM’dagi xato qiymatlar (masalan 90 qavat) — Samarqand uchun real chegara: 30 qavat / 100 m
+      const levels0 = isFinite(lv) && lv > 0 ? lv : isFinite(h) && h > 0 ? Math.max(1, Math.round(h / 3.2)) : null, levels = levels0 && levels0 > 30 ? null : levels0;
       out.push({
         id: el.id, ring, kind, name: t['name:uz'] || t.name || '',
         levels: levels || DEF_LEVELS[kind] || 2, est: !levels,
-        height: isFinite(h) && h > 0 ? h : (levels || DEF_LEVELS[kind] || 2) * 3.2,
+        height: isFinite(h) && h > 0 && h <= 100 ? h : (levels || DEF_LEVELS[kind] || 2) * 3.2,
         area: Math.abs(A), c: G.ll(cx / (6 * A), cy / (6 * A)), roof: t['roof:shape'] || '',
       });
     });

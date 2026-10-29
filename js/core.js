@@ -130,6 +130,13 @@
 
   // ---------- Tarmoq: vaqt chegarasi bilan soʻrov ----------
   NX.sleep = ms => new Promise(r => setTimeout(r, ms));
+  // “Agar…” natijasi: rang va qalinlik — haqiqiy oʻzgarish (mashina/soat) boʻyicha, nisbiy emas; 15 dan kichik — koʻrsatilmaydi
+  NX.deltaStyle = v => {
+    const a = Math.abs(v);
+    if (a < 15) return null;
+    const col = v > 0 ? (a < 60 ? '#fdba74' : a < 150 ? '#f97316' : a < 400 ? '#dc2626' : '#7f1d1d') : (a < 60 ? '#86efac' : '#16a34a');
+    return { col, w: 2 + Math.min(10, a / 40) };
+  };
   NX.fetchJSON = async function (url, opts, ms, outer) {
     const ctl = new AbortController();
     let timedOut = false;

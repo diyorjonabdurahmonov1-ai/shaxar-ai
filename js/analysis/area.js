@@ -140,3 +140,51 @@
 
   NX.area = { ASSUME, inside, stats, parseBuild, buildFacts, assess };
 })();
+
+/* Xaritada koʻrsatiladigan tavsiyalar uchun REAL nomzod joylar (AI faqat shulardan tanlaydi):
+   P — hududdagi muammolar, C — berk koʻchani eng yaqin koʻchaga ulash (yangi yoʻl), L — boʻsh/qurilish yerlari (OSM), S — asosiy koʻchalar. */
+(function () {
+  'use strict';
+  const NX = window.NX, G = NX.geo;
+  async function candidates(M, st) {
+    const poly = st.poly, inP = (la, lo) => NX.area.inside(poly, la, lo), out = { P: [], C: [], L: [], S: [] };
+    st.problems.slice(0, 12).forEach((p, i) => out.P.push({ id: 'P' + (i + 1), lat: p.lat, lon: p.lon, nima: NX.PROBLEM[p.type].short, joy: p.title }));
+    // Berk koʻchalar: faqat bitta yoʻlga tegishli va way oxiri boʻlgan tugunlar
+    const deg = new Map();
+    M.ways.forEach(w => w.nodes.forEach((n, k) => deg.set(n, (deg.get(n) || 0) + (k === 0 || k === w.nodes.length - 1 ? 1 : 2))));
+    const ends = [];
+    M.ways.forEach(w => [0, w.nodes.length - 1].forEach(k => { const ll = w.ll[k]; if (deg.get(w.nodes[k]) === 1 && inP(ll[0], ll[1])) ends.push({ w, ll, xy: w.xy[k] }); }));
+    ends.slice(0, 40).forEach(e => {
+      let best = null;
+      M.ways.forEach(w2 => { if (w2.street === e.w.street) return; for (let i = 1; i < w2.xy.length; i++) { const a = w2.xy[i - 1], b = w2.xy[i], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1; let t = ((e.xy[0] - a[0]) * dx + (e.xy[1] - a[1]) * dy) / L2; t = Math.max(0, Math.min(1, t)); const q = [a[0] + t * dx, a[1] + t * dy], d = Math.hypot(q[0] - e.xy[0], q[1] - e.xy[1]); if (d > 15 && d < 250 && (!best || d < best.d)) best = { d, q, name: M.streets[w2.street].name }; } });
+      if (best) out.C.push({ id: 'C' + (out.C.length + 1), from: e.ll, to: G.ll(best.q[0], best.q[1]), uzunlik_m: Math.round(best.d), qaysi: `${M.streets[e.w.street].name || 'nomsiz yoʻl'} → ${best.name || 'nomsiz yoʻl'}` });
+    });
+    out.C = out.C.sort((a, b) => a.uzunlik_m - b.uzunlik_m).slice(0, 10).map((c, i) => Object.assign(c, { id: 'C' + (i + 1) }));
+    st.streets.filter(s => s.name).slice(0, 8).forEach((s, i) => { const S = M.streets[s.s]; out.S.push({ id: 'S' + (i + 1), lat: S.center[0], lon: S.center[1], nomi: s.name, turi: NX.HW[S.hw].uz }); });
+    // Boʻsh yerlar — OpenStreetMap (hudud chegarasi boʻyicha)
+    try {
+      let s = 90, w = 180, n = -90, e = -180; poly.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
+      const q = `[out:json][timeout:25];(way["landuse"~"^(grass|meadow|brownfield|greenfield|construction|vacant|farmland|orchard|allotments)$"](${s},${w},${n},${e});way["building"="construction"](${s},${w},${n},${e});way["leisure"~"^(pitch|park)$"](${s},${w},${n},${e}););out tags geom qt;`;
+      const r = await Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 30000).then(x => { if (x.ok && x.data && x.data.elements) return x.data.elements; throw new Error(); })));
+      r.filter(el => el.geometry && el.geometry.length > 3).map(el => {
+        const xy = el.geometry.map(g => G.xy(g.lat, g.lon)); let A = 0, cx = 0, cy = 0;
+        for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) { const f = xy[j][0] * xy[i][1] - xy[i][0] * xy[j][1]; A += f; cx += (xy[j][0] + xy[i][0]) * f; cy += (xy[j][1] + xy[i][1]) * f; }
+        A /= 2; if (Math.abs(A) < 400) return null;
+        const c = G.ll(cx / (6 * A), cy / (6 * A)), t = el.tags || {};
+        return inP(c[0], c[1]) ? { lat: c[0], lon: c[1], turi: t.landuse || (t.building ? 'qurilish' : t.leisure) || 'yer', maydon_m2: Math.round(Math.abs(A)), nomi: t.name || '' } : null;
+      }).filter(Boolean).sort((a, b) => b.maydon_m2 - a.maydon_m2).slice(0, 10).forEach((l, i) => out.L.push(Object.assign({ id: 'L' + (i + 1) }, l)));
+    } catch (e) { /* boʻsh yer maʼlumoti olinmadi */ }
+    return out;
+  }
+  // AI javobi oxiridagi ```json {"belgilar":[...]} ``` — nomzod id lari boʻyicha xaritadagi belgilarga
+  function actionsFrom(text, cand) {
+    const m = String(text || '').match(/```(?:json)?\s*(\{[\s\S]*?"belgilar"[\s\S]*?\})\s*```/);
+    if (!m) return { text, actions: [] };
+    let j = null; try { j = JSON.parse(m[1]); } catch (e) { j = null; }
+    const all = {}; Object.values(cand || {}).forEach(arr => arr.forEach(c => { all[c.id] = c; }));
+    const actions = ((j && j.belgilar) || []).map(b => { const c = all[String(b.id || '').toUpperCase()]; if (!c) return null; return c.from ? { kind: 'line', from: c.from, to: c.to, title: b.nima || 'Yangi yoʻl', note: b.izoh || c.qaysi, id: c.id } : { kind: 'point', lat: c.lat, lon: c.lon, title: b.nima || c.nima || c.nomi || 'Tavsiya', note: b.izoh || '', id: c.id }; }).filter(Boolean).slice(0, 12);
+    return { text: text.replace(m[0], '').trim(), actions };
+  }
+  NX.area.candidates = candidates;
+  NX.area.actionsFrom = actionsFrom;
+})();

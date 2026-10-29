@@ -51,6 +51,7 @@
     L_.seg = L.layerGroup().addTo(map);
     L_.area = L.layerGroup().addTo(map);
     L_.sys = L.layerGroup().addTo(map);
+    L_.ann = L.layerGroup().addTo(map);
     addSearch();
     addLayerControl();
     addLegend();
@@ -188,7 +189,7 @@
     const sw = (c, t) => `<span><i style="background:${c}"></i>${t}</span>`;
     if (deltaLayer) {
       const ya = NX.view && NX.view.yandexActive && NX.view.yandexActive();
-      legendEl.innerHTML = `<b>Hisob natijasi</b>${sw(COL.red, 'Mashina koʻpayadi')}${sw(COL.green, 'Mashina kamayadi')}<small>Qalinlik — oʻzgarish hajmi${ya && !NX.yandex.trafficOn() ? '. Yandex probkalari vaqtincha yashirildi.' : ''}</small>${ya ? `<button type="button" class="btn xs" data-yatraffic>🚦 ${NX.yandex.trafficOn() ? 'Probkalarni yashirish' : 'Real probkalarni koʻrsatish'}</button>` : ''}`;
+      legendEl.innerHTML = `<b>Hisob natijasi</b>${sw(COL.red, 'Mashina koʻpayadi')}${sw(COL.green, 'Mashina kamayadi')}<small>Qalinlik va rang — oʻzgarish (mashina/soat): och — +15…60, toʻq sariq — 60…150, qizil — 150+${ya && !NX.yandex.trafficOn() ? '. Yandex probkalari vaqtincha yashirildi.' : ''}</small>${ya ? `<button type="button" class="btn xs" data-yatraffic>🚦 ${NX.yandex.trafficOn() ? 'Probkalarni yashirish' : 'Real probkalarni koʻrsatish'}</button>` : ''}`;
     } else if (!vis.traffic) {
       legendEl.innerHTML = '';
     } else if (colorMode.mode === 'forecast') {
@@ -374,6 +375,18 @@
     if (fit) map.fitBounds(s.bounds, { padding: [40, 40], maxZoom: 17 });
   }
 
+  // AI tavsiyalari xaritada: nuqtalar (yorliq bilan) va yangi yoʻl chiziqlari
+  function showActions(list) {
+    L_.ann.clearLayers();
+    (list || []).forEach((a, i) => {
+      const label = `<span class="ann-n">${i + 1}</span>${NX.esc(a.title)}`;
+      if (a.kind === 'line') {
+        L.polyline([a.from, a.to], { renderer, color: '#7c3aed', weight: 6, dashArray: '10 8', opacity: 0.95, interactive: false }).addTo(L_.ann);
+        L.marker([(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindPopup(`<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+      } else L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindPopup(`<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+    });
+  }
+
   // Dinamik model: bir vaqt qadamidagi tezlik (sr) va navbat (ql, m) — koʻchalar boʻyalgan
   let dynLayer = null;
   function showDynamic(sr, ql, pieces) {
@@ -449,9 +462,9 @@
     deltaLayer = L.layerGroup();
     const d = res.deltas, max = Math.max(1, res.maxAbsDelta);
     for (let k = 0; k < d.length; k += 2) {
-      const [wi, i0, i1] = pieces[d[k]], v = d[k + 1];
-      const pl = L.polyline(M.ways[wi].ll.slice(i0, i1 + 1), { renderer, color: v > 0 ? COL.red : COL.green, weight: 2 + (9 * Math.abs(v)) / max, opacity: 0.9, interactive: false });
-      deltaLayer.addLayer(pl);
+      const [wi, i0, i1] = pieces[d[k]], v = d[k + 1], st = NX.deltaStyle(v);
+      if (!st) continue;
+      deltaLayer.addLayer(L.polyline(M.ways[wi].ll.slice(i0, i1 + 1), { renderer, color: st.col, weight: st.w, opacity: 0.9, interactive: false }));
     }
     deltaLayer.addTo(map);
     restyle(); updateLegend();
@@ -462,7 +475,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, showDynamic, clearDynamic, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, showDynamic, clearDynamic, showActions, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

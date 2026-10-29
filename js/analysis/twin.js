@@ -278,35 +278,47 @@
 
   // ---------- Koʻchalar boʻylab suv (shahar suvi asosan koʻchalar orqali oqadi) ----------
   const ROAD_W = { trunk: 22, primary: 20, secondary: 16, tertiary: 12, unclassified: 9, residential: 8, living_street: 6 };
-  // Butun shahar koʻchalari — 4 qismga boʻlib (katta soʻrov serverda vaqt tugashi bilan uzilmasin); “out body” — tugun raqamlari bilan (tarmoq uchun shart)
-  async function roads(onStep) {
-    const hit = await NX.bigStore.get('roads:v2');
-    if (hit && hit.list && hit.list.length && Date.now() - hit.ts < 30 * 86400e3) return hit.list;
-    const mlat = (CITY.s + CITY.n) / 2, mlon = (CITY.w + CITY.e) / 2, parts = [[CITY.s, CITY.w, mlat, mlon], [CITY.s, mlon, mlat, CITY.e], [mlat, CITY.w, CITY.n, mlon], [mlat, mlon, CITY.n, CITY.e]];
-    const seen = new Set(), list = [];
-    // 4 qism parallel; har qismda barcha Overpass serverlari bir vaqtda soʻraladi — birinchi toʻgʻri javob olinadi
-    let done = 0;
-    const part = ([s, w, n, e]) => {
-      const q = `[out:json][timeout:60];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${s},${w},${n},${e});out body geom qt;`;
-      const ctl = new AbortController();
-      return Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 70000, ctl.signal)
-        .then(r => { if (r.ok && r.data && r.data.elements) return r.data.elements; throw new Error('HTTP ' + r.status); })))
-        .then(els => { ctl.abort(); onStep && onStep(`Shahar koʻchalari yuklanmoqda: ${++done}/4`); return els; });
+  // Butun shahar koʻchalari — 3×3 = 9 kichik qism; har qism alohida saqlanadi; kelgan qismlar darhol ishlatiladi, kelmaganlari keyin qayta soʻraladi.
+  // “out body” — tugun raqamlari bilan (tarmoq uchun shart). Hech biri kelmasa ham — markaz koʻchalari (sayt modeli) ishlatiladi.
+  function roadsFromModel(M) {
+    return M.ways.map(w => ({ id: 'm' + w.i, hw: w.hw, name: (M.streets[w.street] && M.streets[w.street].name) || '', nodes: w.nodes, ll: w.ll }));
+  }
+  function partsOf() {
+    const out = [], dy = (CITY.n - CITY.s) / 3, dx = (CITY.e - CITY.w) / 3;
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) out.push({ k: j * 3 + i, b: [CITY.s + j * dy, CITY.w + i * dx, CITY.s + (j + 1) * dy, CITY.w + (i + 1) * dx] });
+    return out;
+  }
+  const conv = els => els.filter(e => e.type === 'way' && e.geometry && e.geometry.length > 1).map(e => {
+    const ll = e.geometry.map(g => [+g.lat.toFixed(6), +g.lon.toFixed(6)]);
+    const nodes = Array.isArray(e.nodes) && e.nodes.length === ll.length ? e.nodes : ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5));
+    return { id: e.id, hw: e.tags && e.tags.highway, name: (e.tags && (e.tags['name:uz'] || e.tags.name)) || '', nodes, ll };
+  });
+  // onPart(list, done, total) — har yangi qism kelganda chaqiriladi
+  async function roads(onStep, onPart, fallback) {
+    const parts = partsOf(), got = new Map();
+    for (const p of parts) { const h = await NX.bigStore.get('rt:' + p.k); if (h && h.list && Date.now() - h.ts < 30 * 86400e3) got.set(p.k, h.list); }
+    // Kelmagan qismlar oʻrniga — sayt modelidagi (markaz) koʻchalar
+    const inPart = (p, ll) => ll[0] >= p.b[0] && ll[0] < p.b[2] && ll[1] >= p.b[1] && ll[1] < p.b[3];
+    const merge = () => {
+      const seen = new Set(), list = [];
+      got.forEach(l => l.forEach(w => { if (!seen.has(w.id)) { seen.add(w.id); list.push(w); } }));
+      (fallback || []).forEach(w => { const p = parts.find(q => inPart(q, w.ll[0])); if (p && !got.has(p.k)) list.push(w); });
+      return list;
     };
-    onStep && onStep('Shahar koʻchalari yuklanmoqda: 0/4');
-    let all;
-    try { all = await Promise.all(parts.map(part)); } catch (err) { throw new Error('Shahar koʻchalari yuklanmadi (OpenStreetMap serverlari javob bermadi). Keyinroq qayta urinib koʻring.'); }
-    for (const got of all) {
-      got.forEach(e => {
-        if (e.type !== 'way' || !e.geometry || e.geometry.length < 2 || seen.has(e.id)) return;
-        seen.add(e.id);
-        const ll = e.geometry.map(g => [+g.lat.toFixed(6), +g.lon.toFixed(6)]);
-        // Tugun raqami boʻlmasa — koordinatadan (chorrahalarda bir xil chiqadi)
-        const nodes = Array.isArray(e.nodes) && e.nodes.length === ll.length ? e.nodes : ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5));
-        list.push({ id: e.id, hw: e.tags && e.tags.highway, name: (e.tags && (e.tags['name:uz'] || e.tags.name)) || '', nodes, ll });
-      });
+    const need = parts.filter(p => !got.has(p.k));
+    if (need.length) {
+      onStep && onStep(`Shahar koʻchalari yuklanmoqda: ${got.size}/9`);
+      await Promise.allSettled(need.map(({ k, b: [s, w, n, e] }) => {
+        const q = `[out:json][timeout:50];way["highway"~"^(trunk|primary|secondary|tertiary|unclassified|residential|living_street)$"](${s.toFixed(4)},${w.toFixed(4)},${n.toFixed(4)},${e.toFixed(4)});out body geom qt;`;
+        const ctl = new AbortController();
+        return Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 60000, ctl.signal)
+          .then(r => { if (r.ok && r.data && r.data.elements) return r.data.elements; throw new Error('HTTP ' + r.status); })))
+          .then(els => { ctl.abort(); const l = conv(els); got.set(k, l); NX.bigStore.set('rt:' + k, { ts: Date.now(), list: l }); onStep && onStep(`Shahar koʻchalari yuklanmoqda: ${got.size}/9`); onPart && onPart(merge(), got.size, 9); });
+      }));
     }
-    NX.bigStore.set('roads:v2', { ts: Date.now(), list });
+    if (!got.size && !(fallback && fallback.length)) throw new Error('Shahar koʻchalari yuklanmadi (OpenStreetMap serverlari javob bermadi).');
+    const list = merge();
+    list.complete = got.size === 9; list.parts = got.size;
     return list;
   }
   // Relyef qiymati nuqtada (bilinear)
@@ -436,5 +448,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { roadsFromModel, climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();
