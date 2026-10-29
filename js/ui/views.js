@@ -42,28 +42,26 @@
     const big = ghi ? b.filter(x => /school|kindergarten|university|hospital|public|government|commercial|retail|office/.test(x.kind) || x.area > 1500).map(x => ({ x, k: NX.twin.roofKwh(x, ghi) })).sort((p, q) => q.k - p.k).slice(0, 8) : [];
     const K = { school: 'Maktab', kindergarten: 'Bogʻcha', university: 'Universitet', hospital: 'Shifoxona', public: 'Jamoat binosi', government: 'Davlat idorasi', commercial: 'Savdo', retail: 'Doʻkon', office: 'Ofis', apartments: 'Koʻp qavatli uy' };
     return `
-    <section class="card">
-      <h2>🏙 Raqamli egizak — 3D shahar</h2>
-      <p class="small muted">Binolar OpenStreetMap’dan, balandligi qavatlar soni boʻyicha. Sichqoncha: oʻng tugma — aylantirish, gʻildirak — yaqinlashtirish.</p>
+    <section class="card twin-head">
       ${T.busy ? `<p class="small"><span class="spinner sm"></span> ${E(T.busy)}…</p>` : ''}
       ${T.err ? `<p class="small bad-text">⚠️ ${E(T.err)}</p>` : ''}
-      ${b.length ? `<div class="atiles">${[[F.int(b.length), 'bino'], [est + '%', 'qavati nomaʼlum'], [ghi ? F.int(ghi) : '—', 'kVt·soat/m² yiliga quyosh'], [rain ? rain.d24 + ' mm' : '—', 'yomgʻir, 24 soat']].map(([v, l]) => `<div class="atile"><b>${v}</b><small>${l}</small></div>`).join('')}</div>` : ''}
       <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('quake', '🏚 Zilzila')}${chip('plan', '🏗 Yangi bino va soya')}</div>
       <div class="row-btns"><button class="btn xs" data-act="twin-base" data-base="sat">🛰 Sunʼiy yoʻldosh</button><button class="btn xs" data-act="twin-base" data-base="street">🗺 Xarita</button></div>
     </section>
     ${twinChat(S)}
+    ${T.dyn || T.dynBusy ? `<section class="card">${T.dynBusy ? `<p class="small"><span class="spinner sm"></span> <span id="dynBusy">${E(T.dynBusy)}…</span></p>` : ''}${T.dyn ? dynInfo(S) : ''}</section>` : ''}
+    <details class="more extra"><summary>Qoʻshimcha maʼlumot — binolar, suv toshqini, iqlim, quyosh, soya</summary>
+    ${b.length ? `<div class="atiles">${[[F.int(b.length), 'bino (OSM)'], [est + '%', 'qavati nomaʼlum'], [ghi ? F.int(ghi) : '—', 'kVt·soat/m² yiliga quyosh'], [rain ? rain.d24 + ' mm' : '—', 'yomgʻir, 24 soat']].map(([v, l]) => `<div class="atile"><b>${v}</b><small>${l}</small></div>`).join('')}</div>` : ''}
     <section class="card">
       <h3>🌧 Suv toshqini xavfi ${B('meteo')}</h3>
       ${rain ? `<p>${rain.d24 >= 20 ? '🔴' : rain.d24 >= 8 ? '🟠' : '🟢'} Keyingi 24 soatda <b>${rain.d24} mm</b>, 48 soatda ${rain.d48} mm yogʻin kutilmoqda${rain.maxH ? ` (eng kuchlisi soatiga ${rain.maxH} mm, ${(d => ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'][d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00')(new Date(rain.maxAt + 5 * 3600e3))})` : ''}.</p>` : '<p class="small muted">Yogʻin prognozi olinmoqda…</p>'}
       ${fl ? `<p class="small">Relyef boʻyicha katta maydondan suv oqib keladigan va sekin oqadigan <b>${fl.basins}</b> ta joy bor. Shahar balandligi ${Math.round(fl.zmin)}–${Math.round(fl.zmax)} m.</p>
         ${T.roadsErr ? `<p class="small warn-line">⚠️ ${E(T.roadsErr)}</p>` : ''}
-        ${!T.dyn && !T.dynBusy ? '<p class="small"><b>👇 Yomgʻir miqdorini tanlang</b> — shundan keyin xaritada suv koʻchalar boʻylab koʻrinadi. Tanlamaguncha xaritada suv koʻrsatilmaydi.</p>' : ''}
         <h4>⏱ 2D fizik model — suv vaqt boʻyicha</h4>
         ${T.climate ? `<p class="small muted">Taqqoslash uchun: 1991-yildan beri Samarqanddagi eng kuchli kunlik yogʻin — <b>${T.climate.top[0].p} mm</b> (${T.climate.top[0].t}); 20 mm dan koʻp yomgʻirli kunlar yiliga oʻrtacha ${F.num(T.climate.years.reduce((t, o) => t + o.wet20, 0) / T.climate.years.length, 1)} ta (ERA5).</p>` : ''}
         <p class="small"><b>Agar 1 soat ichida shuncha yomgʻir yogʻsa</b> (bosing — suv qanday tarqalishi soatma-soat hisoblanadi, ~10 soniya):</p>
         <div class="chips">${[10, 30, 50, 80, 120].map(mm => `<button class="chip${T.dyn && T.dyn.label === mm + ' mm, 1 soatda' ? ' on' : ''}" data-act="twin-rain" data-mm="${mm}" ${T.dynBusy ? 'disabled' : ''}>${mm} mm</button>`).join('')}<button class="chip" data-act="twin-forecast" ${T.dynBusy ? 'disabled' : ''}>🌦 Real prognoz boʻyicha (24 soat)</button></div>
-        ${T.dynBusy ? `<p class="small"><span class="spinner sm"></span> <span id="dynBusy">${E(T.dynBusy)}…</span></p>` : ''}
-        ${T.dyn ? dynInfo(S) : ''}
+
         ${T.scen && !T.dyn ? `<p><b>${T.scen.rain} mm</b> yomgʻirda (1 soatda): ${T.scen.mode === 'street' ? `<b>${T.scen.km} km</b> koʻchada 10 sm dan chuqur suv` : `~<b>${T.scen.areaHa} ga</b> da 10 sm+ suv`}, <b>${T.scen.buildings}</b> ta bino oldida 20 sm+${T.scen.critical.length ? `, shu jumladan: ${T.scen.critical.map(E).join(', ')}` : ''}.</p>
           ${T.scen.streets.length ? `<ul class="locs">${T.scen.streets.slice(0, 10).map(x => `<li class="locrow"><button class="loc" ${x.at ? `data-act="twin-fly" data-lat="${x.at[0]}" data-lon="${x.at[1]}"` : ''}>💧 <b>${E(x.name)}</b> <small class="muted">— ${Math.round(x.max * 100)} sm gacha, ${F.int(x.len)} m</small></button></li>`).join('')}</ul>` : '<p class="small ok-text">Koʻchalarda suv toʻplanmaydi.</p>'}
           <p class="plan-leg small"><span><i style="background:#7dd3fc"></i>&lt;30 sm</span><span><i style="background:#2563eb"></i>30–60 sm</span><span><i style="background:#1e3a8a"></i>&gt;60 sm</span><span><i style="background:#60a5fa;border-radius:2px"></i>suv yetadigan bino</span></p>
@@ -84,7 +82,8 @@
         <ul class="small">${S.area.res.shadow.list.filter(s => s.sun.alt > 2).map(s => `<li>${E(s.label)}, ${s.hour}:00 — quyosh ${Math.round(s.sun.alt)}°, soya ~${Math.round(Math.min(400, S.area.spec.floors * 3.2 / Math.tan(s.sun.alt * Math.PI / 180)))} m</li>`).join('')}</ul>
         <p class="small muted">Binafsha — rejadagi bino, kulrang — qishki soya va soyada qoladigan binolar (“🏗 Yangi bino va soya” rejimi).</p>`
         : '<p class="small muted">Xarita boʻlimida “✏️ Hudud belgilash” → AI’ga “… xonadonli … qavatli dom qursam?” deb yozing — bino va soyasi shu yerda 3D koʻrinadi.</p>'}
-    </section>`;
+    </section>
+    </details>`;
   }
 
   // Oylar boʻyicha yogʻin: ERA5 meʼyori (ustun) va Oʻzgidromet ochiq maʼlumoti (nuqta, data.egov.uz)
@@ -143,13 +142,10 @@
 
   function twinChat(S) {
     const C = S.twinChat || { msgs: [], busy: null };
-    const sugg = ['50 mm kuchli yomgʻir yogʻsa qaysi koʻchalarni suv bosadi?', 'Sel boʻlsa (100 mm) qaysi maktab va shifoxonalar xavf ostida?', '8 balli zilzila boʻlsa qaysi binolar koʻproq xavf ostida?'];
     return `<section class="card chat" id="twinChat">
-      <h3>🤖 AI tahlil — favqulodda vaziyatlar</h3>
-      <p class="small muted">Soʻrang: “… mm yomgʻir yogʻsa?”, “zilzila boʻlsa?” — AI hisoblaydi, natija 3D xaritada koʻrinadi.</p>
-      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div></div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
-      <div class="chips">${sugg.map(q => `<button class="chip" data-act="twin-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
-      <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Masalan: 70 mm yomgʻir yogʻsa qayerni suv bosadi?" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
+      <h3>🤖 AI</h3>
+      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' 3D xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Savol yoki topshiriq…" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
     </section>`;
   }
 
@@ -685,7 +681,6 @@
       <p class="small muted">Nima qurmoqchisiz yoki nimani bilmoqchisiz — yozing. AI hisoblaydi, natija xaritada koʻrinadi.</p>
       <div class="chat-log">${qa}${A.qaBusy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(A.qaBusy)}</div></div>` : ''}</div>
       ${A.res ? '<p class="small muted">Xaritada: <span class="tag r">qizil</span> — shu bino sabab mashina koʻpayadigan koʻchalar, <span class="tag g">yashil</span> — kamayadigan. 🏢 — bino joyi.</p>' : ''}
-      <div class="chips">${sugg.map(q => `<button class="chip" data-act="area-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
       <form data-form="area-q" class="chat-form">
         <textarea name="aq" rows="2" placeholder="Masalan: 300 xonadonli 12 qavatli dom qursam nima boʻladi?" aria-label="Savol" ${A.qaBusy ? 'disabled' : ''}></textarea>
         <button class="btn primary" ${A.qaBusy ? 'disabled' : ''}>Yuborish</button>
@@ -730,7 +725,6 @@
       <div class="chat-h"><b>🤖 AI yordamchi</b>${NX.ai.available() ? '' : '<small class="muted">AI ulanmagan — sayt hisobi bilan javob beradi</small>'}</div>
       ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>${segBar(S, s)}` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
       <div class="chat-log">${msgs}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}</div></div>` : ''}</div>
-      <div class="chips">${chatSuggestions(S).map(q => `<button class="chip" data-act="chat-ask" data-q="${E(q)}">${E(q)}</button>`).join('')}</div>
       <form data-form="chat" class="chat-form">
         <textarea name="q" rows="2" placeholder="${s ? 'Masalan: yopsak nima boʻladi?' : 'Savolingizni yozing…'}" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea>
         <button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button>

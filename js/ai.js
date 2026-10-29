@@ -511,6 +511,22 @@ Qoidalar:
     return { text: r.text, src: 'ai' };
   }
 
+  // Chatdan rasm: savol + natijalar → rasm modeli uchun inglizcha tavsif → rasm (3D koʻrinish asos boʻlishi mumkin)
+  const IMG_PROMPT = `You write prompts for an image generation model. Input: an Uzbek request from city officials of Samarkand, Uzbekistan, plus analysis facts (JSON).
+Write ONE English prompt (max 120 words) for a photorealistic image that shows exactly what is asked, using the concrete facts (street names are context only — do not render text).
+If a base image is provided it is a real 3D view of the city: say "Edit the provided 3D city view: keep the same buildings, streets and camera angle" and describe only the changes (e.g. flood water depth in streets, new building, traffic lights).
+No text, no labels, no logos. Output only the prompt.`;
+  async function chatImage(q, facts, baseImg) {
+    if (!(await proxyReady())) throw new Error(OLD_WORKER);
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: IMG_PROMPT }, { role: 'user', content: `Soʻrov: ${q}\nAsos rasm: ${baseImg ? 'bor (3D koʻrinish)' : 'yoʻq'}\nFaktlar: ${JSON.stringify(facts).slice(0, 6000)}` }], NX.config.openaiLight, 'imgprompt');
+    const prompt = r.text.trim().slice(0, 1500);
+    const body = baseImg && proxyV >= 4 ? { prompt, plan: baseImg, quality: 'medium' } : { prompt };
+    const res = await NX.fetchJSON(proxyUrl() + '/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 240000);
+    if (res.ok && res.data && res.data.b64) return { src: 'data:image/png;base64,' + res.data.b64, edited: !!res.data.edited };
+    const e = res.data && res.data.error;
+    throw new Error(res.status === 429 ? ((e && e.message) || 'Rasm limiti tugadi.') : 'Rasm chizilmadi: ' + ((e && e.message) || 'HTTP ' + res.status));
+  }
+
   // Erkin internet qidiruvi (koʻcha yoki hudud boʻyicha)
   async function webSearchQ(q, context) {
     if (!proxyUrl()) {
@@ -545,5 +561,5 @@ Qoidalar:
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

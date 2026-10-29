@@ -57,7 +57,7 @@
       if (!window.maplibregl) return reject(new Error('3D kutubxonasi yuklanmadi.'));
       const c = NX.config.center;
       map = new window.maplibregl.Map({
-        container: el, center: [c[1], c[0]], zoom: 15.6, pitch: 58, bearing: -20, maxPitch: 80, attributionControl: true,
+        container: el, center: [c[1], c[0]], zoom: 15.6, pitch: 58, bearing: -20, maxPitch: 80, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
         style: { version: 8, sources: { base: Object.assign({ type: 'raster', tileSize: 256, maxzoom: 19 }, BASE.sat) }, layers: [{ id: 'base', type: 'raster', source: 'base' }] },
       });
       map.addControl(new window.maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
@@ -113,5 +113,15 @@
   function setBase(k) { if (!map) return; const src = map.getSource('base'); if (src && src.setTiles) src.setTiles(BASE[k].tiles); }
   function flyTo(lat, lon, z) { if (map) map.flyTo({ center: [lon, lat], zoom: z || 17, pitch: 60, duration: 900 }); }
 
-  NX.map3d = { show, setMode, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  // Hozirgi 3D koʻrinish rasmi (AI rasm uchun asos) — kichraytirilgan PNG
+  function snapshot(maxW) {
+    if (!map) return null;
+    try {
+      const src = map.getCanvas(), k = Math.min(1, (maxW || 640) / src.width), c = document.createElement('canvas');
+      c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+      c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+      return c.toDataURL('image/png');
+    } catch (e) { return null; }
+  }
+  NX.map3d = { show, snapshot, setMode, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 })();

@@ -375,7 +375,13 @@
     let r;
     try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
     catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
-    C.msgs.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error };
+    C.msgs.push(msg);
+    // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
+    if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
+      C.busy = 'AI rasm chizmoqda (~1 daqiqa)'; renderKeepScroll();
+      try { msg.img = await NX.ai.chatImage(q, twinFacts(extra), NX.map3d.snapshot(640)); } catch (e) { msg.imgErr = e.message; }
+    }
     C.busy = null; renderKeepScroll();
   }
 

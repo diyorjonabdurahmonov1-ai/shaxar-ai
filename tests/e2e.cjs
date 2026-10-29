@@ -146,10 +146,12 @@ async function clickStreet(page, name) {
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
   ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
   await page.click('[data-act=twin-mode][data-mode=flood]');
-  ok('Toshqin rejimi: yomgʻir tanlanmaguncha xaritada kvadrat ham, suv ham yoʻq; koʻrsatma bor', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length === 0 && NX.map3d.map().getSource('flood')._data.features.length === 0) && /Yomgʻir miqdorini tanlang/.test(await page.textContent('#panel')));
+  ok('Toshqin rejimi: yomgʻir tanlanmaguncha xaritada kvadrat ham, suv ham yoʻq', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length === 0 && NX.map3d.map().getSource('flood')._data.features.length === 0));
   const noNodes = await page.evaluate(() => { const T = NX.state.twin, R = T.roads.map(w => Object.assign({}, w, { nodes: w.ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)) })); const sc = NX.twin.streetScenario(T.dem, R, 80); return sc.segs.length; });
   ok('Koʻchalar tarmogʻi tugun raqamlarisiz ham tuziladi (koordinata boʻyicha)', noNodes > 0, String(noNodes));
-  // 2D fizik model (LISFLOOD-FP): vaqt boʻyicha, koʻchalar boʻylab
+  // 2D fizik model (LISFLOOD-FP): vaqt boʻyicha, koʻchalar boʻylab (tugmalar “Qoʻshimcha maʼlumot” ichida)
+  ok('3D egizak: asosiy oynada AI chat; qoʻshimcha maʼlumot yopiq; tayyor savollar yoʻq', !(await page.$eval('details.extra', d => d.open)) && (await page.isVisible('#twinChat textarea')) && !(await page.$('#twinChat .chip')));
+  await page.click('details.extra > summary');
   await page.click('[data-act=twin-rain][data-mm="80"]');
   await page.waitForFunction(() => NX.state.twin.dyn && !NX.state.twin.dynBusy, null, { timeout: 180000 });
   const d80 = await page.evaluate(() => { const R = NX.state.twin.dyn; return { frames: R.frames.length, peak: R.peak.km, steps: R.steps, st: R.streets.length, top: R.streets[0] && R.streets[0].name, lines: NX.map3d.map().getSource('water')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length }; });
@@ -162,7 +164,8 @@ async function clickStreet(page, name) {
   await page.click('[data-act=twin-rain][data-mm="10"]');
   await page.waitForFunction(() => NX.state.twin.dyn && NX.state.twin.dyn.label === '10 mm, 1 soatda' && !NX.state.twin.dynBusy, null, { timeout: 180000 });
   ok('Kam yomgʻir — kamroq suvli koʻcha', await page.evaluate(p => NX.state.twin.dyn.peak.km < p, d80.peak));
-  await page.click('#twinChat [data-act=twin-ask] >> nth=0');
+  await page.fill('#twinChat textarea[name=tq]', '50 mm kuchli yomgʻir yogʻsa qaysi koʻchalarni suv bosadi?');
+  await page.click('#twinChat form button');
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
   await page.click('.tabs [data-tab=map]');
@@ -247,7 +250,7 @@ async function clickStreet(page, name) {
   await clickStreet(page, 'Dagbitskiy koʻchasi');
   await page.waitForFunction(() => /Dagbitskiy/.test(document.querySelector('#chat .chat-ctx').textContent), null, { timeout: 5000 });
   ok('Chat: xaritada bosilgan koʻcha “Tanlangan” boʻladi', await page.evaluate(() => NX.state.tab === 'ai'));
-  await page.click('#chat [data-act=chat-ask]');
+  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
   ok('Chat: tanlangan koʻcha uchun tayyor savol (yopish)', await page.evaluate(() => /Dagbitskiy/.test(NX.state.sim.last.label) && NX.state.sim.last.type === 'close'));
   // Koʻchaning bir qismini tanlash: ikki nuqta → faqat shu qism tahlil qilinadi
@@ -271,8 +274,7 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => NX.state.segment, null, { timeout: 5000 });
   const segN = await page.evaluate(() => NX.state.segment.pieces.length);
   ok('Qism tanlandi: koʻchaning faqat bir boʻlagi', segN > 0 && segN < segPts.total && (await page.isVisible('#chat .seg-bar.on')) && (await page.evaluate(() => NX.state.tab)) === 'ai', `${segN}/${segPts.total}`);
-  ok('Qism uchun tayyor savollar', /Shu qismini/.test(await page.textContent('#chat .chips')));
-  await page.click('#chat [data-act=chat-ask]');
+  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 6, null, { timeout: 60000 });
   ok('Simulyatsiya faqat tanlangan qism uchun', await page.evaluate(() => NX.state.sim.last.type === 'close' && /→/.test(NX.state.sim.last.label) && / m\)|km\)/.test(NX.state.sim.last.label) && NX.map.hasDeltas()), await page.evaluate(() => NX.state.sim.last.label));
   await page.click('#chat [data-act=seg-clear]');
@@ -691,7 +693,7 @@ async function clickStreet(page, name) {
   await p8.click('.tabs [data-tab=map]');
   await p8.evaluate(c => { const poly = [[c[0] - 0.002, c[1] - 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] - 0.002]]; const st = NX.area.stats(NX.state.model, poly); st.systems = []; const A0 = {}; Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; }); NX.state.area = { st, spec: { flats: 500, floors: 9 }, A: A0, res: null, busy: null, qa: [], qaBusy: null }; }, await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center));
   await p8.click('.tabs [data-tab=map]');
-  await p8.click('#areaChat [data-act=area-ask] >> nth=0');
+  await p8.fill('#areaChat textarea[name=aq]', 'Bu yerda doim tirbandlik — nima qilsak boʻladi?'); await p8.click('#areaChat form button');
   await p8.waitForFunction(() => NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 120000 });
   const nOpt = (await p8.$$('#areaChat .dopt')).length;
   await p8.click('#areaChat .dopt >> nth=1');
@@ -730,6 +732,17 @@ async function clickStreet(page, name) {
   ok('Hudud tahlili: hududdan oʻtadigan quvur uzunligi', ar.km > 0.1 && ar.km < 0.3, JSON.stringify(ar));
   await p8.click('.tabs [data-tab=problems]');
   ok('Muammolar xaritasida tizimlar koʻrinmaydi (faqat muammolar)', (await p8.$$('.leaflet-marker-icon.sysmk')).length === 0);
+  // 3D egizak chati: “rasm chiz” — 3D koʻrinish asosida AI rasm
+  await p8.click('.tabs [data-tab=twin]');
+  await p8.waitForFunction(() => NX.map3d.map() && NX.map3d.map().getSource('bld'), null, { timeout: 60000 });
+  if (process.env.SHOT11) await p8.screenshot({ path: process.env.SHOT11 });
+  const img0 = px.image.length;
+  await p8.fill('#twinChat textarea[name=tq]', 'Shu koʻrinishda 50 mm yomgʻir yogʻsa qanday boʻlishini rasmini chiz');
+  await p8.click('#twinChat form button');
+  await p8.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length >= 2, null, { timeout: 240000 });
+  const im = px.image.slice(img0)[0];
+  ok('3D egizak chati: “rasm chiz” — 3D koʻrinish asosida AI rasm chatda', im && /^data:image\/png/.test(im.plan || '') && !!(await p8.$('#twinChat .vgen img')), im ? 'prompt: ' + String(im.prompt).slice(0, 60) : 'soʻrov yoʻq');
+  await p8.click('.tabs [data-tab=map]');
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
   // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------
@@ -752,7 +765,7 @@ async function clickStreet(page, name) {
   const st9 = await p9.evaluate(() => ({ ha: NX.state.area.st.areaHa, streets: NX.state.area.st.streets.length, probs: NX.state.area.st.problems.length }));
   ok('Sichqoncha bilan erkin chizilgan hudud tahlil qilinadi', st9.ha > 1 && st9.streets > 0 && /Belgilangan hudud/.test(await p9.textContent('#panel h2')) && !(await p9.$('.draw-ov')), JSON.stringify(st9));
   ok('Hudud panelida AI tahlil asosiy (alohida “Taxmin” boʻlimi yoʻq)', (await p9.isVisible('#areaChat textarea')) && !(await p9.$('#areaBuild')));
-  await p9.click('#areaChat [data-act=area-ask] >> nth=2');
+  await p9.fill('#areaChat textarea[name=aq]', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'); await p9.click('#areaChat form button');
   await p9.waitForFunction(() => NX.state.area.res && !NX.state.area.busy && NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const r9 = await p9.evaluate(() => ({ res: NX.state.area.res.b.residents, trips: NX.state.area.res.sim.build && NX.state.area.res.sim.build.trips, deltas: NX.map.hasDeltas() }));
   ok('500 xonadon: aholi, mashinalar, yuklama xaritada', r9.res === 2000 && r9.trips === 150 && r9.deltas, JSON.stringify(r9));
