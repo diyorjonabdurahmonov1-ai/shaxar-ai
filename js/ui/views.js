@@ -158,6 +158,7 @@
       ${mine.length ? `<h4>Muammolar</h4><ul class="street-probs">${[...new Set(mine.map(p => p.type))].map(t => { const ps = mine.filter(p => p.type === t); return `<li><button class="link" data-act="problem" data-id="${ps[0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)}${ps.length > 1 ? ` — ${ps.length} ta joy` : ''}</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`; }).join('')}</ul>` : '<p class="small ok-text">Bu koʻchada muammo topilmadi.</p>'}
     </section>
     ${actions(S, s)}
+    ${NX.pano.btn(s.center[0], s.center[1], s.name || 'Koʻcha', 'btn wide pano-cta')}
     <button class="btn wide ai-cta" data-act="chat-street-open" data-id="${s.id}">🤖 Bu koʻcha haqida AI bilan gaplashish</button>
     ${streetDetails(S, s)}`;
   }
@@ -259,7 +260,7 @@
       const qty = g.items.reduce((t, p) => t + (p.qty || 1), 0);
       const FIX = { junction: ['signal', '🚦 Svetofor bor'], school: ['crossing', '🚶 Oʻtish bor'] }[g.t];
       const list = g.items.map(p => `<li class="locrow${S.focusPid === p.id ? ' on' : ''}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">📍</span>${E(p.title)}</button>
-        <div class="loc-acts">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div></li>`);
+        <div class="loc-acts">${NX.pano.btn(p.lat, p.lon, p.title, 'btn xs')}${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div></li>`);
       return `<section class="card prob" style="--c:${g.meta.color}">
         <div class="prob-h"><span class="prob-ico" aria-hidden="true">${g.meta.icon}</span><div><b>${E(g.meta.short)}</b><small>${g.items.length} ta joy · ~${F.uzs(qty * g.meta.cost)}</small></div></div>
         <p class="fix"><b>Yechim:</b> ${E(g.meta.fix)}</p>

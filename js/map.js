@@ -285,7 +285,7 @@
     }[p.type];
     const fixes = `<div class="fix-row">${fixBtn ? `<button type="button" class="btn sm primary" data-fix="${fixBtn[0]}" data-pid="${p.id}">${fixBtn[1]}</button>` : ''}<button type="button" class="btn sm" data-fix="dismiss" data-pid="${p.id}">❌ Bu muammo emas</button></div>
       <a class="osm-edit" href="${NX.fixes.osmEditUrl(p.lat, p.lon)}" target="_blank" rel="noopener">✏️ OpenStreetMap’da ham tuzatish</a>`;
-    return `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
+    return `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p><div class="fix-row">${NX.pano.btn(p.lat, p.lon, p.title, 'btn sm')}</div><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
   }
   function fixPopup(x) {
     const k = NX.fixes.KIND[x.kind];

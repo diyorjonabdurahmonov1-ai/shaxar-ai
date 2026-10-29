@@ -81,7 +81,7 @@
   }
 
   NX.yandex = {
-    key, show, hide, highlight, state,
+    key, load, show, hide, highlight, state,
     getMap: () => (active && ymap ? ymap : null),
     setPicker: fn => { picker = fn; }, isActive: () => active, mode: () => (key() && !forceWidget ? 'api' : 'widget') };
 })();

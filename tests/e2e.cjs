@@ -374,6 +374,8 @@ async function clickStreet(page, name) {
         GeoObjectCollection: Coll,
         Placemark: function (c, p) { this.p = p; this.geometry = { getCoordinates: () => c }; this.balloon = { open() { window.__balloon++; } }; },
         templateLayoutFactory: { createClass: () => function () {} },
+        panorama: { isSupported: () => true, locate: c => Promise.resolve(c[0] > 39 ? [{ c }] : []),
+          Player: function (el, p) { el.dataset.pano = String(p.c[0]); this.destroy = () => { window.__panoDestroyed = true; }; } },
       };` });
   });
   const p6 = await ctx6.newPage();
@@ -404,6 +406,22 @@ async function clickStreet(page, name) {
   await p6.evaluate(() => { const p = NX.state.model.problems[0]; const b = document.createElement('button'); b.dataset.fix = 'dismiss'; b.dataset.pid = p.id; document.getElementById('ymap').appendChild(b); b.click(); });
   await p6.waitForFunction(n => NX.state.model.problems.length < n, n6, { timeout: 10000 });
   ok('Yandex balloonidagi “Bu muammo emas” ishlaydi', true);
+  // Real koʻrinish (Yandex panorama)
+  await p6.click('.prob [data-pano]');
+  await p6.waitForFunction(() => (document.getElementById('panoBox') || {}).dataset && document.getElementById('panoBox').dataset.pano, null, { timeout: 10000 });
+  ok('“📷 Real koʻrinish” Yandex panoramasini ochadi', (await p6.isVisible('#panoDlg')) && /yandex\.uz\/maps.*panorama/.test(await p6.getAttribute('#panoLink', 'href')));
+  await p6.click('[data-pano-close]');
+  await p6.waitForFunction(() => window.__panoDestroyed === true && !document.getElementById('panoDlg').open, null, { timeout: 5000 });
+  ok('Panorama yopilsa oʻyinchi tozalanadi', true);
+  await p6.evaluate(() => NX.pano.open(1, 1, 'Boʻsh joy'));
+  await p6.waitForFunction(() => /surat yoʻq/.test(document.getElementById('panoBox').textContent), null, { timeout: 5000 });
+  ok('Surat boʻlmagan joyda tushunarli xabar', true);
+  await p6.click('[data-pano-close]');
+  await p6.click('.tabs [data-tab=map]');
+  if (await p6.isVisible('#panel .back')) await p6.click('#panel .back');
+  await p6.evaluate(() => { const s = NX.state.model.streets.find(x => x.name === 'Registon koʻchasi'); const w = NX.state.model.ways[s.ways[0]]; const p = w.ll[1]; window.__yaClick({ get: () => [p[0], p[1]] }); });
+  await p6.waitForSelector('#panel .pano-cta', { timeout: 10000 });
+  ok('Koʻcha panelida “Real koʻrinish” tugmasi', true);
   ok('Konsolda xato yoʻq (Yandex)', e6.length === 0, e6.join(' || '));
 
   // ---------- 7. Yandex kaliti ishlamasa → kalitsiz vidjet ----------
@@ -417,6 +435,9 @@ async function clickStreet(page, name) {
   await p7.click('#btnYandex');
   await p7.waitForSelector('#ymap iframe', { timeout: 10000 });
   ok('Yandex kaliti ishlamasa: zaxira xarita + tugma bilan kalitsiz probkalar', /map-widget/.test(await p7.getAttribute('#ymap iframe', 'src')));
+  await p7.evaluate(() => NX.pano.open(39.65, 66.97, 'Test'));
+  await p7.waitForFunction(() => /yuklanmadi/.test(document.getElementById('panoBox').textContent), null, { timeout: 10000 });
+  ok('Yandex ishlamasa panorama oʻrniga Yandex havolasi taklif qilinadi', /yandex\.uz\/maps/.test(await p7.getAttribute('#panoLink', 'href')));
 
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));

@@ -454,3 +454,12 @@ details.pgroup .pill { margin-left: auto; }
 .chat .pill { margin-left: 0; font-weight: 700; padding: 2px 10px; }
 .chat-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
 .ai-cta { margin: 0 0 12px; }
+
+/* Yandex panorama (real koʻrinish) */
+.pano-dlg { width: min(960px, calc(100vw - 24px)); padding: 0; overflow: hidden; }
+.pano-h { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.pano-h b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pano-h a { font-size: 13px; white-space: nowrap; }
+.pano-box { height: min(70vh, 560px); background: #0f172a; position: relative; }
+.pano-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #e2e8f0; }
+.pano-cta { margin-top: 10px; }
