@@ -52,6 +52,7 @@ async function setupRoutes(ctx, opts = {}) {
     // Ochiq joylar (yigʻilish joylari) va mahalla nomi; hudud atrofidagi xizmatlar (maktab, dorixona…)
     if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, geometry: [[la, lo], [la, lo + d * 1.3], [la + d, lo + d * 1.3], [la + d, lo], [la, lo]].map(([lat, lon]) => ({ lat, lon })) });
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [sq(39.6520, 66.9700, 0.0010, { leisure: 'park', name: 'Sinov bogʻi' }), sq(39.6620, 66.9620, 0.0008, { place: 'square', name: 'Sinov maydoni' }), { type: 'node', id: 5, lat: 39.6500, lon: 66.9700, tags: { place: 'neighbourhood', name: 'Sinov mahallasi' } }] }) }); }
+    if (/fire_station/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 11, lat: 39.6470, lon: 66.9610, tags: { amenity: 'fire_station', name: 'Sinov oʻt oʻchirish qismi' } }, { type: 'node', id: 12, lat: 39.6560, lon: 66.9760, tags: { amenity: 'hospital', name: 'Sinov shifoxonasi' } }] }) });
     if (/"amenity"~"\^\(kindergarten/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 39.6465, lon: 66.9605, tags: { amenity: 'school', name: 'Sinov maktabi' } }, { type: 'node', id: 2, lat: 39.6700, lon: 66.9950, tags: { amenity: 'pharmacy' } }] }) });
     if (/way\["building"\]/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(BLD) });
     if (opts.routesDown && isRoutes) return route.fulfill({ status: 504, body: 'timeout' });
@@ -185,6 +186,29 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 6, null, { timeout: 240000 });
   const hf = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, r: H.routes.length, up: H.routes.map(r => r.up), t: H.targets.length, high: H.high.length, f3: NX.map3d.map().getSource('hz')._data.features.length }; });
   ok('Suv toshqini: suvli koʻchadan quruq va baland joyga yoʻl, eng baland joylar xaritada', hf.kind === 'flood' && hf.r > 0 && hf.t > 0 && hf.high > 0 && hf.f3 > 0 && hf.up.every(u => u >= 0), JSON.stringify(hf));
+  // Savollar katalogi: har bir savol toʻgʻri hisobga yoʻnaltiriladi
+  const cat = await page.evaluate(() => NX.QUESTIONS.flatMap(g => g.q).map(([q, k]) => ({ q, k, got: NX.intent(q).main })).filter(x => x.got !== x.k));
+  ok('Savollar katalogi (30+ savol): har biri oʻz hisobiga yoʻnaltiriladi; “Nimalarni soʻrash mumkin” roʻyxati chatda', cat.length === 0 && (await page.evaluate(() => NX.QUESTIONS.flatMap(g => g.q).length)) >= 30 && !!(await page.$('#twinChat .ask-help')), JSON.stringify(cat));
+  // Har bir mahalla uchun evakuatsiya rejasi: sigʻim boʻyicha taqsimot, vaqt, zaxira yoʻl
+  await page.fill('#twinChat textarea[name=tq]', 'Zilzilada har bir mahalla aholisini qaysi yoʻldan qayerga evakuatsiya qilamiz?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 8, null, { timeout: 240000 });
+  const hm = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, mh: H.byMahalla, r: H.routes.map(r => ({ from: r.fromName, ppl: r.ppl, min: r.min, tot: r.totalMin, nar: r.narrowM, bk: !!r.backup })), sh: H.shelters.map(x => ({ n: x.name, a: x.assigned, c: x.cap })), facts: !!H.facts.evakuatsiya_rejasi }; });
+  ok('Mahallalar boʻyicha evakuatsiya rejasi: odamlar sigʻim boʻyicha taqsimlanadi, chiqib ketish vaqti va eng tor joy hisoblanadi', hm.kind === 'quake' && hm.mh && hm.r.length > 0 && hm.r.some(r => /Sinov mahallasi/.test(r.from)) && hm.r.every(r => r.tot >= r.min && r.nar > 0 && r.ppl > 0) && hm.facts, JSON.stringify(hm));
+  // Yongʻin: oʻt oʻchiruvchilar qayerga necha daqiqada yetadi (koʻp manbali Dijkstra)
+  await page.fill('#twinChat textarea[name=tq]', 'Yongʻin boʻlsa oʻt oʻchiruvchilar qaysi hududlarga 10 daqiqada yetib bora olmaydi?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 10, null, { timeout: 180000 });
+  const fsv = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, svc: H.svc, st: H.stations.length, cover: H.cover, route: H.route && H.route.min, pins: document.querySelectorAll('.hz-pin').length }; });
+  ok('Yongʻin xizmati: stansiyalar, meʼyorda (10 daq.) yetiladigan foiz, uzoq hududlar va yoʻl xaritada', fsv.kind === 'svc' && fsv.svc === 'fire' && fsv.st === 1 && fsv.cover != null && fsv.pins > 0, JSON.stringify(fsv));
+  // AI yordamchi (asosiy chat) ham shu hisobga ulanadi — javob 2D xaritada
+  await page.click('.tabs [data-tab=ai]');
+  await page.fill('#chat textarea[name=q]', 'Suv toshsa odamlarni qaysi yoʻldan baland joyga olib chiqamiz?');
+  await page.click('#chat form button');
+  await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length >= 2 && NX.state.chat.msgs[NX.state.chat.msgs.length - 1].role === 'ai', null, { timeout: 240000 });
+  const mc = await page.evaluate(() => { const m = NX.state.chat.msgs[NX.state.chat.msgs.length - 1]; return { hz: m.hz ? m.hz.length : 0, list: document.querySelectorAll('#chat .hz-list li').length, ann: document.querySelectorAll('.leaflet-marker-icon.ann').length, kind: NX.state.twin.hz.kind }; });
+  ok('AI yordamchi chatida ham: favqulodda savol hisoblanadi, yoʻllar 2D xaritada va roʻyxatda', mc.hz > 0 && mc.list > 0 && mc.ann > 0 && mc.kind === 'flood', JSON.stringify(mc));
+  await page.click('#chat [data-act=chat-reset]');
   await page.click('.tabs [data-tab=map]');
   ok('Favqulodda vaziyat natijasi 2D xaritada ham', (await page.$$('.leaflet-marker-icon.ann')).length > 0);
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));

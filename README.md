@@ -94,3 +94,16 @@ Testda Overpass, TomTom va OpenAI javoblari **sintetik** maʼlumot bilan almasht
 - Tavsiyalardagi narxlar taxminiy. Aniq qiymat loyiha-smeta hujjati bilan belgilanadi.
 
 Maʼlumot: © OpenStreetMap hissadorlari (ODbL); binolar: Overture Maps Foundation — OpenStreetMap va Microsoft ML Buildings (ODbL).
+
+## Favqulodda vaziyatlar (AI + algoritmlar, natija xaritada)
+
+- **Zilzila:** 300 m kataklarda zarar xavfi (EMS-98 ga yaqin zaiflik jadvali, OSM/Overture binolari). Evakuatsiya rejasi:
+  - koʻcha tarmogʻida Dijkstra;
+  - odamlar yigʻilish joylariga sigʻim boʻyicha taqsimlanadi;
+  - har yoʻlga zaxira yoʻl;
+  - chiqib ketish vaqti (piyoda yurish + eng tor joydan oʻtish);
+  - soʻralsa — har bir mahalla uchun alohida.
+- **Suv toshqini:** 2D fizik model natijasidan suvli koʻchalar topiladi. Ulardan eng yaqin quruq va 3 m+ baland joyga yoʻl chiziladi (zaxira yoʻl bilan).
+- **Yongʻin / tez yordam / politsiya:** OSM stansiyalaridan koʻp manbali Dijkstra. Meʼyorda yetiladigan ulush, uzoq hududlar va belgilangan joyga yoʻl.
+- **Savollar katalogi:** `js/data/questions.js` (32 savol). `NX.intent` savol turini aniqlaydi; testlar har bir savol oʻz hisobiga borishini tekshiradi.
+- **Chatlar:** barcha chatlar (3D egizak, AI yordamchi, hudud) bir xil hisobga ulangan. “rasmini chiz” — AI rasm.

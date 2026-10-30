@@ -141,11 +141,21 @@
     </div>`;
   }
 
+  // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
+  function msgExtras(m, fly) {
+    const list = m.hz || null;
+    return `${list && list.length ? `<p class="small"><b>📍 Xaritada:</b></p><ul class="locs hz-list">${list.map(a => `<li class="locrow"><button class="loc" data-act="${m.fly || fly}" data-lat="${a.lat}" data-lon="${a.lon}"><b>${E(a.title)}</b> <small class="muted">— ${E(a.note || '')}</small></button></li>`).join('')}</ul>` : ''}${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' Xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}`;
+  }
+  // “Nimalarni soʻrash mumkin” — yopiq roʻyxat; bosilsa savol maydoniga yoziladi (yuborilmaydi)
+  function askHelp(target) {
+    return `<details class="ask-help"><summary>❓ Nimalarni soʻrash mumkin</summary>${NX.QUESTIONS.map(g => `<div class="ask-g"><b>${E(g.g)}</b>${g.q.map(([t]) => `<button class="link ask-q" data-act="q-fill" data-target="${target}" data-q="${E(t)}">${E(t)}</button>`).join('')}</div>`).join('')}<p class="small muted">Har bir javob xaritada chiziladi. Oxiriga “rasmini chiz” qoʻshsangiz — rasm ham chiziladi.</p></details>`;
+  }
   function twinChat(S) {
     const C = S.twinChat || { msgs: [], busy: null };
     return `<section class="card chat" id="twinChat">
       <h3>🤖 AI</h3>
-      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${m.hz && m.hz.length ? `<p class="small"><b>📍 Xaritada:</b></p><ul class="locs hz-list">${m.hz.map(a => `<li class="locrow"><button class="loc" data-act="twin-fly" data-lat="${a.lat}" data-lon="${a.lon}"><b>${E(a.title)}</b> <small class="muted">— ${E(a.note || '')}</small></button></li>`).join('')}</ul>` : ''}${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' 3D xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${msgExtras(Object.assign({}, m, { fly: 'twin-fly' }), 'twin-fly')}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      ${askHelp('#twinChat textarea[name=tq]')}
       <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Savol yoki topshiriq…" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
     </section>`;
   }
@@ -659,7 +669,7 @@
     st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
     const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
     const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
-      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${annList(m)}${deepOpts(A, m)}${!m.opts && m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div></div>`).join('');
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${annList(m)}${deepOpts(A, m)}${m.img ? msgExtras({ img: m.img }, 'ann-fly') : m.imgErr ? msgExtras({ imgErr: m.imgErr }, 'ann-fly') : ''}${!m.opts && m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div></div>`).join('');
     const sugg = ['Bu yerda doim tirbandlik — nima qilsak boʻladi?', 'Soatbay bir tomonlama qilsak-chi?', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'];
     const L = A.live, min = s => Math.max(1, Math.round(s / 60));
     const live = !L ? '' : L.busy ? '<p class="small muted"><span class="spinner sm"></span> Yandex’dan hozirgi yoʻl vaqtlari olinmoqda…</p>'
@@ -724,7 +734,7 @@
       ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
       : `<div class="chat-msg ai"><div class="bubble">
           ${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}
-          <div class="ai-text">${NX.ai.render(m.text)}</div>${chatSim(m)}</div></div>`).join('')
+          <div class="ai-text">${NX.ai.render(m.text)}</div>${chatSim(m)}${msgExtras(m, 'ann-fly')}</div></div>`).join('')
       : `<div class="chat-msg ai"><div class="bubble"><p><b>Salom!</b> Men Samarqand koʻchalari boʻyicha yordamchiman.</p>
           <p>Xaritada koʻchani bosing va soʻrang: <i>“yopsak nima boʻladi?”</i>, <i>“bir tomonlama qilsak?”</i>, <i>“nima qilish kerak?”</i>.</p>
           <p>Natija xaritada koʻrinadi: <span class="tag r">qizil</span> — yuklama oshadi, <span class="tag g">yashil</span> — kamayadi.</p></div></div>`;
@@ -732,6 +742,7 @@
       <div class="chat-h"><b>🤖 AI yordamchi</b>${NX.ai.available() ? '' : '<small class="muted">AI ulanmagan — sayt hisobi bilan javob beradi</small>'}</div>
       ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>${segBar(S, s)}` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
       <div class="chat-log">${msgs}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}</div></div>` : ''}</div>
+      ${askHelp('#chat textarea[name=q]')}
       <form data-form="chat" class="chat-form">
         <textarea name="q" rows="2" placeholder="${s ? 'Masalan: yopsak nima boʻladi?' : 'Savolingizni yozing…'}" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea>
         <button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button>

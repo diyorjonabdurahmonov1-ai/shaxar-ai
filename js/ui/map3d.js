@@ -113,7 +113,7 @@
     const f = [];
     (data.hz || []).forEach(a => {
       if (a.kind === 'zone') f.push({ type: 'Feature', properties: { t: 'zone', col: a.color }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
-      else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
+      else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: a.dash ? 'alt' : 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
     });
     return { type: 'FeatureCollection', features: f };
   }
@@ -121,6 +121,7 @@
     hzMarks.forEach(m => m.remove()); hzMarks = [];
     if (!map || !window.maplibregl.Marker) return;
     (data.hz || []).forEach((a, i) => {
+      if (a.dash) return;
       const el = document.createElement('div');
       el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
       const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
@@ -173,6 +174,7 @@
         map.addLayer({ id: 'hz-zone-line', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'line-color': ['get', 'col'], 'line-width': 2.5 } });
         map.addLayer({ id: 'hz-route-case', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 17, 11], 'line-opacity': 0.9 } });
         map.addLayer({ id: 'hz-route', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7] } });
+        map.addLayer({ id: 'hz-alt', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'alt'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 17, 5], 'line-dasharray': [2, 1.5] } });
         hzMarkers();
         map.on('click', 'bld', e => {
           const id = e.features[0].properties.id, b = data.buildings.find(x => x.id === id);
