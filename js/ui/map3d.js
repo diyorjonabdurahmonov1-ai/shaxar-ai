@@ -2,7 +2,8 @@
 (function () {
   'use strict';
   const NX = window.NX;
-  let map = null, ready = null, mode = 'height', data = { buildings: [], ghi: null, flood: null, plan: null, scen: null, onView: null };
+  let map = null, ready = null, mode = 'height', data = { buildings: [], ghi: null, flood: null, plan: null, scen: null, hz: null, onView: null };
+  let hzMarks = [];
   const BASE = {
     sat: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution: 'Surat: Esri, Maxar, Earthstar Geographics' },
     street: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'], attribution: '© Esri, OpenStreetMap hissadorlari' },
@@ -52,6 +53,27 @@
     return { type: 'FeatureCollection', features: f };
   }
 
+  // Favqulodda vaziyat qatlami: xavf zonalari (qizil), evakuatsiya yoʻllari (yashil), yigʻilish/baland joylar (raqamli belgilar)
+  function hzGeo() {
+    const f = [];
+    (data.hz || []).forEach(a => {
+      if (a.kind === 'zone') f.push({ type: 'Feature', properties: { t: 'zone', col: a.color }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
+      else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
+    });
+    return { type: 'FeatureCollection', features: f };
+  }
+  function hzMarkers() {
+    hzMarks.forEach(m => m.remove()); hzMarks = [];
+    if (!map || !window.maplibregl.Marker) return;
+    (data.hz || []).forEach((a, i) => {
+      const el = document.createElement('div');
+      el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
+      const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
+      if (window.maplibregl.Popup) m.setPopup(new window.maplibregl.Popup({ maxWidth: '260px' }).setHTML(`<div class="ppop"><b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p></div>`));
+      m.addTo(map); hzMarks.push(m);
+    });
+  }
+
   function init(el) {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -81,6 +103,12 @@
         map.addSource('plan', { type: 'geojson', data: planGeo() });
         map.addLayer({ id: 'shadow', type: 'fill', source: 'plan', filter: ['==', ['get', 'kind'], 'shadow'], paint: { 'fill-color': '#0f172a', 'fill-opacity': 0.25 } });
         map.addLayer({ id: 'plan', type: 'fill-extrusion', source: 'plan', filter: ['==', ['get', 'kind'], 'plan'], paint: { 'fill-extrusion-color': '#a855f7', 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.92 } });
+        map.addSource('hz', { type: 'geojson', data: hzGeo() });
+        map.addLayer({ id: 'hz-zone', type: 'fill', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'fill-color': ['get', 'col'], 'fill-opacity': 0.32 } });
+        map.addLayer({ id: 'hz-zone-line', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'line-color': ['get', 'col'], 'line-width': 2.5 } });
+        map.addLayer({ id: 'hz-route-case', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 17, 11], 'line-opacity': 0.9 } });
+        map.addLayer({ id: 'hz-route', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7] } });
+        hzMarkers();
         map.on('click', 'bld', e => {
           const id = e.features[0].properties.id, b = data.buildings.find(x => x.id === id);
           if (!b) return;
@@ -103,6 +131,7 @@
     map.getSource('flood').setData(floodGeo());
     if (map.getSource('water')) map.getSource('water').setData(waterGeo());
     map.getSource('plan').setData(planGeo());
+    if (map.getSource('hz')) map.getSource('hz').setData(hzGeo());
   }
   async function show(el, d) {
     Object.assign(data, d || {});
@@ -111,6 +140,13 @@
     refresh();
   }
   function setMode(m) { mode = m; refresh(); }
+  function setHazard(list) { data.hz = list && list.length ? list : null; refresh(); hzMarkers(); }
+  // Hamma belgilar koʻrinadigan qilib
+  function fitTo(pts) {
+    if (!map || !pts.length) return;
+    let s = 90, w = 180, n = -90, e = -180; pts.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
+    try { map.fitBounds([[w, s], [e, n]], { padding: 60, pitch: 45, duration: 900, maxZoom: 16 }); } catch (err) { /* eski versiya */ }
+  }
   function setBase(k) { if (!map) return; const src = map.getSource('base'); if (src && src.setTiles) src.setTiles(BASE[k].tiles); }
   function flyTo(lat, lon, z) { if (map) map.flyTo({ center: [lon, lat], zoom: z || 17, pitch: 60, duration: 900 }); }
 
@@ -124,5 +160,5 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  NX.map3d = { show, snapshot, setMode, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  NX.map3d = { show, snapshot, setMode, setHazard, fitTo, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 })();

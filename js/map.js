@@ -382,7 +382,12 @@
       // Xaritada ixcham: raqam + belgi; toʻliq yozuv — sichqoncha ustida / bosilganda va chatdagi roʻyxatda
       const ico = (String(a.title).match(/^\p{Extended_Pictographic}\uFE0F?/u) || [''])[0] || (a.kind === 'line' ? '🛣' : '📍');
       const label = `<span class="ann-n">${i + 1}</span><span class="ann-i" title="${NX.esc(a.title)}">${ico}</span>`;
-      if (a.kind === 'line') {
+      if (a.kind === 'zone') L.polygon(a.ring, { renderer, color: a.color, weight: 2, fillColor: a.color, fillOpacity: 0.3, interactive: false }).addTo(L_.ann);
+      if (a.kind === 'line' && a.path) {
+        L.polyline(a.path, { renderer, color: '#ffffff', weight: 9, opacity: 0.85, interactive: false }).addTo(L_.ann);
+        L.polyline(a.path, { renderer, color: a.color || '#16a34a', weight: 5, opacity: 0.95, interactive: false }).addTo(L_.ann);
+        L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+      } else if (a.kind === 'line') {
         L.polyline([a.from, a.to], { renderer, color: '#7c3aed', weight: 6, dashArray: '10 8', opacity: 0.95, interactive: false }).addTo(L_.ann);
         L.marker([(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
       } else L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }), riseOnHover: true }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);

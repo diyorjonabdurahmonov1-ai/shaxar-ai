@@ -455,10 +455,17 @@ Qoidalar:
 - FAQAT qurilish (dom, bino) soʻralganda tuzilma: **Hozir**, **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk — xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak**, **Kelajakda (5 yil)**. Har biri 2–4 nuqta, raqamlar bilan.
 - Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.
 - Agar “internet” maʼlumoti berilgan boʻlsa — tegishlisini qisqa, manbasi bilan ayt.
+- “ehtiyojlar” berilgan boʻlsa (savol: “bu yerga nima qursam/ochsam foydali”) — dom hisobini YOZMA. Tuzilma:
+  1-qator: eng kerakli 1–2 obyekt va asosiy sabab raqam bilan (masalan: “Eng kerakli — bogʻcha: uylarning faqat 20% i 300 m meʼyorda, ~180 oʻrin kerak”).
+  **Nima yetishmaydi** — yetishmovchilik balli boʻyicha 3–5 ta: qamrov foizi, eng yaqini qancha uzoqda (nomi bilan), meʼyor radiusi, nechta oʻrin kerak.
+  **Qayerga** — “tavsiya_joy” dan: L id va maydoni bilan (xaritada shu raqam). Mos yer yoʻq boʻlsa — buni ochiq ayt va kichik obyekt (dorixona, doʻkon) uchun turar joy 1-qavati yoki pavilyonni tavsiya qil.
+  **Yetarli boʻlganlar** — bir qatorda (qamrovi ≥ 80%).
+  **Tekshirish kerak** — yer egaligi (kadastr), mavjud maktab/bogʻcha sigʻimi (taʼlim boʻlimi) — bir gapda.
+  Sport maydoni, park — mavjud obyekt, ularni “boʻsh yer” dema va ustiga qurishni tavsiya qilma.
 ${MAPRULE}`;
 
   function areaFacts(A, extra) {
-    const st = A.st, R = A.res, g = {}, X = extra || {};
+    const X = extra || {}, st = A.st, R = X.needs ? null : A.res, g = {};
     st.problems.forEach(p => { const k = NX.PROBLEM[p.type].short; g[k] = (g[k] || 0) + 1; });
     const sim = r => r ? { shahar_boʻyicha_yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0 && x.name).slice(0, 6).map(x => ({ koʻcha: x.name, qoʻshimcha_mashina_soat: Math.round(x.dv), toʻlishi_foiz: Math.round(x.scenVC * 100) })), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
     return {
@@ -475,6 +482,7 @@ ${MAPRULE}`;
       kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
       sayt_bahosi: R ? R.ev : null,
       nomzod_joylar: X.cand || null,
+      ehtiyojlar: X.needs || null,
       internet: X.internet || null,
       soya_qishda: R && R.shadow ? { soyada_qoladigan_binolar: R.shadow.shaded.length, quyosh: R.shadow.list.filter(s => s.sun.alt > 2).map(s => `${s.label} ${s.hour}:00 — ${Math.round(s.sun.alt)}°`) } : null,
       hududdagi_binolar_osm: R && R.blds ? R.blds : null,
@@ -513,8 +521,12 @@ Qoidalar:
 - Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
 - “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
-- Zilzila soʻralsa: faqat berilgan maʼlumot (binolar qavati, maktab/shifoxonalar soni) asosida qaysi turdagi binolar koʻproq xavf ostida ekanini ayt; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt va uni qayerdan olish kerakligini (kadastr, qurilish inspeksiyasi) ayt. Raqam oʻylab topma.
-- Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv, chuqurligi rang bilan; zilzilada qizil — maktab/shifoxona, toʻq sariq — 5+ qavat).
+- Zilzila soʻralsa: “xavf_xaritasi” dagi zonalar va raqamlar asosida javob ber; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt. Raqam oʻylab topma.
+- “xavf_xaritasi” berilgan boʻlsa — bu koʻcha tarmogʻida hisoblangan va XARITADA CHIZILGAN natija. Javobni shunga qur va id lar bilan ayt (Z1, R1, S1, H1 — xaritadagi belgilar shu nomda):
+  • Zilzila: **Eng koʻp zarar koʻrishi mumkin joylar** — Z1…Z6: joy nomi, nechta odam xavf ostida, nega (past paxsa/gʻisht uylar, zichlik, 5+ qavat, maktab/shifoxona). **Evakuatsiya** — har bir zona uchun: “Z1 aholisi → R1 yoʻli (X → Y koʻchalari, N m, ~M daqiqa) → S1 (nomi, sigʻimi)”. Sigʻim yetmasa — ayt. **Birinchi soatda nima qilish kerak** — qisqa, joylar bilan.
+  • Suv toshqini: **Suvdan chiqish** — har bir suvli koʻcha uchun: “X koʻchasi (40 sm) → R1 yoʻli → H1 (nomi, balandligi, necha m yuqori)”. **Eng baland xavfsiz joylar** — roʻyxat.
+  • Hisob taxminiy ekanini bir marta ayt (bino materiali/yili yoʻq — qurilish inspeksiyasi va kadastrdan olinsa aniqlashadi). Raqamlarni faqat JSON’dan ol.
+- Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv; qizil kataklar — xavfli zonalar; yashil chiziqlar — evakuatsiya yoʻllari; yashil belgilar — yigʻilish/baland joylar).
 - JSON kalit nomlarini, texnik soʻzlarni yozma. Cheklovlarni faqat bir gapda ayt (relyef ~30 m, kanalizatsiya sigʻimi taxminiy).
 - Oʻzbek tilida (lotin), aniq va londa.`;
   async function twinAsk(q, facts, history) {

@@ -78,8 +78,11 @@
       if (!list || !list.length) { drop('ann'); return; }
       const c = coll('ann');
       list.forEach((a, i) => {
-        if (a.kind === 'line') c.add(new window.ymaps.Polyline([a.from, a.to], { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` }, { strokeColor: '#7c3aed', strokeWidth: 6, strokeStyle: 'dash', strokeOpacity: 0.95 }));
-        const p = a.kind === 'line' ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon];
+        const bal = { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` };
+        if (a.kind === 'zone') c.add(new window.ymaps.Polygon([a.ring], bal, { strokeColor: a.color, strokeWidth: 2, fillColor: a.color, fillOpacity: 0.3 }));
+        if (a.kind === 'line' && a.path) c.add(new window.ymaps.Polyline(a.path, bal, { strokeColor: a.color || '#16a34a', strokeWidth: 6, strokeOpacity: 0.95 }));
+        else if (a.kind === 'line') c.add(new window.ymaps.Polyline([a.from, a.to], bal, { strokeColor: '#7c3aed', strokeWidth: 6, strokeStyle: 'dash', strokeOpacity: 0.95 }));
+        const p = a.kind === 'line' && !a.path ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon];
         c.add(new window.ymaps.Placemark(p, { iconContent: String(i + 1), hintContent: a.title, balloonContent: `<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` }, { preset: 'islands#violetCircleIcon' }));
       });
     },

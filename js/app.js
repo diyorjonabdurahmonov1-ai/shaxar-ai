@@ -365,6 +365,35 @@
     }, extra || {});
   }
   const scenFacts = s => ({ yomgir_mm_1_soatda: s.rain, kanalizatsiya_olib_ketadi_mm_soat: s.drain, [s.mode === 'street' ? 'suv_10sm_dan_chuqur_koʻchalar_km' : 'suv_ostida_ga']: s.mode === 'street' ? s.km : s.areaHa, koʻchalar: s.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })), suv_yetadigan_binolar: s.buildings, maktab_shifoxona: s.critical, hisob: s.mode === 'street' ? 'koʻchalar boʻylab oqim (OSM koʻchalari + SRTM relyef, Manning)' : 'relyef kataklari' });
+  // ---------- Favqulodda vaziyat: xavf zonalari, evakuatsiya yoʻllari, baland joylar (xaritada) ----------
+  async function hazardRun(kind, q, fl) {
+    const T = twinState();
+    if (!T.dem) return null;
+    const roads = T.roads && T.roads.length ? T.roads : NX.twin.roadsFromModel(S.model);
+    const net = NX.twin.streetNet(T.dem, roads);
+    let os = null;
+    try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(25000).then(() => null)]); } catch (e) { os = null; }
+    os = os || { spaces: [], places: [] };
+    const blds = T.buildings || NX.buildings.get() || [];
+    // Foydalanuvchi xaritada hudud chizgan boʻlsa — undan ham yoʻl
+    const ex = S.area ? [{ id: 'B', name: 'belgilangan hudud', c: S.area.st.center, ppl: 0 }] : [];
+    let H;
+    if (kind === 'quake') H = NX.hazard.quake({ net, blds, os, I: NX.hazard.intensity(q).I, extraOrigins: ex });
+    else {
+      const wet = [];
+      if (fl && fl.frames) fl.segs.forEach((sg, i) => { let m = 0; fl.frames.forEach(f => { if (f.d[i] > m) m = f.d[i]; }); if (m >= 0.05) wet.push({ lat: sg.mid[0], lon: sg.mid[1], d: m }); });
+      else if (fl && fl.segs) fl.segs.forEach(sg => wet.push({ lat: (sg.c[0][1] + sg.c[1][1]) / 2, lon: (sg.c[0][0] + sg.c[1][0]) / 2, d: sg.d }));
+      H = NX.hazard.flood({ net, blds, os, wet, streets: fl ? fl.streets : [], extraOrigins: ex.map(e => ({ name: e.name, c: e.c, d: 0 })) });
+    }
+    H.items = NX.hazard.items(H);
+    H.facts = NX.hazard.facts(H);
+    T.hz = H;
+    NX.map3d.setHazard(H.items);
+    const pts = []; H.items.forEach(a => { pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
+    NX.map3d.fitTo(pts);
+    ensureLeaflet(); NX.view.showActions(H.items);
+    return H;
+  }
   async function twinAsk(q) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -385,7 +414,9 @@
     const mmM = n.match(/(\d+(?:[.,]\d+)?)\s*(mm|millimetr)/);
     const rainQ = mmM || /yomg|jala|sel|toshqin|suv bos/.test(n);
     const quakeQ = /zilzila|yer qimirla|silkin|seysm/.test(n);
-    let extra = {}, local = '';
+    // Evakuatsiya / xavfsiz yoʻl / baland joy / xavfli zona — natija xaritada chiziladi
+    const evacQ = /evaku|avaku|xavfsiz|xafsiz|qoch|panoh|boshpana|yig[ʻ'‘`]?il|qutqar|baland|zarar|vayron|xavfli joy|qayer/.test(n);
+    let extra = {}, local = '', R = null, sc0 = null;
     if (rainQ && twinState().dem) {
       const asked = mmM ? parseFloat(mmM[1].replace(',', '.')) : /sel|juda kuchli/.test(n) ? 80 : /kuchli|jala/.test(n) ? 50 : 30;
       // Juda katta qiymatlar (masalan 500 mm) modelni soatlab hisoblatadi va real emas — 200 mm/soatda cheklanadi, AI’ga aytiladi
@@ -393,10 +424,10 @@
       if (asked > mm) extra.soralgan_mm = `${asked} mm soʻraldi — bu Samarqand uchun real emas (1991-yildan eng kuchli kun ~40 mm); model ${mm} mm/soat bilan hisoblandi`;
       C.busy = `${mm} mm yomgʻir hisoblanmoqda`; renderKeepScroll();
       const variants = [...new Set([Math.round(mm / 2), mm, mm * 2])].filter(x => x > 0).map(x => scenFacts(rainScen(x)));
-      const sc = rainScen(mm);
+      const sc = sc0 = rainScen(mm);
       // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
-      let R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
+      R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
       extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
       // Kichik yomgʻir: kanalizatsiya ishlasa suv qolmaydi — ariqlar tiqilgan holat ham hisoblanadi (xaritada shu koʻrsatiladi)
       if (R && R.peak.km < 0.5 && mm <= 30) {
@@ -414,12 +445,19 @@
         if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) };
       } catch (e) { /* qidiruv ishlamadi */ }
     }
-    if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'xaritada: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
+    if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'binolar rangi: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
+    // Xavf zonalari va evakuatsiya yoʻllari — koʻcha tarmogʻida hisoblanadi va xaritada chiziladi
+    let H = null;
+    if (quakeQ || rainQ || evacQ) {
+      C.busy = quakeQ || !rainQ ? 'Xavfli zonalar va evakuatsiya yoʻllari hisoblanmoqda' : 'Suvdan chiqish yoʻllari va baland joylar hisoblanmoqda'; renderKeepScroll();
+      try { H = await hazardRun(rainQ && !quakeQ ? 'flood' : 'quake', q, R || sc0); } catch (e) { console.warn('xavf xaritasi:', e); }
+      if (H) extra.xavf_xaritasi = H.facts;
+    }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
     try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
     catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
@@ -621,6 +659,16 @@
     return out;
   }
 
+  // Yetishmaydigan xizmatlar: mos boʻsh yer boʻlsa — oʻsha yerda; boʻlmasa — eng yaqin mavjudi (masofasi bilan)
+  function needMapPoints(A) {
+    const out = [];
+    (A.match || []).slice(0, 6).forEach(({ need: x, site }) => {
+      if (site) out.push({ kind: 'point', id: site.id, lat: site.lat, lon: site.lon, title: `${x.icon} ${x.uz} — shu yerga (${F.int(site.maydon_m2)} m²)`, note: `${x.qamrov_foiz != null ? `Hududdagi uylarning faqat ${x.qamrov_foiz}% i ${x.meyor_radius_m} m meʼyoriy radiusda. ` : ''}${x.kerak_orin ? `~${x.kerak_orin} ${x.birlik} kerak. ` : ''}${site.turi}${site.nomi ? ' · ' + site.nomi : ''} — yer egaligi kadastrdan tekshiriladi.` });
+      else if (x.eng_yaqini) out.push({ kind: 'point', lat: x.eng_yaqini.lat, lon: x.eng_yaqini.lon, title: `${x.icon} Eng yaqin ${x.uz.toLowerCase()} — ${F.int(x.eng_yaqini.m)} m`, note: `Meʼyor ${x.meyor_radius_m} m; uylarning ${x.qamrov_foiz != null ? x.qamrov_foiz + '%' : '—'} i qamrovda.${x.kerakli_yer_m2 ? ' Hududda mos boʻsh yer topilmadi.' : ' Turar joy 1-qavatida ochsa boʻladi.'}` });
+      else out.push({ kind: 'point', lat: A.st.center[0], lon: A.st.center[1], title: `${x.icon} ${x.uz} — atrofda yoʻq`, note: `${x.meyor_radius_m} m meʼyoriy radiusda ham, 1 km atrofda ham topilmadi (OSM).` });
+    });
+    return out;
+  }
   async function areaAsk(q) {
     const A = S.area;
     q = (q || '').trim();
@@ -628,7 +676,9 @@
     const prev = A.qa.slice(-2);
     A.qa.push({ role: 'user', text: q });
     // Savolda xonadon/qavat boʻlsa — avval qurilish hisoblanadi
-    const pb = NX.area.parseBuild(q);
+    // “Nima qursam foydali?” — dom hisobi emas, hududda nima yetishmasligi (xizmatlar qamrovi meʼyorga nisbatan)
+    const needQ = NX.area.NEED_Q.test(q) && !/prop|probk|tirban|tiqil|svetofor|polosa/i.test(q);
+    const pb0 = NX.area.parseBuild(q), pb = needQ && pb0 && !pb0.flats && !pb0.floors ? null : pb0;
     if (pb && (pb.flats || pb.floors || !A.res)) {
       if (pb.flats) A.spec.flats = pb.flats;
       if (pb.floors) A.spec.floors = pb.floors;
@@ -641,10 +691,23 @@
       A.qaBusy = 'Hududdagi real joylar aniqlanmoqda (boʻsh yerlar, berk koʻchalar)…'; renderKeepScroll();
       try { A.cand = await Promise.race([NX.area.candidates(S.model, A.st), NX.sleep(30000).then(() => null)]); } catch (e) { A.cand = null; }
     }
+    let needFacts = null;
+    if (needQ) {
+      if (!A.needs) {
+        A.qaBusy = 'Hududda nima yetishmasligi hisoblanmoqda (maktab, bogʻcha, shifoxona, doʻkon, bekat…)'; renderKeepScroll();
+        try { if (!NX.buildings.get()) await Promise.race([NX.buildings.load(), NX.sleep(20000)]); } catch (e) { /* binolarsiz */ }
+        try { A.needs = await Promise.race([NX.area.needs(S.model, A.st), NX.sleep(35000).then(() => null)]); } catch (e) { A.needs = null; }
+      }
+      if (A.needs) {
+        A.match = NX.area.matchSites(A.needs, A.cand);
+        needFacts = { aholi_taxmin: A.needs.aholi, aholi_manba: A.needs.aholi_manba, xizmatlar: A.needs.list.map(x => ({ nima: x.uz, meyor_radius_m: x.meyor_radius_m, uylar_qamrovi_foiz: x.qamrov_foiz, hudud_ichida: x.hudud_ichida, eng_yaqini_m: x.eng_yaqini && x.eng_yaqini.m, eng_yaqini_nomi: x.eng_yaqini && x.eng_yaqini.nomi, kerak: x.kerak_orin ? `${x.kerak_orin} ${x.birlik}` : null, kerakli_yer_m2: x.kerakli_yer_m2, yetishmovchilik_ball: x.yetishmovchilik })),
+          tavsiya_joy: A.match.map(m => ({ nima: m.need.uz, joy: m.site ? m.site.id : m.need.kerakli_yer_m2 ? 'mos boʻsh yer yoʻq' : 'yangi bino shart emas — turar joy 1-qavatida yoki kichik pavilyon' })) };
+      }
+    }
     const candFacts = A.cand ? { L_boʻsh_yerlar: A.cand.L.map(x => ({ id: x.id, turi: x.turi, maydon_m2: x.maydon_m2, nomi: x.nomi })), C_yangi_yoʻl_variantlari: A.cand.C.map(x => ({ id: x.id, qaysi: x.qaysi, uzunlik_m: x.uzunlik_m })), P_muammolar: A.cand.P.map(x => ({ id: x.id, nima: x.nima, joy: x.joy })), S_koʻchalar: A.cand.S.map(x => ({ id: x.id, nomi: x.nomi, turi: x.turi })) } : null;
     // Tirbandlik / bir tomonlama / svetofor savoli — chuqur tahlil (variantlar, Yandex real vaqt, internet, xarita)
     let r = null;
-    if (!pb && TRAFFIC_Q.test(q) && NX.ai.available()) {
+    if (!pb && !needQ && TRAFFIC_Q.test(q) && NX.ai.available()) {
       try {
         const step = t => { A.qaBusy = t + '…'; renderKeepScroll(); };
         const dp = await deepAnalyze(q, A, step);
@@ -667,13 +730,13 @@
       }
       A.qaBusy = 'AI javob yozmoqda…';
       renderKeepScroll();
-      r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet }));
+      r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet, needs: needFacts }));
       if (internet && !r.sources) r.sources = internet.manbalar;
     }
     // Xaritada: sayt hisobidagi asosiy joylar + AI belgilagan joylar (faqat real nomzodlardan)
     const pa = NX.area.actionsFrom(r.text, A.cand);
     r.text = pa.text;
-    pa.actions = areaMapPoints(A).concat(pa.actions).slice(0, 14);
+    pa.actions = (needQ ? needMapPoints(A) : areaMapPoints(A)).concat(pa.actions.filter(a => !(needQ && a.id && /^L/.test(a.id)))).slice(0, 14);
     if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
     A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;

@@ -47,6 +47,10 @@ async function setupRoutes(ctx, opts = {}) {
     if (opts.overpassDown) return route.abort('failed');
     const body = decodeURIComponent((route.request().postData() || '').replace(/\+/g, ' '));
     const isRoutes = /relation\["type"="route"\]/.test(body);
+    // Ochiq joylar (yigʻilish joylari) va mahalla nomi; hudud atrofidagi xizmatlar (maktab, dorixona…)
+    if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, geometry: [[la, lo], [la, lo + d * 1.3], [la + d, lo + d * 1.3], [la + d, lo], [la, lo]].map(([lat, lon]) => ({ lat, lon })) });
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [sq(39.6520, 66.9700, 0.0010, { leisure: 'park', name: 'Sinov bogʻi' }), sq(39.6620, 66.9620, 0.0008, { place: 'square', name: 'Sinov maydoni' }), { type: 'node', id: 5, lat: 39.6500, lon: 66.9700, tags: { place: 'neighbourhood', name: 'Sinov mahallasi' } }] }) }); }
+    if (/"amenity"~"\^\(kindergarten/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 39.6465, lon: 66.9605, tags: { amenity: 'school', name: 'Sinov maktabi' } }, { type: 'node', id: 2, lat: 39.6700, lon: 66.9950, tags: { amenity: 'pharmacy' } }] }) });
     if (/way\["building"\]/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(BLD) });
     if (opts.routesDown && isRoutes) return route.fulfill({ status: 504, body: 'timeout' });
     await new Promise(r => setTimeout(r, 150));
@@ -168,7 +172,19 @@ async function clickStreet(page, name) {
   await page.click('#twinChat form button');
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
+  // Favqulodda vaziyat: zarar zonalari va evakuatsiya yoʻllari koʻcha tarmogʻida hisoblanib, xaritada chiziladi
+  await page.fill('#twinChat textarea[name=tq]', '9 ballik zilzila boʻlsa qayer koʻp zarar koʻradi va evakuatsiya uchun qaysi yoʻl xavfsiz?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 4, null, { timeout: 180000 });
+  const hz = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, I: H.I, z: H.zones.length, r: H.routes.length, pl: H.routes[0] && H.routes[0].path.length, sh: H.shelters.map(s => s.name), f3: NX.map3d.map().getSource('hz')._data.features.length, pins: document.querySelectorAll('.hz-pin').length, list: document.querySelectorAll('#twinChat .hz-list li').length, mode: NX.map3d.mode() }; });
+  ok('Zilzila: xavfli zonalar, xavfsiz yoʻllar (koʻchalar boʻylab) va yigʻilish joylari xaritada', hz.kind === 'quake' && hz.I === 9 && hz.z > 0 && hz.r > 0 && hz.pl > 2 && hz.f3 >= hz.z + hz.r && hz.pins > 0 && hz.list > 0 && hz.mode === 'quake' && hz.sh.some(n => /Sinov/.test(n)), JSON.stringify(hz));
+  await page.fill('#twinChat textarea[name=tq]', '50 mm yomgʻirda suv toshsa evakuatsiya uchun eng baland joy qayer?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 6, null, { timeout: 240000 });
+  const hf = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, r: H.routes.length, up: H.routes.map(r => r.up), t: H.targets.length, high: H.high.length, f3: NX.map3d.map().getSource('hz')._data.features.length }; });
+  ok('Suv toshqini: suvli koʻchadan quruq va baland joyga yoʻl, eng baland joylar xaritada', hf.kind === 'flood' && hf.r > 0 && hf.t > 0 && hf.high > 0 && hf.f3 > 0 && hf.up.every(u => u >= 0), JSON.stringify(hf));
   await page.click('.tabs [data-tab=map]');
+  ok('Favqulodda vaziyat natijasi 2D xaritada ham', (await page.$$('.leaflet-marker-icon.ann')).length > 0);
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
   ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
   // Dinamik transport: tigʻiz soat 07:00–10:00, 15 daqiqalik qadamlar
@@ -814,6 +830,11 @@ async function clickStreet(page, name) {
   ok('Qurilish natijasi xaritada belgilanadi: bino, yuklanadigan koʻchalar, bekat, maktab', anns.length >= 3 && anns.some(t => /🏢/.test(t)) && anns.some(t => /🚏/.test(t)) && anns.some(t => /🏫/.test(t)), anns.join(' | '));
   ok('Bino safarlari mahalla koʻchalariga ham tarqaladi (bir nechta chiqish)', await p9.evaluate(() => NX.state.area.res.sim.deltas.length / 2 >= 6), await p9.evaluate(() => String(NX.state.area.res.sim.deltas.length / 2)));
   if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }
+  // “Nima qursam foydali?” — dom hisobi emas: xizmatlar qamrovi meʼyorga nisbatan, xaritada
+  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerga nima qursam foydali boʻladi?'); await p9.click('#areaChat form button');
+  await p9.waitForFunction(() => NX.state.area.qa.length === 4 && !NX.state.area.qaBusy, null, { timeout: 90000 });
+  const nd = await p9.evaluate(() => { const A = NX.state.area; return { n: A.needs && A.needs.list.length, pop: A.needs && A.needs.aholi, school: A.needs && A.needs.list.find(x => x.k === 'school').eng_yaqini, flats: A.spec.flats, acts: A.qa[3].actions.map(a => a.title) }; });
+  ok('“Nima qursam foydali”: yetishmaydigan xizmatlar (meʼyoriy radius, qamrov), dom hisobi qayta qilinmaydi, xaritada', nd.n === 9 && nd.pop > 0 && nd.school && nd.school.nomi === 'Sinov maktabi' && nd.flats === 500 && nd.acts.length > 0 && !nd.acts.some(t => /🏢/.test(t)), JSON.stringify(nd));
   await p9.click('.tabs [data-tab=ai]');
   await p9.fill('#chat textarea[name=q]', 'Bu hududga 300 xonadonli 12 qavatli dom qursak nima boʻladi?');
   await p9.click('#chat form button');

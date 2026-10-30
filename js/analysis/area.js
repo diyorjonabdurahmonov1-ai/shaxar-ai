@@ -164,18 +164,81 @@
     // Boʻsh yerlar — OpenStreetMap (hudud chegarasi boʻyicha)
     try {
       let s = 90, w = 180, n = -90, e = -180; poly.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
-      const q = `[out:json][timeout:25];(way["landuse"~"^(grass|meadow|brownfield|greenfield|construction|vacant|farmland|orchard|allotments)$"](${s},${w},${n},${e});way["building"="construction"](${s},${w},${n},${e});way["leisure"~"^(pitch|park)$"](${s},${w},${n},${e}););out tags geom qt;`;
+      const q = `[out:json][timeout:25];(way["landuse"~"^(grass|meadow|brownfield|greenfield|construction|vacant|farmland|orchard|allotments)$"](${s},${w},${n},${e});way["building"="construction"](${s},${w},${n},${e}););out tags geom qt;`;
       const r = await Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 30000).then(x => { if (x.ok && x.data && x.data.elements) return x.data.elements; throw new Error(); })));
       r.filter(el => el.geometry && el.geometry.length > 3).map(el => {
         const xy = el.geometry.map(g => G.xy(g.lat, g.lon)); let A = 0, cx = 0, cy = 0;
         for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) { const f = xy[j][0] * xy[i][1] - xy[i][0] * xy[j][1]; A += f; cx += (xy[j][0] + xy[i][0]) * f; cy += (xy[j][1] + xy[i][1]) * f; }
         A /= 2; if (Math.abs(A) < 400) return null;
         const c = G.ll(cx / (6 * A), cy / (6 * A)), t = el.tags || {};
-        return inP(c[0], c[1]) ? { lat: c[0], lon: c[1], turi: t.landuse || (t.building ? 'qurilish' : t.leisure) || 'yer', maydon_m2: Math.round(Math.abs(A)), nomi: t.name || '' } : null;
+        return inP(c[0], c[1]) ? { lat: c[0], lon: c[1], turi: LAND_UZ[t.landuse] || (t.building ? 'qurilish maydoni' : 'yer'), maydon_m2: Math.round(Math.abs(A)), nomi: t.name || '' } : null;
       }).filter(Boolean).sort((a, b) => b.maydon_m2 - a.maydon_m2).slice(0, 10).forEach((l, i) => out.L.push(Object.assign({ id: 'L' + (i + 1) }, l)));
     } catch (e) { /* boʻsh yer maʼlumoti olinmadi */ }
     return out;
   }
+  const LAND_UZ = { grass: 'maysazor', meadow: 'ochiq yer', brownfield: 'boʻshagan sanoat yeri', greenfield: 'qurilmagan yer', construction: 'qurilish maydoni', vacant: 'boʻsh yer', farmland: 'ekin yeri', orchard: 'bogʻ (mevali)', allotments: 'tomorqa' };
+
+  // ---------- “Bu yerga nima qursam foydali?” — xizmatlar qamrovi meʼyorga nisbatan ----------
+  // Xizmat koʻrsatish radiusi (SNiP 2.07.01-89 / ShNQ 2.07.01-03 asosida, mikrorayon uchun), 1000 aholiga sigʻim va kerakli yer
+  const NEEDS = [
+    { k: 'kindergarten', uz: 'Bogʻcha', icon: '🧒', r: 300, per1000: 55, perUnit: 'oʻrin', landM2: 2500, q: 'amenity=kindergarten' },
+    { k: 'school', uz: 'Maktab', icon: '🏫', r: 500, per1000: 120, perUnit: 'oʻquvchi oʻrni', landM2: 15000, q: 'amenity=school' },
+    { k: 'clinic', uz: 'Poliklinika / oilaviy shifokor punkti', icon: '🏥', r: 1000, landM2: 2000, q: 'amenity~clinic|doctors|hospital' },
+    { k: 'pharmacy', uz: 'Dorixona', icon: '💊', r: 500, landM2: 0, q: 'amenity=pharmacy' },
+    { k: 'shop', uz: 'Kundalik oziq-ovqat doʻkoni', icon: '🛒', r: 500, landM2: 0, q: 'shop~supermarket|convenience|greengrocer|marketplace' },
+    { k: 'playground', uz: 'Bolalar maydonchasi', icon: '🛝', r: 300, landM2: 300, q: 'leisure=playground' },
+    { k: 'park', uz: 'Sayr joyi / xiyobon', icon: '🌳', r: 800, landM2: 5000, q: 'leisure~park|garden' },
+    { k: 'sport', uz: 'Sport maydoni', icon: '⚽', r: 800, landM2: 800, q: 'leisure~pitch|sports_centre|stadium' },
+    { k: 'stop', uz: 'Jamoat transporti bekati', icon: '🚏', r: 500, landM2: 0 },
+  ];
+  const kindOf = t => (t.amenity === 'kindergarten' ? 'kindergarten' : t.amenity === 'school' ? 'school' : /^(clinic|doctors|hospital)$/.test(t.amenity) ? 'clinic' : t.amenity === 'pharmacy' ? 'pharmacy' : t.shop || t.amenity === 'marketplace' ? 'shop' : t.leisure === 'playground' ? 'playground' : /^(park|garden)$/.test(t.leisure) ? 'park' : /^(pitch|sports_centre|stadium)$/.test(t.leisure) ? 'sport' : null);
+  async function needs(M, st) {
+    const poly = st.poly, inP = (la, lo) => NX.area.inside(poly, la, lo);
+    let s = 90, w = 180, n = -90, e = -180; poly.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
+    const pad = 0.011, bb = `${s - pad},${w - pad * 1.3},${n + pad},${e + pad * 1.3}`;
+    const q = `[out:json][timeout:25];(nwr["amenity"~"^(kindergarten|school|clinic|doctors|hospital|pharmacy|marketplace)$"](${bb});nwr["shop"~"^(supermarket|convenience|greengrocer)$"](${bb});nwr["leisure"~"^(playground|park|garden|pitch|sports_centre|stadium)$"](${bb}););out tags center qt;`;
+    const els = await Promise.any(NX.config.overpassMirrors.map(url => NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 30000).then(x => { if (x.ok && x.data && x.data.elements) return x.data.elements; throw new Error(); })));
+    const pts = {}; NEEDS.forEach(d => { pts[d.k] = []; });
+    els.forEach(el => { const t = el.tags || {}, k = kindOf(t), la = el.lat != null ? el.lat : el.center && el.center.lat, lo = el.lon != null ? el.lon : el.center && el.center.lon; if (!k || la == null) return; const [x, y] = G.xy(la, lo); pts[k].push({ lat: la, lon: lo, x, y, name: t['name:uz'] || t.name || '' }); });
+    M.stops.forEach(o => pts.stop.push({ lat: o.lat, lon: o.lon, x: o.x, y: o.y, name: o.name || '' }));
+    // Aholi: hududdagi turar joy binolari (OSM), boʻlmasa — maydon × 120 kishi/ga (oʻrtacha zichlik)
+    const blds = (NX.buildings.get() || []).filter(b => inP(b.c[0], b.c[1]));
+    const RES = /^(house|detached|residential|apartments|yes|terrace|semidetached_house|dormitory)$/;
+    const resid = blds.filter(b => RES.test(b.kind));
+    const pop = resid.length ? Math.round(resid.reduce((t, b) => t + (b.area * b.levels * 0.8) / 25, 0)) : Math.round(st.areaHa * 120);
+    // Qamrov: hudud ichidagi turar joylar (boʻlmasa — tarmoq nuqtalari) necha foizi meʼyoriy radiusda
+    let homes = resid.map(b => G.xy(b.c[0], b.c[1]));
+    if (homes.length < 5) { const xy = poly.map(p => G.xy(p[0], p[1])); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; xy.forEach(p => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }); homes = []; for (let x = x0 + 20; x < x1; x += 40) for (let y = y0 + 20; y < y1; y += 40) { const ll = G.ll(x, y); if (inP(ll[0], ll[1])) homes.push([x, y]); } }
+    const [cx, cy] = G.xy(st.center[0], st.center[1]);
+    const list = NEEDS.map(d => {
+      const P = pts[d.k];
+      const covered = homes.filter(h => P.some(p => Math.hypot(p.x - h[0], p.y - h[1]) <= d.r)).length;
+      const near = P.map(p => ({ p, d: Math.hypot(p.x - cx, p.y - cy) })).sort((a, b) => a.d - b.d)[0];
+      return { k: d.k, uz: d.uz, icon: d.icon, meyor_radius_m: d.r, qamrov_foiz: homes.length ? Math.round(covered / homes.length * 100) : null, hudud_ichida: P.filter(p => inP(p.lat, p.lon)).length,
+        eng_yaqini: near ? { m: Math.round(near.d), nomi: near.p.name, lat: near.p.lat, lon: near.p.lon } : null, kerak_orin: d.per1000 ? Math.round(pop * d.per1000 / 1000) : null, birlik: d.perUnit || null, kerakli_yer_m2: d.landM2 };
+    });
+    // Ustuvorlik: qamrov past va meʼyordan uzoq boʻlganlar birinchi
+    const gap = x => (x.qamrov_foiz == null ? 50 : 100 - x.qamrov_foiz) + (x.eng_yaqini ? Math.max(0, x.eng_yaqini.m / x.meyor_radius_m - 1) * 20 : 40);
+    list.forEach(x => { x.yetishmovchilik = Math.round(gap(x)); });
+    list.sort((a, b) => b.yetishmovchilik - a.yetishmovchilik);
+    return { aholi: pop, aholi_manba: resid.length ? `OSM binolari (${resid.length} ta turar joy)` : 'maydon × oʻrtacha zichlik', list };
+  }
+  // Mos yer: xizmatga kerakli maydonga sigʻadigan eng yaqin boʻsh yer (L) — har yer bitta xizmatga
+  function matchSites(nd, cand) {
+    const L = ((cand && cand.L) || []).slice(), used = new Set(), out = [];
+    nd.list.filter(x => x.yetishmovchilik >= 30).forEach(x => {
+      if (!x.kerakli_yer_m2) { out.push({ need: x, site: null }); return; }
+      const site = L.filter(l => !used.has(l.id) && l.maydon_m2 >= x.kerakli_yer_m2 * 0.8).sort((a, b) => a.maydon_m2 - b.maydon_m2)[0];
+      if (site) used.add(site.id);
+      out.push({ need: x, site: site || null });
+    });
+    return out;
+  }
+  NX.area.needs = needs;
+  NX.area.matchSites = matchSites;
+  NX.area.NEEDS = NEEDS;
+  NX.area.NEED_Q = /nima\s*qur|nima\s*quril|nima\s*qo[ʻ'‘`]?y|nima\s*och|nima\s*yetishma|yetishmay|nima\s*kerak|qanday\s*obyekt|foydali|ehtiyoj|nima\s*bo[ʻ'‘`]?lsa/i;
+
   // AI javobi oxiridagi ```json {"belgilar":[...]} ``` — nomzod id lari boʻyicha xaritadagi belgilarga
   function actionsFrom(text, cand) {
     const m = String(text || '').match(/```(?:json)?\s*(\{[\s\S]*?"belgilar"[\s\S]*?\})\s*```/);
