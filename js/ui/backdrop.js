@@ -65,10 +65,23 @@
     for (let i = 1; i < l.pts.length; i++) { const a = l.pts[i - 1], b = l.pts[i], s = Math.hypot(b[0] - a[0], b[1] - a[1]); if (acc + s >= d) { const t = s ? (d - acc) / s : 0; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; } acc += s; }
     return l.pts[l.pts.length - 1];
   }
+  // Menyu yoʻlaklari va ulardagi oqimlar
+  let lanes = [], streaks = [];
+  const STREAK_COL = ['#5eead4', '#38bdf8', '#a5f3fc', '#fde68a'];
+  function streak(fresh) {
+    const L = lanes[Math.floor(Math.random() * lanes.length)];
+    return { y: L.y, x: fresh ? Math.random() * W : -Math.random() * W * 0.6, v: 140 + Math.random() * 260, len: 60 + Math.random() * 160, w: 1.2 + Math.random() * 1.4, col: STREAK_COL[Math.floor(Math.random() * STREAK_COL.length)] };
+  }
+  function setLanes() {
+    const tb = document.querySelector('.topbar'), h = tb ? tb.offsetHeight : 60;
+    lanes = []; for (let y = 8; y < h - 4; y += 11) lanes.push({ y });
+    lanes.h = h;
+    streaks = lanes.length ? Array.from({ length: Math.round(W / 45) }, () => streak(true)) : [];
+  }
   function resize() {
     dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight;
     cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
-    geometry(); frame(performance.now(), true);
+    geometry(); setLanes(); frame(performance.now(), true);
   }
   function frame(now, force) {
     if (!force && (document.hidden || now - last < 33)) return;
@@ -112,6 +125,20 @@
       g.beginPath(); g.arc(q[0], q[1], 2.5, 0, Math.PI * 2); g.fill();
       g.shadowBlur = 0; g.globalAlpha = 1;
     });
+    // Yuqori menyu yoʻlagi: tez oqayotgan maʼlumot oqimlari (ilova nomi turgan qismda fon yaqqol koʻrinsin)
+    if (lanes.length) {
+      const hh = lanes.h;
+      const band = g.createLinearGradient(0, 0, 0, hh); band.addColorStop(0, 'rgba(14,116,144,0.18)'); band.addColorStop(1, 'rgba(14,116,144,0.02)');
+      g.fillStyle = band; g.fillRect(0, 0, W, hh);
+      lanes.forEach(L => { g.strokeStyle = 'rgba(94,234,212,0.10)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, L.y + 0.5); g.lineTo(W, L.y + 0.5); g.stroke(); });
+      streaks.forEach(k => {
+        if (!still) k.x += k.v * dt;
+        if (k.x - k.len > W) Object.assign(k, streak());
+        const gr = g.createLinearGradient(k.x - k.len, 0, k.x, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, k.col);
+        g.strokeStyle = gr; g.lineWidth = k.w; g.globalAlpha = 0.9; g.beginPath(); g.moveTo(k.x - k.len, k.y); g.lineTo(k.x, k.y); g.stroke();
+        g.fillStyle = k.col; g.shadowColor = k.col; g.shadowBlur = 12; g.beginPath(); g.arc(k.x, k.y, k.w * 1.1, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0; g.globalAlpha = 1;
+      });
+    }
     // Muammoli joylar: nuqta + kengayib yoʻqoladigan toʻlqin
     spots.forEach(s => {
       const ph = ((T + s.ph) % 6) / 6, col = P.warn[s.c];
