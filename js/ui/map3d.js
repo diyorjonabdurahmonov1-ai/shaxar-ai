@@ -112,7 +112,11 @@
   function hzGeo() {
     const f = [];
     (data.hz || []).forEach(a => {
-      if (a.kind === 'zone') f.push({ type: 'Feature', properties: { t: 'zone', col: a.color }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
+      if (a.kind === 'zone' && a.cells && a.cells.length) {
+        // Haqiqiy binolar kataklari (40 m) — xavf darajasiga qarab shaffoflik
+        const dLat = 20 / 111320, dLon = 20 / (111320 * Math.cos(a.lat * Math.PI / 180));
+        a.cells.forEach(c => f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.25 + 0.5 * c[2] }, geometry: { type: 'Polygon', coordinates: [[[c[1] - dLon, c[0] - dLat], [c[1] + dLon, c[0] - dLat], [c[1] + dLon, c[0] + dLat], [c[1] - dLon, c[0] + dLat], [c[1] - dLon, c[0] - dLat]]] } }));
+      } else if (a.kind === 'zone' && a.ring) f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.32 }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
       else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: a.dash ? 'alt' : 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
     });
     return { type: 'FeatureCollection', features: f };
@@ -170,10 +174,14 @@
         map.addLayer({ id: 'shadow', type: 'fill', source: 'plan', filter: ['==', ['get', 'kind'], 'shadow'], paint: { 'fill-color': '#0f172a', 'fill-opacity': 0.25 } });
         map.addLayer({ id: 'plan', type: 'fill-extrusion', source: 'plan', filter: ['==', ['get', 'kind'], 'plan'], paint: { 'fill-extrusion-color': '#a855f7', 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.92 } });
         map.addSource('hz', { type: 'geojson', data: hzGeo() });
-        map.addLayer({ id: 'hz-zone', type: 'fill', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'fill-color': ['get', 'col'], 'fill-opacity': 0.32 } });
-        map.addLayer({ id: 'hz-zone-line', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'line-color': ['get', 'col'], 'line-width': 2.5 } });
+        map.addLayer({ id: 'hz-zone', type: 'fill', source: 'hz', filter: ['==', ['get', 't'], 'zone'], paint: { 'fill-color': ['get', 'col'], 'fill-opacity': ['get', 'o'], 'fill-antialias': false } });
         map.addLayer({ id: 'hz-route-case', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 17, 11], 'line-opacity': 0.9 } });
         map.addLayer({ id: 'hz-route', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7] } });
+        // Yoʻl ustida oqim (oq shtrixlar harakatlanadi)
+        map.addLayer({ id: 'hz-flow', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 17, 3], 'line-opacity': 0.9, 'line-dasharray': [0, 4, 3] } });
+        let hi = 0;
+        const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
+        setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
         map.addLayer({ id: 'hz-alt', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'alt'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 17, 5], 'line-dasharray': [2, 1.5] } });
         hzMarkers();
         map.on('click', 'bld', e => {

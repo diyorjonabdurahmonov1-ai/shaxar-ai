@@ -79,6 +79,11 @@
       const c = coll('ann');
       list.forEach((a, i) => {
         const bal = { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` };
+        if (a.fx) {
+          if (a.kind === 'line') return;
+          c.add(new window.ymaps.Placemark([a.lat, a.lon], { iconContent: a.id || String(i + 1), hintContent: a.title, balloonContent: bal.balloonContent }, { preset: 'islands#circleIcon', iconColor: a.color || '#16a34a', zIndex: 1000 }));
+          return;
+        }
         if (a.kind === 'zone') c.add(new window.ymaps.Polygon([a.ring], bal, { strokeColor: a.color, strokeWidth: 2, fillColor: a.color, fillOpacity: 0.3 }));
         if (a.kind === 'line' && a.path) c.add(new window.ymaps.Polyline(a.path, bal, { strokeColor: a.color || '#16a34a', strokeWidth: a.dash ? 4 : 6, strokeStyle: a.dash ? 'dash' : 'solid', strokeOpacity: 0.95 }));
         if (a.dash) return;
@@ -113,6 +118,15 @@
       c.add(line(ring.concat([ring[0]]), { strokeColor: '#4f46e5', strokeWidth: 4, strokeOpacity: 0.95, strokeStyle: 'shortdash' }));
       if (pt) c.add(mark(pt[0], pt[1], '🏢', '#6366f1', '', 'Rejalashtirilgan bino', 36));
       if (fit) fitTo(poly, 17);
+    },
+    fitPoints(pts) {
+      const map = Y(); if (!map || !pts || !pts.length) return;
+      try { map.setBounds(window.ymaps.util.bounds.fromPoints(pts), { checkZoomRange: true, zoomMargin: 60, duration: 600 }); } catch (e) { /* */ }
+    },
+    llToPx(lat, lon) {
+      const map = Y(); if (!map) return null;
+      const gp = map.options.get('projection').toGlobalPixels([lat, lon], map.getZoom()), pp = map.converter.globalToPage(gp);
+      return [pp[0] - window.scrollX, pp[1] - window.scrollY];
     },
     pxToLL(cx, cy) {
       const map = Y(); if (!map) return null;
@@ -203,7 +217,7 @@
   const ONLY_ACTIVE = { pickPoint: 1, cancelPick: 1 };
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
-  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'showDynamic', 'clearDynamic', 'showActions', 'drawProblems', 'showProblems',
+  ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'showDynamic', 'clearDynamic', 'showActions', 'fitPoints', 'drawProblems', 'showProblems',
     'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;
@@ -215,5 +229,6 @@
   });
   NX.view.hasDeltas = () => NX.map.hasDeltas();
   NX.view.pxToLL = (x, y) => (yOn() ? Ymap.pxToLL(x, y) : NX.map.pxToLL(x, y));
+  NX.view.llToPx = (lat, lon) => (yOn() ? Ymap.llToPx(lat, lon) : NX.map.llToPx(lat, lon));
   NX.view.syncYandex = (model, fixes) => { Ymap.setModel(model); Ymap.drawFixes(fixes);  };
 })();

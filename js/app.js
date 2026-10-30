@@ -234,6 +234,8 @@
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
     if (S.tab === 'twin') renderKeepScroll();
+    // Yigʻilish joylari va favqulodda xizmatlar — oldindan (savol berilganda kutilmasin)
+    NX.hazard.openSpaces().catch(() => {}); NX.hazard.services().catch(() => {});
     // Butun shahar koʻchalari — fon rejimida (chat ularni cheksiz kutmaydi)
     T.roadsP = loadRoads(step);
     await Promise.all(jobs);
@@ -367,17 +369,19 @@
   }
   const scenFacts = s => ({ yomgir_mm_1_soatda: s.rain, kanalizatsiya_olib_ketadi_mm_soat: s.drain, [s.mode === 'street' ? 'suv_10sm_dan_chuqur_koʻchalar_km' : 'suv_ostida_ga']: s.mode === 'street' ? s.km : s.areaHa, koʻchalar: s.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })), suv_yetadigan_binolar: s.buildings, maktab_shifoxona: s.critical, hisob: s.mode === 'street' ? 'koʻchalar boʻylab oqim (OSM koʻchalari + SRTM relyef, Manning)' : 'relyef kataklari' });
   // ---------- Favqulodda vaziyat: xavf zonalari, evakuatsiya yoʻllari, baland joylar (xaritada) ----------
-  async function hazardRun(kind, q, fl) {
+  async function hazardRun(kind, q, fl, opts) {
     const T = twinState();
     if (!T.dem) return null;
     const roads = T.roads && T.roads.length ? T.roads : NX.twin.roadsFromModel(S.model);
     const net = NX.twin.streetNet(T.dem, roads);
     let os = null;
-    try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(25000).then(() => null)]); } catch (e) { os = null; }
+    try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(45000).then(() => null)]); } catch (e) { os = null; }
     os = os || { spaces: [], places: [] };
     const blds = T.buildings || NX.buildings.get() || [];
-    // Foydalanuvchi xaritada hudud chizgan boʻlsa — undan ham yoʻl
-    const ex = S.area ? [{ id: 'B', name: 'belgilangan hudud', c: S.area.st.center, ppl: 0 }] : [];
+    // Savol belgilangan hudud haqida boʻlsa (hudud chatidan yoki “shu yer/bu hudud” deb) — faqat shu hudud uchun hisob
+    const areaScope = S.area && (opts && opts.area || /shu\s*(yer|joy|hudud|mahalla)|bu\s*(yer|joy|hudud|mahalla)|belgila/i.test(q));
+    const area = areaScope ? { poly: S.area.st.poly, center: S.area.st.center, name: 'belgilangan hudud' } : null;
+    const ex = S.area && !areaScope ? [{ id: 'B', name: 'belgilangan hudud', c: S.area.st.center, ppl: 0 }] : [];
     let H;
     if (kind === 'svc') {
       const it = NX.intent(q), svcKind = ['fire', 'ambulance', 'police'].includes(it.main) ? it.main : 'fire';
@@ -388,23 +392,38 @@
       const fs = NX.ai.detectStreets ? NX.ai.detectStreets(q, S.model)[0] : null, st = fs && fs.s;
       const target = S.area ? S.area.st.center : st && st.center ? st.center : null;
       H = NX.hazard.responders({ net, svc, kind: svcKind, target, targetName: S.area ? 'belgilangan hudud' : st ? st.name : null });
-    } else if (kind === 'quake') H = NX.hazard.quake({ net, blds, os, I: NX.hazard.intensity(q).I, extraOrigins: ex, mahalla: NX.intent(q).mahalla });
+    } else if (kind === 'quake') H = NX.hazard.quake({ net, blds, os, I: NX.hazard.intensity(q).I, extraOrigins: ex, mahalla: NX.intent(q).mahalla, area });
     else {
       const wet = [];
       if (fl && fl.frames) fl.segs.forEach((sg, i) => { let m = 0; fl.frames.forEach(f => { if (f.d[i] > m) m = f.d[i]; }); if (m >= 0.05) wet.push({ lat: sg.mid[0], lon: sg.mid[1], d: m }); });
       else if (fl && fl.segs) fl.segs.forEach(sg => wet.push({ lat: (sg.c[0][1] + sg.c[1][1]) / 2, lon: (sg.c[0][0] + sg.c[1][0]) / 2, d: sg.d }));
-      H = NX.hazard.flood({ net, blds, os, wet, streets: fl ? fl.streets : [], extraOrigins: ex.map(e => ({ name: e.name, c: e.c, d: 0 })) });
+      H = NX.hazard.flood({ net, blds, os, wet, streets: fl ? fl.streets : [], extraOrigins: ex.map(e => ({ name: e.name, c: e.c, d: 0 })), area });
     }
-    H.items = NX.hazard.items(H);
+    H.items = NX.hazard.items(H).map(a => Object.assign(a, { fx: true }));
     H.facts = NX.hazard.facts(H);
     T.hz = H;
     NX.map3d.setHazard(H.items);
     const pts = []; H.items.forEach(a => { pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
     NX.map3d.fitTo(pts);
     ensureLeaflet(); NX.view.showActions(H.items);
+    // Jonli simulyatsiya xaritada (2D); boshqa belgilar xira — natija birinchi oʻrinda
+    NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter);
+    hazardFocus(true);
+    if (S.tab !== 'twin') NX.view.fitPoints(pts.filter(Boolean));
     return H;
   }
-  async function twinAsk(q) {
+  // Natija rejimi: kamera devori yashiriladi, xaritada “✕ Natijani yopish” tugmasi
+  function hazardFocus(on) {
+    const wrap = $('.map-wrap');
+    if (!wrap) return;
+    wrap.classList.toggle('hz-on', !!on);
+    NX.camwall.show(!on && S.tab === 'map');
+    let b = wrap.querySelector('.hz-close');
+    if (on && !b) { b = document.createElement('button'); b.className = 'hz-close'; b.type = 'button'; b.innerHTML = '✕ Natijani yopish'; b.onclick = hazardClear; wrap.appendChild(b); }
+    if (!on && b) b.remove();
+  }
+  function hazardClear() { NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+  async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
     if (!q || C.busy) return;
@@ -462,12 +481,12 @@
     let H = null;
     if (svcQ) {
       C.busy = 'Favqulodda xizmatlar yetib borish vaqti hisoblanmoqda'; renderKeepScroll();
-      try { H = await hazardRun('svc', q); } catch (e) { console.warn('xizmatlar:', e); }
-      if (H) extra.xizmatlar_xaritasi = H.facts;
+      try { H = await hazardRun('svc', q, null, opts); } catch (e) { console.warn('xizmatlar:', e); }
+      if (H) { extra.xizmatlar_xaritasi = H.facts; local = NX.hazard.summary(H); }
     } else if (quakeQ || rainQ || evacQ) {
       C.busy = quakeQ || !rainQ ? (it.mahalla ? 'Har bir mahalla uchun evakuatsiya rejasi hisoblanmoqda' : 'Xavfli zonalar va evakuatsiya yoʻllari hisoblanmoqda') : 'Suvdan chiqish yoʻllari va baland joylar hisoblanmoqda'; renderKeepScroll();
-      try { H = await hazardRun(rainQ && !quakeQ ? 'flood' : 'quake', q, R || sc0); } catch (e) { console.warn('xavf xaritasi:', e); }
-      if (H) extra.xavf_xaritasi = H.facts;
+      try { H = await hazardRun(rainQ && !quakeQ ? 'flood' : 'quake', q, R || sc0, opts); } catch (e) { console.warn('xavf xaritasi:', e); }
+      if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
     }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
@@ -698,7 +717,7 @@
       A.qaBusy = 'Favqulodda vaziyat hisoblanmoqda — natija xaritada…'; renderKeepScroll();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && A.qaBusy) { A.qaBusy = tc.busy + '…'; renderKeepScroll(); } }, 1200);
       let m = null;
-      try { m = await twinAsk(q); } finally { clearInterval(tick); }
+      try { m = await twinAsk(q, { area: true }); } finally { clearInterval(tick); }
       A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
       A.qaBusy = null; renderKeepScroll();
       return;

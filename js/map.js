@@ -382,6 +382,12 @@
       // Xaritada ixcham: raqam + belgi; toʻliq yozuv — sichqoncha ustida / bosilganda va chatdagi roʻyxatda
       const ico = (String(a.title).match(/^\p{Extended_Pictographic}\uFE0F?/u) || [''])[0] || (a.kind === 'line' ? '🛣' : '📍');
       const label = `<span class="ann-n">${i + 1}</span><span class="ann-i" title="${NX.esc(a.title)}">${ico}</span>`;
+      // Favqulodda vaziyat natijasi: chiziq va hudud — jonli qatlamda (NX.fx); bu yerda faqat bosiladigan ixcham belgi
+      if (a.fx) {
+        if (a.kind === 'line') return;
+        L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+        return;
+      }
       if (a.kind === 'zone') L.polygon(a.ring, { renderer, color: a.color, weight: 2, fillColor: a.color, fillOpacity: 0.3, interactive: false }).addTo(L_.ann);
       if (a.kind === 'line' && a.path) {
         L.polyline(a.path, { renderer, color: '#ffffff', weight: 9, opacity: 0.85, interactive: false }).addTo(L_.ann);
@@ -439,6 +445,12 @@
     if (pt) L.marker(pt, { icon: L.divIcon({ className: 'pmk', html: '<span style="--c:#6366f1">🏢</span>', iconSize: [36, 36], iconAnchor: [18, 18] }), interactive: false }).addTo(L_.area);
     if (fit) map.fitBounds(poly, { padding: [40, 40], maxZoom: 17 });
   }
+  function fitPoints(pts) { if (pts && pts.length) map.fitBounds(pts, { padding: [60, 60], maxZoom: 16 }); }
+  // lat/lon → ekran (client) koordinatasi
+  function llToPx(lat, lon) {
+    const r = map.getContainer().getBoundingClientRect(), p = map.latLngToContainerPoint([lat, lon]);
+    return [p.x + r.left, p.y + r.top];
+  }
   function pxToLL(cx, cy) {
     const r = map.getContainer().getBoundingClientRect(), ll = map.containerPointToLatLng([cx - r.left, cy - r.top]);
     return [ll.lat, ll.lng];
@@ -482,7 +494,7 @@
   }
 
   NX.map = {
-    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, showDynamic, clearDynamic, showActions, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
+    init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, llToPx, fitPoints, showDynamic, clearDynamic, showActions, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),
     leaflet: () => map,

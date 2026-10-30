@@ -50,7 +50,7 @@ async function setupRoutes(ctx, opts = {}) {
     const body = decodeURIComponent((route.request().postData() || '').replace(/\+/g, ' '));
     const isRoutes = /relation\["type"="route"\]/.test(body);
     // Ochiq joylar (yigʻilish joylari) va mahalla nomi; hudud atrofidagi xizmatlar (maktab, dorixona…)
-    if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, geometry: [[la, lo], [la, lo + d * 1.3], [la + d, lo + d * 1.3], [la + d, lo], [la, lo]].map(([lat, lon]) => ({ lat, lon })) });
+    if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, bounds: { minlat: la, minlon: lo, maxlat: la + d, maxlon: lo + d * 1.3 }, center: { lat: la + d / 2, lon: lo + d * 0.65 } });
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [sq(39.6520, 66.9700, 0.0010, { leisure: 'park', name: 'Sinov bogʻi' }), sq(39.6620, 66.9620, 0.0008, { place: 'square', name: 'Sinov maydoni' }), { type: 'node', id: 5, lat: 39.6500, lon: 66.9700, tags: { place: 'neighbourhood', name: 'Sinov mahallasi' } }] }) }); }
     if (/fire_station/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 11, lat: 39.6470, lon: 66.9610, tags: { amenity: 'fire_station', name: 'Sinov oʻt oʻchirish qismi' } }, { type: 'node', id: 12, lat: 39.6560, lon: 66.9760, tags: { amenity: 'hospital', name: 'Sinov shifoxonasi' } }] }) });
     if (/"amenity"~"\^\(kindergarten/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 39.6465, lon: 66.9605, tags: { amenity: 'school', name: 'Sinov maktabi' } }, { type: 'node', id: 2, lat: 39.6700, lon: 66.9950, tags: { amenity: 'pharmacy' } }] }) });
@@ -475,6 +475,8 @@ async function clickStreet(page, name) {
   await p4.screenshot({ path: (process.env.SHOT_DIR || '/tmp') + '/mobile-problem-map.png' });
   ok('Konsolda xato yoʻq (telefon)', e4.length === 0, e4.join(' || '));
 
+  // Oldingi boʻlimlar sahifalari yopiladi (animatsiyalar CPU ni band qilmasin)
+  for (const c of browser.contexts()) await c.close();
   // ---------- 5. AI proksi: brauzerda kalit yoʻq, savol Worker orqali ----------
   const ctx5 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   await setupRoutes(ctx5);
@@ -816,6 +818,8 @@ async function clickStreet(page, name) {
   await p8.click('.tabs [data-tab=map]');
   ok('Konsolda xato yoʻq (Mapillary)', e8.length === 0, e8.join(' || '));
 
+  // Oldingi boʻlimlar sahifalari yopiladi (animatsiyalar CPU ni band qilmasin)
+  for (const c of browser.contexts()) await c.close();
   // ---------- 9. Hududni erkin chizish va “bu yerga dom qursak?” ----------
   const ctx9 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await setupRoutes(ctx9);
@@ -861,6 +865,14 @@ async function clickStreet(page, name) {
   await p9.waitForFunction(() => NX.state.area.qa.length === 4 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const nd = await p9.evaluate(() => { const A = NX.state.area; return { n: A.needs && A.needs.list.length, pop: A.needs && A.needs.aholi, school: A.needs && A.needs.list.find(x => x.k === 'school').eng_yaqini, flats: A.spec.flats, acts: A.qa[3].actions.map(a => a.title) }; });
   ok('“Nima qursam foydali”: yetishmaydigan xizmatlar (meʼyoriy radius, qamrov), dom hisobi qayta qilinmaydi, xaritada', nd.n === 9 && nd.pop > 0 && nd.school && nd.school.nomi === 'Sinov maktabi' && nd.flats === 500 && nd.acts.length > 0 && !nd.acts.some(t => /🏢/.test(t)), JSON.stringify(nd));
+  // Hudud chatida favqulodda savol — FAQAT shu hudud uchun reja (shahar boʻyicha tayyor javob emas), jonli simulyatsiya xaritada
+  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerdagi odamlarni zilzila vaqtida qayerga evakuatsiya qilsa boʻladi?'); await p9.click('#areaChat form button');
+  await p9.waitForFunction(() => NX.state.area.qa.length === 6 && !NX.state.area.qaBusy, null, { timeout: 240000 });
+  const arq = await p9.evaluate(() => { const H = NX.state.twin.hz, A = NX.state.area; return { scope: H.scope, zones: H.zones.length, cells: H.zones[0].cells.length, inside: H.zones[0].cells.every(c => NX.area.inside(A.st.poly, c[0], c[1])), routes: H.routes.map(r => r.from), facts: H.facts.savol_doirasi, fx: NX.fx.active(), close: !!document.querySelector('.hz-close'), cap: H.shelters.every(x => x.cap > 0), acts: A.qa[5].actions.length }; });
+  ok('Hudud chatida zilzila: faqat shu hudud (uy guruhlari → yigʻilish joylari), xavfli joy — hudud ichidagi binolar shaklida, jonli simulyatsiya', arq.scope === 'area' && arq.zones === 1 && arq.cells > 0 && arq.inside && arq.routes.length > 0 && arq.routes.every(f => /^A\d/.test(f)) && /FAQAT/.test(arq.facts) && arq.fx && arq.close && arq.cap && arq.acts > 0 && /Evakuatsiya rejasi/.test(await p9.evaluate(() => NX.state.area.qa[5].text)), JSON.stringify(arq));
+  if (process.env.SHOT14) { await p9.waitForTimeout(1500); await p9.screenshot({ path: process.env.SHOT14 }); }
+  await p9.click('.hz-close');
+  ok('“Natijani yopish” — simulyatsiya va belgilar olib tashlanadi', await p9.evaluate(() => !NX.fx.active() && !document.querySelector('.hz-close')));
   await p9.click('.tabs [data-tab=ai]');
   await p9.fill('#chat textarea[name=q]', 'Bu hududga 300 xonadonli 12 qavatli dom qursak nima boʻladi?');
   await p9.click('#chat form button');
@@ -871,6 +883,8 @@ async function clickStreet(page, name) {
   ok('Hududni olib tashlash', await p9.evaluate(() => NX.state.area === null && !NX.map.hasDeltas()));
   ok('Konsolda xato yoʻq (hudud)', e9.length === 0, e9.join(' || '));
 
+  // Oldingi boʻlimlar sahifalari yopiladi (animatsiyalar CPU ni band qilmasin)
+  for (const c of browser.contexts()) await c.close();
   // ---------- 10. OpenStreetMap koʻchalar soʻrovi qotib qolsa — chat baribir javob beradi ----------
   const ctx10 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await setupRoutes(ctx10);

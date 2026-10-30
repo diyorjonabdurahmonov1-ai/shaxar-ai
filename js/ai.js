@@ -528,7 +528,9 @@ Qoidalar:
     **Birinchi soatda nima qilish kerak** — qisqa, joylar bilan (qaysi yoʻllarni boʻshatish, qayerga tibbiy punkt, qaysi maktab/shifoxonani birinchi tekshirish).
   • Suv toshqini: **Suvdan chiqish** — har bir suvli koʻcha uchun: “X koʻchasi (40 sm) → R1 yoʻli (koʻchalar, N m, ~M daq.) → H1 (nomi, balandligi, necha m yuqori); zaxira R1z”. **Eng baland xavfsiz joylar** — roʻyxat.
 - “xizmatlar_xaritasi” berilgan boʻlsa (yongʻin, tez yordam, politsiya): 1-qator — shahar koʻchalarining necha foiziga meʼyor (daqiqa) ichida yetib boriladi. **Uzoq hududlar** — T1…: joy, necha daqiqa, qaysi stansiyadan. **Yoʻl** (Y1 boʻlsa): qaysi stansiyadan, qaysi koʻchalar orqali, necha daqiqa. **Tavsiya** — yangi stansiya/post qayerga kerak (eng uzoq hududlar oraligʻi), yoʻllarni boʻshatish.
-- Javob oxirida bir qatorda qanday hisoblanganini ayt (masalan: “Koʻcha tarmogʻida eng qisqa xavfsiz yoʻl, odamlar sigʻim boʻyicha taqsimlangan”).
+- ENG MUHIM: aynan berilgan savolga javob ber. Oldingi javobni takrorlama — har savol uchun yangi hisob berilgan, faqat shuni ishlat.
+- “savol_doirasi” = “FAQAT belgilangan hudud” boʻlsa: javob FAQAT shu hudud haqida. 1-qator: hududda nechta odam, nechta bino xavf ostida. Keyin har bir uy guruhi (A1, A2…) uchun: “A1 (~400 kishi) → R1: X → Y koʻchalari, 350 m, ~5 daq. → S1 (nomi, sigʻimi); zaxira R1z”. Butun shahar zonalarini (boshqa Z lar) yozma.
+- Maʼlumot qayerdan olinganini, qanday hisoblanganini, manbalar roʻyxatini matnda yozma (ular alohida koʻrsatiladi). Faqat natija va tavsiya.
   • Hisob taxminiy ekanini bir marta ayt (bino materiali/yili yoʻq — qurilish inspeksiyasi va kadastrdan olinsa aniqlashadi). Raqamlarni faqat JSON’dan ol.
 - Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv; qizil kataklar — xavfli zonalar; yashil chiziqlar — evakuatsiya yoʻllari; yashil belgilar — yigʻilish/baland joylar).
 - JSON kalit nomlarini, texnik soʻzlarni yozma. Cheklovlarni faqat bir gapda ayt (relyef ~30 m, kanalizatsiya sigʻimi taxminiy).

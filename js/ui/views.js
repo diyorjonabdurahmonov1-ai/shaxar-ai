@@ -141,6 +141,10 @@
     </div>`;
   }
 
+  // AI ishlayotganda: “Tahlil qilinmoqda” — neyron orb va yugurik chiziq (bosqich matni faqat ekran oʻquvchi uchun)
+  function thinking(stage) {
+    return `<div class="chat-msg ai"><div class="bubble think" role="status"><div class="think-orb" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div class="think-t"><span class="think-w">Tahlil qilinmoqda</span><span class="think-bar" aria-hidden="true"><i></i></span><span class="sr-only">${E(stage || '')}</span></div></div></div>`;
+  }
   // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
   function msgExtras(m, fly) {
     const list = m.hz || null;
@@ -154,7 +158,7 @@
     const C = S.twinChat || { msgs: [], busy: null };
     return `<section class="card chat" id="twinChat">
       <h3>🤖 AI</h3>
-      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${msgExtras(Object.assign({}, m, { fly: 'twin-fly' }), 'twin-fly')}</div></div>`).join('')}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}…</div></div>` : ''}</div>
+      <div class="chat-log">${C.msgs.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>` : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${msgExtras(Object.assign({}, m, { fly: 'twin-fly' }), 'twin-fly')}</div></div>`).join('')}${C.busy ? thinking(C.busy) : ''}</div>
       ${askHelp('#twinChat textarea[name=tq]')}
       <form data-form="twin-q" class="chat-form"><textarea name="tq" rows="2" placeholder="Savol yoki topshiriq…" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea><button class="btn primary" ${C.busy ? 'disabled' : ''}>Yuborish</button></form>
     </section>`;
@@ -696,7 +700,7 @@
     <section class="card chat" id="areaChat">
       <h3>🤖 AI tahlil</h3>
       <p class="small muted">Nima qurmoqchisiz yoki nimani bilmoqchisiz — yozing. AI hisoblaydi, natija xaritada koʻrinadi.</p>
-      <div class="chat-log">${qa}${A.qaBusy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(A.qaBusy)}</div></div>` : ''}</div>
+      <div class="chat-log">${qa}${A.qaBusy ? thinking(A.qaBusy) : ''}</div>
       ${A.res ? '<p class="small muted">Xaritada: <span class="tag r">qizil</span> — shu bino sabab mashina koʻpayadigan koʻchalar, <span class="tag g">yashil</span> — kamayadigan. 🏢 — bino joyi.</p>' : ''}
       <form data-form="area-q" class="chat-form">
         <textarea name="aq" rows="2" placeholder="Masalan: 300 xonadonli 12 qavatli dom qursam nima boʻladi?" aria-label="Savol" ${A.qaBusy ? 'disabled' : ''}></textarea>
@@ -741,7 +745,7 @@
     return `<section class="card chat" id="chat">
       <div class="chat-h"><b>🤖 AI yordamchi</b>${NX.ai.available() ? '' : '<small class="muted">AI ulanmagan — sayt hisobi bilan javob beradi</small>'}</div>
       ${s ? `<div class="chat-ctx">📍 Tanlangan: <b>${streetName(s)}</b><button class="link" data-act="chat-clear" aria-label="Tanlovni olib tashlash">✕</button></div>${segBar(S, s)}` : '<div class="chat-ctx muted">📍 Koʻchani xaritada bosing — u suhbatga biriktiriladi</div>'}
-      <div class="chat-log">${msgs}${C.busy ? `<div class="chat-msg ai"><div class="bubble"><div class="spinner sm"></div> ${E(C.busy)}</div></div>` : ''}</div>
+      <div class="chat-log">${msgs}${C.busy ? thinking(C.busy) : ''}</div>
       ${askHelp('#chat textarea[name=q]')}
       <form data-form="chat" class="chat-form">
         <textarea name="q" rows="2" placeholder="${s ? 'Masalan: yopsak nima boʻladi?' : 'Savolingizni yozing…'}" aria-label="Savol" ${C.busy ? 'disabled' : ''}></textarea>
