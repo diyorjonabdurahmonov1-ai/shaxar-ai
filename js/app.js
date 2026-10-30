@@ -209,7 +209,7 @@
     if (!T.roads) T.roads = base;
     T.roadsLoading = true;
     return NX.twin.roads(step, l => { T.roads = l; }, base).then(r => {
-      T.roads = r; T.roadsErr = r.complete ? null : `Shahar koʻchalarining ${r.parts}/9 qismi yuklandi (qolganlari keyin qayta soʻraladi; markaz koʻchalari bor).`;
+      T.roads = r; if (S.tab === 'twin') NX.map3d.set({ roads: r }); T.roadsErr = r.complete ? null : `Shahar koʻchalarining ${r.parts}/9 qismi yuklandi (qolganlari keyin qayta soʻraladi; markaz koʻchalari bor).`;
     }, e => { T.roadsErr = e.message; }).then(() => { T.roadsLoading = false; });
   }
   const twinState = () => (S.twin = S.twin || {});
@@ -217,7 +217,7 @@
   async function loadTwin() {
     const T = twinState();
     const onView = async bb => { try { const n = await NX.buildings.loadView(bb); if (n) { T.buildings = NX.buildings.get(); NX.map3d.set({ buildings: T.buildings }); if (S.tab === 'twin') renderKeepScroll(); } } catch (e) { /* */ } };
-    const draw = () => { if (S.tab === 'twin') { NX.map3d.show($('#map3d'), { buildings: T.buildings || [], ghi: T.ghi, flood: T.flood, scen: T.scen || null, onView }).catch(e => { T.err = e.message; renderKeepScroll(); }); renderKeepScroll(); } };
+    const draw = () => { if (S.tab === 'twin') { NX.map3d.show($('#map3d'), { buildings: T.buildings || [], ghi: T.ghi, flood: T.flood, scen: T.scen || null, roads: T.roads || null, onView }).catch(e => { T.err = e.message; renderKeepScroll(); }); renderKeepScroll(); } };
     draw();
     if (T.loading) return T.ready;
     if (T.ready && T.dem) return T.ready;
@@ -233,6 +233,7 @@
     draw();
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
     try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
+    if (S.tab === 'twin') renderKeepScroll();
     // Butun shahar koʻchalari — fon rejimida (chat ularni cheksiz kutmaydi)
     T.roadsP = loadRoads(step);
     await Promise.all(jobs);
@@ -1494,7 +1495,7 @@
           break;
         }
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
-        case 'twin-base': NX.map3d.setBase(b.dataset.base); break;
+        case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
           const R0 = twinState().rain;

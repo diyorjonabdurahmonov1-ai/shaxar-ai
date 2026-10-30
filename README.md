@@ -10,7 +10,7 @@ Loyiha **Samarqand shahar hokimiyati xodimlari** uchun “virtual shahar” (raq
 
 Tizimlar: 🚦 transport (ulangan, real vaqt) · 📹 kameralar · ⚡ elektr · 🔥 gaz · 💧 ichimlik suvi · 🚰 kanalizatsiya — “Tizimlar” boʻlimida har birining xaritasi (GeoJSON / KML / CSV) yuklanadi; real vaqt datchik va video maʼlumotlari tashkilotlar API bergach ulanadi.
 
-**3D egizak** (Virtual Singapore yoʻnalishida): binolar 3D (OpenStreetMap), tomlardagi quyosh energiyasi salohiyati (Open-Meteo yillik nurlanish arxivi), suv toshqini xavfi (Copernicus DEM relyefi + 48 soatlik yogʻin prognozi), rejadagi yangi binoning qish/yoz soyasi va soyada qoladigan qoʻshni binolar. 3D — MapLibre GL (vendor/maplibre, BSD).
+**3D egizak** (Virtual Singapore yoʻnalishida): butun shahar binolari 3D (~123 ming: OpenStreetMap + Microsoft ML Buildings, Overture Maps orqali — `data/buildings-samarqand.json`), tomlardagi quyosh energiyasi salohiyati (Open-Meteo yillik nurlanish arxivi), suv toshqini xavfi (Copernicus DEM relyefi + 48 soatlik yogʻin prognozi), rejadagi yangi binoning qish/yoz soyasi va soyada qoladigan qoʻshni binolar. 3D — MapLibre GL (vendor/maplibre, BSD).
 
 **Fizik modellar:** transport — statik muvozanat (BPR + MSA) va **dinamik** tigʻiz soat modeli (07:00–10:00, 15 daqiqalik qadamlar, navbatlar keyingi qadamga oʻtadi); suv toshqini — **2D LISFLOOD-FP** (local inertial, 40 m katak, Web Worker, koʻchalar — silliq kanal, binolar — toʻsiq) va tezkor koʻcha-oqim (Manning) hisobi.
 
@@ -93,4 +93,4 @@ Testda Overpass, TomTom va OpenAI javoblari **sintetik** maʼlumot bilan almasht
 - Bekatlar oraligʻi toʻgʻri chiziq boʻyicha hisoblanadi.
 - Tavsiyalardagi narxlar taxminiy. Aniq qiymat loyiha-smeta hujjati bilan belgilanadi.
 
-Maʼlumot: © OpenStreetMap hissadorlari (ODbL).
+Maʼlumot: © OpenStreetMap hissadorlari (ODbL); binolar: Overture Maps Foundation — OpenStreetMap va Microsoft ML Buildings (ODbL).

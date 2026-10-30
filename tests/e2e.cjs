@@ -42,6 +42,8 @@ async function setupRoutes(ctx, opts = {}) {
   ctx.overpassCalls = 0; ctx.openaiBodies = [];
   // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
+  // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)
+  if (!opts.realBuildings) await ctx.route(/data\/buildings-samarqand\.json/, route => route.abort('failed'));
   await ctx.route(/overpass|maps\.mail\.ru/, async route => {
     ctx.overpassCalls++;
     if (opts.overpassDown) return route.abort('failed');
@@ -148,7 +150,7 @@ async function clickStreet(page, name) {
   if (process.env.SHOT10) await page.locator('#panel section:has(.clim-svg)').screenshot({ path: process.env.SHOT10 });
   ok('Iqlim: 1991-yildan yillik harorat/yogʻin (arxiv), isish tezligi, eng kuchli kunlar, Oʻzgidromet meʼyori', cl.n >= 34 && Math.abs(cl.tr - 0.3) < 0.05 && cl.top >= 20 && /Oʻzgidromet/.test(await page.textContent('#panel')) && (await page.$$('#panel .clim-svg')).length === 3 && /data\.egov\.uz/.test(await page.textContent('#panel')), JSON.stringify(cl));
   ok('Quyosh: real yillik nurlanish va tomlar salohiyati', tw.ghi === 1825 && /mln kVt·soat\/yil/.test(await page.textContent('#panel')));
-  ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')));
+  ok('Suv toshqini: real relyef (Terrarium) botiqlari va yogʻin prognozi', tw.hot > 0 && tw.rain >= 15 && /Keyingi 24 soatda/.test(await page.textContent('#panel')) && /AWS Terrain/.test(await page.textContent('#panel')), JSON.stringify({ hot: tw.hot, rain: tw.rain, t24: /Keyingi 24 soatda/.test(await page.textContent('#panel')), aws: /AWS Terrain/.test(await page.textContent('#panel')) }));
   await page.click('[data-act=twin-mode][data-mode=flood]');
   ok('Toshqin rejimi: yomgʻir tanlanmaguncha xaritada kvadrat ham, suv ham yoʻq', await page.evaluate(() => NX.map3d.mode() === 'flood' && NX.map3d.map().getSource('water')._data.features.length === 0 && NX.map3d.map().getSource('flood')._data.features.length === 0));
   const noNodes = await page.evaluate(() => { const T = NX.state.twin, R = T.roads.map(w => Object.assign({}, w, { nodes: w.ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)) })); const sc = NX.twin.streetScenario(T.dem, R, 80); return sc.segs.length; });
@@ -864,6 +866,25 @@ async function clickStreet(page, name) {
   const dt10 = Math.round((Date.now() - t10) / 1000);
   ok('Koʻchalar serveri javob bermasa ham chat ~1 daqiqada javob beradi; markaz koʻchalari darhol ishlatiladi', dt10 < 110 && (await p10.evaluate(() => NX.state.twin.roads && NX.state.twin.roads.length > 0 && String(NX.state.twin.roads[0].id)[0] === 'm')), dt10 + ' s');
   await ctx10.close();
+
+  // ---------- 11. Butun shahar binolari (Overture: OSM + Microsoft) — 3D da hammasi ----------
+  const ctx11 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await setupRoutes(ctx11, { realBuildings: true });
+  const p11 = await ctx11.newPage(); const e11 = watchErrors(p11);
+  await p11.goto(BASE);
+  await p11.waitForSelector('#panel .live', { timeout: 30000 });
+  await p11.click('.tabs [data-tab=twin]');
+  await p11.waitForFunction(() => NX.state.twin && NX.state.twin.buildings && NX.state.twin.buildings.length > 100000 && NX.map3d.map() && NX.map3d.map().getSource('bld'), null, { timeout: 90000 });
+  await p11.waitForTimeout(1500);
+  const b11 = await p11.evaluate(() => { const b = NX.state.twin.buildings; return { n: b.length, ml: b.filter(x => x.ml).length, f: NX.map3d.map().getSource('bld')._data.features.length, base: NX.map3d.base(), sky: !!NX.map3d.map().getSky && !!NX.map3d.map().getSky(), ring: b[0].ring.length >= 4 && b[0].ring[0][0] === b[0].ring[b[0].ring.length - 1][0] }; });
+  ok('Butun shahar binolari 3D da (~123 ming: OSM + sunʼiy yoʻldoshdan Microsoft), “Raqamli egizak” koʻrinishi, osmon', b11.n > 100000 && b11.ml > 20000 && b11.f === b11.n && b11.base === 'twin' && b11.sky && b11.ring && /sunʼiy yoʻldosh/.test(await p11.textContent('#panel')), JSON.stringify(b11));
+  const tm = await p11.evaluate(() => { const t = performance.now(); NX.map3d.setMode('quake'); NX.map3d.setMode('height'); return Math.round(performance.now() - t); });
+  ok('Rejim almashishi tez (binolar qayta chizilmaydi)', tm < 300, tm + ' ms');
+  await p11.click('[data-act=twin-base][data-base=sat]');
+  ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none'));
+  if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.screenshot({ path: process.env.SHOT11 }); }
+  ok('Konsolda xato yoʻq (butun shahar binolari)', e11.length === 0, e11.join(' || '));
+  await ctx11.close();
 
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));

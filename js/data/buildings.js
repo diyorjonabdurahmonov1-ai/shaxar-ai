@@ -39,6 +39,39 @@
     return out;
   }
 
+  // Butun shahar binolari — tayyor fayl (Overture Maps: OpenStreetMap + Microsoft ML Buildings, ~123 ming bino).
+  // OSM’da chizilmagan uylar ham bor (Microsoft sunʼiy yoʻldosh suratlaridan aniqlagan). Overpass’ga bogʻliq emas, tez.
+  const STATIC_URL = 'data/buildings-samarqand.json';
+  // Qavat nomaʼlum boʻlsa: kichik uy — 1, oʻrtacha — 2, katta bino — 3 qavat (taxminiy)
+  const byArea = A => (A < 180 ? 1 : A < 1200 ? 2 : 3);
+  function decodeStatic(doc) {
+    const out = [], S = doc.scale, [lon0, lat0] = doc.base;
+    doc.b.forEach((a, i) => {
+      const kind = doc.cls[a[0]] || 'yes', lv0 = a[1], name = doc.names[a[2]] || '';
+      let x = a[4], y = a[5];
+      const ring = [[+(lon0 + x / S).toFixed(6), +(lat0 + y / S).toFixed(6)]];
+      for (let k = 6; k < a.length; k += 2) { x += a[k]; y += a[k + 1]; ring.push([+(lon0 + x / S).toFixed(6), +(lat0 + y / S).toFixed(6)]); }
+      ring.push(ring[0]);
+      const xy = ring.map(c => G.xy(c[1], c[0]));
+      let A = 0, cx = 0, cy = 0;
+      for (let p = 0, q = xy.length - 1; p < xy.length; q = p++) { const f = xy[q][0] * xy[p][1] - xy[p][0] * xy[q][1]; A += f; cx += (xy[q][0] + xy[p][0]) * f; cy += (xy[q][1] + xy[p][1]) * f; }
+      A /= 2;
+      if (Math.abs(A) < 8) return;
+      const known = lv0 > 0 && lv0 <= 30, levels = known ? lv0 : (kind !== 'yes' && DEF_LEVELS[kind]) || byArea(Math.abs(A));
+      out.push({ id: i + 1, ring, kind, name, levels, est: !known, height: levels * 3.2, area: Math.abs(A), c: G.ll(cx / (6 * A), cy / (6 * A)), roof: '', ml: a[3] === 1 });
+    });
+    return out;
+  }
+  let staticBox = null;
+  async function loadStatic() {
+    const r = await fetch(STATIC_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const doc = await r.json();
+    const l = decodeStatic(doc);
+    if (l.length < 1000) throw new Error('fayl toʻliq emas');
+    return { list: l, src: doc.src };
+  }
+
   // IndexedDB (localStorage bunday hajmga yetmaydi)
   function idb() {
     return new Promise((res, rej) => {
@@ -54,11 +87,19 @@
   }
   NX.bigStore = { get: k => kv('readonly', s => s.get(k)).catch(() => null), set: (k, v) => kv('readwrite', s => s.put(v, k)).catch(() => null) };
 
-  let list = null, loading = null;
+  let list = null, loading = null, srcName = 'OpenStreetMap';
   async function load(onStep) {
     if (list) return list;
     if (loading) return loading;
     loading = (async () => {
+      // 1) Butun shahar fayli (brauzer keshida; har ochilishda ~1 soniyada oʻqiladi)
+      try {
+        onStep && onStep('Shahar binolari yuklanmoqda (~123 ming bino)');
+        const st = await loadStatic();
+        staticBox = NX.twin ? NX.twin.CITY : null; srcName = st.src;
+        return (list = st.list);
+      } catch (e) { console.warn('Binolar fayli:', e.message); }
+      // 2) Zaxira — OpenStreetMap (Overpass), markaz
       const hit = await NX.bigStore.get('buildings:v1');
       if (hit && Date.now() - hit.ts < TTL && hit.list && hit.list.length) return (list = hit.list);
       onStep && onStep('OpenStreetMap’dan binolar yuklanmoqda (bir marta, 10–60 soniya)');
@@ -84,7 +125,7 @@
   const TILE = 0.01, tilesDone = new Set(), tileBusy = new Set();
   async function loadView(bb, onStep) {
     if (!list) return 0;
-    const B = NX.config.bbox, need = [];
+    const B = staticBox || NX.config.bbox, need = [];
     for (let a = Math.floor(bb.s / TILE); a <= Math.floor(bb.n / TILE); a++) for (let o = Math.floor(bb.w / TILE); o <= Math.floor(bb.e / TILE); o++) {
       const s = a * TILE, w = o * TILE, k = a + ':' + o;
       if (s >= B.s && s + TILE <= B.n && w >= B.w && w + TILE <= B.e) continue;   // asosiy yuklamada bor
@@ -115,5 +156,5 @@
   // Nuqta koʻpburchak ichidami (lon/lat)
   const inRing = (ring, lon, lat) => { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) c = !c; } return c; };
 
-  NX.buildings = { load, loadView, get: () => list, inRing, DEF_LEVELS, _compact: compact };
+  NX.buildings = { load, loadView, get: () => list, src: () => srcName, inRing, DEF_LEVELS, _compact: compact, _decode: decodeStatic };
 })();
