@@ -12,8 +12,8 @@
   document.body.prepend(cv);
   const g = cv.getContext('2d');
   const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const P = { bg0: '#050a14', bg1: '#08142a', grid: 'rgba(148,163,184,0.045)', street: 'rgba(94,234,212,0.13)', main: 'rgba(56,189,248,0.30)', pulse: ['#5eead4', '#38bdf8', '#fde68a'], warn: ['#fbbf24', '#f87171'] };
-  let W = 0, H = 0, dpr = 1, lines = [], pulses = [], spots = [], layer = null, modelRef = null, last = 0;
+  const P = { bg0: '#050a14', bg1: '#08142a', grid: 'rgba(148,163,184,0.045)', street: 'rgba(94,234,212,0.22)', main: 'rgba(56,189,248,0.5)', pulse: ['#5eead4', '#38bdf8', '#fde68a'], warn: ['#fbbf24', '#f87171'] };
+  let W = 0, H = 0, dpr = 1, lines = [], pulses = [], spots = [], flashes = [], rings = [], hubs = [], layer = null, modelRef = null, last = 0, nextFlash = 0, nextRing = 0;
   const t0 = performance.now();
 
   function geometry() {
@@ -49,13 +49,16 @@
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
     c.fillStyle = vg; c.fillRect(0, 0, W, H);
     const usable = lines.filter(l => l.len > 80);
-    pulses = usable.length ? Array.from({ length: Math.min(110, usable.length * 2) }, () => spawn(usable)) : [];
+    pulses = usable.length ? Array.from({ length: Math.min(200, usable.length * 3) }, () => spawn(usable)) : [];
+    // Chorrahalar (asosiy yoʻl uchlari) — toʻlqin manbalari
+    hubs = lines.filter(l => l.main).flatMap(l => [l.pts[0], l.pts[l.pts.length - 1]]).filter(p => p[0] > 0 && p[0] < W && p[1] > 0 && p[1] < H);
+    if (!hubs.length) hubs = lines.map(l => l.pts[0]);
   }
   const draw = (c, l, col, w) => { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); l.pts.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]))); c.stroke(); };
   const len = pts => pts.reduce((t, p, i) => (i ? t + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
   function spawn(usable) {
     const pool = usable || lines.filter(l => l.len > 80), l = pool[Math.floor(Math.random() * pool.length)];
-    return { l, d: Math.random() * l.len, v: (l.main ? 55 : 26) * (0.6 + Math.random() * 0.8), c: l.main ? (Math.random() < 0.7 ? 1 : 2) : Math.floor(Math.random() * 3), dir: Math.random() < 0.5 ? 1 : -1 };
+    return { l, d: Math.random() * l.len, v: (l.main ? 90 : 45) * (0.6 + Math.random() * 0.8), c: l.main ? (Math.random() < 0.7 ? 1 : 2) : Math.floor(Math.random() * 3), dir: Math.random() < 0.5 ? 1 : -1 };
   }
   function at(l, d) {
     let acc = 0;
@@ -77,11 +80,25 @@
     // Sekin suzuvchi nur dogʻlari
     [[0.25, 0.3, '45,212,191'], [0.75, 0.7, '56,189,248']].forEach(([fx, fy, rgb], i) => {
       const x = W * (fx + 0.08 * Math.sin(T * 0.07 + i * 2)), y = H * (fy + 0.08 * Math.cos(T * 0.05 + i)), r = Math.max(W, H) * 0.35;
-      const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, `rgba(${rgb},0.07)`); rg.addColorStop(1, `rgba(${rgb},0)`);
+      const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, `rgba(${rgb},0.12)`); rg.addColorStop(1, `rgba(${rgb},0)`);
       g.fillStyle = rg; g.fillRect(0, 0, W, H);
     });
     // Skaner chizigʻi (12 soniyada yuqoridan pastga)
     if (!still) { const sy = ((T % 12) / 12) * (H + 160) - 80, sg = g.createLinearGradient(0, sy - 80, 0, sy + 2); sg.addColorStop(0, 'rgba(94,234,212,0)'); sg.addColorStop(1, 'rgba(94,234,212,0.07)'); g.fillStyle = sg; g.fillRect(0, sy - 80, W, 82); g.fillStyle = 'rgba(94,234,212,0.18)'; g.fillRect(0, sy, W, 1); }
+    // Butun koʻcha yonib oʻtadi (masalan, “marshrut hisoblandi”) — har ~1.5 soniyada
+    if (!still && now > nextFlash && lines.length) { nextFlash = now + 900 + Math.random() * 1400; const pool = lines.filter(l => l.len > 120); const l = pool[Math.floor(Math.random() * pool.length)]; if (l) flashes.push({ l, t: now, col: Math.random() < 0.75 ? '#5eead4' : '#fde68a' }); }
+    flashes = flashes.filter(f => now - f.t < 1800);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    flashes.forEach(f => {
+      const k = (now - f.t) / 1800, grow = Math.min(1, k * 2.5), a = k < 0.4 ? 1 : 1 - (k - 0.4) / 0.6, n = Math.max(2, Math.ceil(f.l.pts.length * grow));
+      g.strokeStyle = f.col; g.shadowColor = f.col; g.shadowBlur = 16; g.globalAlpha = 0.85 * a; g.lineWidth = 2.4;
+      g.beginPath(); f.l.pts.slice(0, n).forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.stroke();
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    });
+    // Chorrahalardan tarqaluvchi toʻlqinlar
+    if (!still && now > nextRing && hubs.length) { nextRing = now + 500 + Math.random() * 700; const h = hubs[Math.floor(Math.random() * hubs.length)]; rings.push({ x: h[0], y: h[1], t: now }); }
+    rings = rings.filter(r => now - r.t < 2200);
+    rings.forEach(r => { const k = (now - r.t) / 2200; g.strokeStyle = '#38bdf8'; g.globalAlpha = 0.6 * (1 - k); g.lineWidth = 1.6; g.beginPath(); g.arc(r.x, r.y, 4 + k * 70, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; });
     // Maʼlumot signallari
     g.lineCap = 'round';
     pulses.forEach((p, i) => {
@@ -89,17 +106,17 @@
       if (p.d < 0 || p.d > p.l.len) { pulses[i] = spawn(); return; }
       const col = P.pulse[p.c];
       g.strokeStyle = col;
-      for (let k = 0; k < 7; k++) { const a = at(p.l, p.d - p.dir * k * 5), b = at(p.l, p.d - p.dir * (k + 1) * 5); g.globalAlpha = 0.55 * (1 - k / 7); g.lineWidth = 2.2 - k * 0.22; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+      for (let k = 0; k < 9; k++) { const a = at(p.l, p.d - p.dir * k * 6), b = at(p.l, p.d - p.dir * (k + 1) * 6); g.globalAlpha = 0.8 * (1 - k / 9); g.lineWidth = 2.8 - k * 0.25; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
       const q = at(p.l, p.d);
-      g.globalAlpha = 0.95; g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 10;
-      g.beginPath(); g.arc(q[0], q[1], 1.9, 0, Math.PI * 2); g.fill();
+      g.globalAlpha = 1; g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 14;
+      g.beginPath(); g.arc(q[0], q[1], 2.5, 0, Math.PI * 2); g.fill();
       g.shadowBlur = 0; g.globalAlpha = 1;
     });
     // Muammoli joylar: nuqta + kengayib yoʻqoladigan toʻlqin
     spots.forEach(s => {
       const ph = ((T + s.ph) % 6) / 6, col = P.warn[s.c];
-      g.globalAlpha = 0.8; g.fillStyle = col; g.beginPath(); g.arc(s.x, s.y, 2.2, 0, Math.PI * 2); g.fill();
-      if (ph < 0.5 && !still) { const r = 4 + ph * 2 * 26; g.globalAlpha = 0.5 * (1 - ph * 2); g.strokeStyle = col; g.lineWidth = 1.4; g.beginPath(); g.arc(s.x, s.y, r, 0, Math.PI * 2); g.stroke(); }
+      g.globalAlpha = 0.8; g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 10; g.beginPath(); g.arc(s.x, s.y, 3, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
+      if (ph < 0.5 && !still) { const r = 4 + ph * 2 * 40; g.globalAlpha = 0.75 * (1 - ph * 2); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.arc(s.x, s.y, r, 0, Math.PI * 2); g.stroke(); }
       g.globalAlpha = 1;
     });
   }
