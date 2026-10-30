@@ -878,11 +878,13 @@ async function clickStreet(page, name) {
   await p11.waitForTimeout(1500);
   const b11 = await p11.evaluate(() => { const b = NX.state.twin.buildings; return { n: b.length, ml: b.filter(x => x.ml).length, f: NX.map3d.map().getSource('bld')._data.features.length, base: NX.map3d.base(), sky: !!NX.map3d.map().getSky && !!NX.map3d.map().getSky(), ring: b[0].ring.length >= 4 && b[0].ring[0][0] === b[0].ring[b[0].ring.length - 1][0] }; });
   ok('Butun shahar binolari 3D da (~123 ming: OSM + sunʼiy yoʻldoshdan Microsoft), “Raqamli egizak” koʻrinishi, osmon', b11.n > 100000 && b11.ml > 20000 && b11.f === b11.n && b11.base === 'twin' && b11.sky && b11.ring && /sunʼiy yoʻldosh/.test(await p11.textContent('#panel')), JSON.stringify(b11));
+  const w11 = await p11.evaluate(() => { const m = NX.map3d.map(); return { pat: JSON.stringify(m.getPaintProperty('bld', 'fill-extrusion-pattern') || null), roof: m.getLayoutProperty('bld-roof', 'visibility'), img: ['w1', 'w2', 'w3'].every(k => m.hasImage(k)), bg: !!document.getElementById('backdrop') && document.getElementById('backdrop').width > 0 }; });
+  ok('Kechki shahar: binolar derazalari yonib turadi (3 xil devor), tomlar rangli; sayt orqa fonida jonli koʻchalar tarmogʻi', /w1/.test(w11.pat) && w11.roof === 'visible' && w11.img && w11.bg, JSON.stringify(w11));
   const tm = await p11.evaluate(() => { const t = performance.now(); NX.map3d.setMode('quake'); NX.map3d.setMode('height'); return Math.round(performance.now() - t); });
   ok('Rejim almashishi tez (binolar qayta chizilmaydi)', tm < 300, tm + ' ms');
   await p11.click('[data-act=twin-base][data-base=sat]');
-  ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none'));
-  if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.screenshot({ path: process.env.SHOT11 }); }
+  ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none' && !NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-pattern') && NX.map3d.map().getLayoutProperty('bld-roof', 'visibility') === 'none'));
+  if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.evaluate(() => NX.map3d.map().jumpTo({ zoom: 16.8, pitch: 68 })); await p11.waitForTimeout(4000); await p11.screenshot({ path: process.env.SHOT11 }); }
   ok('Konsolda xato yoʻq (butun shahar binolari)', e11.length === 0, e11.join(' || '));
   await ctx11.close();
 

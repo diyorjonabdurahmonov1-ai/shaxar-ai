@@ -26,6 +26,42 @@
     if (mode === 'quake') return ['case', ['==', ['get', 'cr'], 1], '#dc2626', ['>=', ['get', 'lv'], 5], '#f97316', ['>=', ['get', 'lv'], 3], '#fbbf24', base === 'twin' ? '#475569' : '#cbd5e1'];
     return hgt;
   }
+  // ---------- Kechki shahar: binolar derazalari yonib turadi (“Raqamli egizak”, balandlik rejimi) ----------
+  // Uch xil devor: past uy — iliq chiroqlar kam; oʻrta — koʻp qavatli turar joy; baland — ofis oynalari (oq-moviy)
+  const WIN = {
+    w1: { cols: 3, rows: 3, wall: '#16222e', on: ['#fcd34d', '#fde68a', '#fbbf24'], p: 0.35 },
+    w2: { cols: 4, rows: 4, wall: '#132433', on: ['#fde68a', '#fcd34d', '#fef3c7', '#a5f3fc'], p: 0.45 },
+    w3: { cols: 5, rows: 6, wall: '#0f2236', on: ['#e0f2fe', '#a5f3fc', '#bae6fd', '#fde68a'], p: 0.55 },
+  };
+  const WSZ = 32;
+  function winImage(k) {
+    const o = WIN[k], c = document.createElement('canvas'); c.width = c.height = WSZ;
+    const g = c.getContext('2d');
+    g.fillStyle = o.wall; g.fillRect(0, 0, WSZ, WSZ);
+    const cw = WSZ / o.cols, ch = WSZ / o.rows;
+    for (let i = 0; i < o.cols; i++) for (let j = 0; j < o.rows; j++) {
+      const lit = Math.random() < o.p, x = i * cw + cw * 0.22, y = j * ch + ch * 0.25, w = cw * 0.56, h = ch * 0.5;
+      g.fillStyle = lit ? o.on[Math.floor(Math.random() * o.on.length)] : '#0b1320';
+      g.globalAlpha = lit ? 0.75 + Math.random() * 0.25 : 1;
+      g.fillRect(x, y, w, h);
+      g.globalAlpha = 1;
+    }
+    return g.getImageData(0, 0, WSZ, WSZ);
+  }
+  const windowsOn = () => base === 'twin' && mode === 'height';
+  function addWindows() {
+    Object.keys(WIN).forEach(k => { if (!map.hasImage(k)) map.addImage(k, winImage(k)); });
+    // Har necha soniyada bir devor turi yangilanadi — kimdir chiroq yoqadi, kimdir oʻchiradi
+    let t = 0;
+    setInterval(() => { if (!windowsOn() || document.hidden || document.getElementById('map3d').hidden) return; const k = Object.keys(WIN)[t++ % 3]; try { map.updateImage(k, winImage(k)); } catch (e) { /* */ } }, 2500);
+  }
+  function applyWindows() {
+    if (!map || !map.getLayer('bld')) return;
+    const on = windowsOn();
+    map.setPaintProperty('bld', 'fill-extrusion-pattern', on ? ['step', ['get', 'lv'], 'w1', 3, 'w2', 7, 'w3'] : undefined);
+    map.setLayoutProperty('bld-roof', 'visibility', on ? 'visible' : 'none');
+  }
+
   const CRIT = /school|kindergarten|hospital|clinic/;
   let geoKey = '', geoCache = null;
   function buildingsGeo() {
@@ -124,6 +160,9 @@
         map.addSource('bld', { type: 'geojson', data: buildingsGeo() });
         // Binolar: vertikal gradient (pastda qoraroq) + yorugʻlik; balandlik zoom bilan silliq oʻsadi
         map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: { 'fill-extrusion-color': colorExpr(), 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['get', 'h']], 'fill-extrusion-opacity': 0.92, 'fill-extrusion-vertical-gradient': true } });
+        // Tomlar — derazali devorlar ustida balandlik rangidagi yupqa qatlam
+        map.addLayer({ id: 'bld-roof', type: 'fill-extrusion', source: 'bld', layout: { visibility: 'none' }, paint: { 'fill-extrusion-color': H_TWIN, 'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['get', 'h']], 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['+', ['get', 'h'], 0.6]], 'fill-extrusion-opacity': 0.92 } });
+        addWindows(); applyWindows();
         try { map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* */ }
         sky();
         map.addSource('plan', { type: 'geojson', data: planGeo() });
@@ -167,6 +206,7 @@
     const g = buildingsGeo();
     if (g !== bldKey) { bldKey = g; stateKey = ''; map.getSource('bld').setData(g); }
     map.setPaintProperty('bld', 'fill-extrusion-color', colorExpr());
+    applyWindows();
     applyStates();
     const rk = (data.roads || []).length + ':' + base;
     if (map.getSource('roads') && rk !== roadsKey) { roadsKey = rk; map.getSource('roads').setData(base === 'twin' ? roadsGeo() : { type: 'FeatureCollection', features: [] }); }

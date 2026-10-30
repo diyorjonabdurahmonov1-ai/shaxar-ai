@@ -626,3 +626,10 @@ details.pgroup .pill { margin-left: auto; }
 .hz-pin { color: #fff; font: 700 11px/1 system-ui, sans-serif; padding: 4px 6px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .4); cursor: pointer; white-space: nowrap; }
 .hz-pin.hz-zone { border-radius: 6px; }
 .hz-list .loc b { margin-right: 4px; }
+/* ---------- Orqa fon: jonli shahar tarmogʻi (js/ui/backdrop.js) ---------- */
+#backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.topbar { background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(10px) saturate(1.2); -webkit-backdrop-filter: blur(10px) saturate(1.2); }
+.layout { position: relative; z-index: 1; }
+.panel { background: transparent; }
+.panel .card { background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.panel .card.subtle { background: color-mix(in srgb, var(--surface-2) 88%, transparent); }
