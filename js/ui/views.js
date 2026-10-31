@@ -674,10 +674,11 @@
     const u = P.unesco || {};
     return `<h4>🗺 Bosh reja</h4>
       ${P.ziddiyatlar.length ? `<ul class="plan-bad">${P.ziddiyatlar.map(t => `<li>⚠️ ${E(t)}</li>`).join('')}</ul>` : '<p class="small ok-text">✅ Maʼlum cheklovlarga zid emas.</p>'}
-      ${P.zonalar.length ? `<p class="small">Bosh reja zonasi: ${P.zonalar.map(z => `<b>${E(z.zona)}</b>${z.ruxsat_qavat ? ` (≤ ${z.ruxsat_qavat} qavat)` : ''}`).join(', ')}</p>` : ''}
+      ${P.zonalar.length ? `<p class="small">Bosh reja zonasi: ${P.zonalar.map(z => `<b>${E(z.zona)}</b>${z.ulush_foiz != null && P.zonalar.length > 1 ? ` ${z.ulush_foiz}%` : ''}${z.ruxsat_qavat ? ` (≤ ${z.ruxsat_qavat} qavat)` : ''}`).join(', ')}</p>` : ''}
       <p class="small muted">UNESCO: ${u.zona ? `<b>${E(u.nomi)}</b>` : `muhofaza hududidan tashqarida, chegarasigacha ${F.int(u.chegaragacha_m)} m`}${u.eng_yaqin_yodgorlik ? ` · ${E(u.eng_yaqin_yodgorlik)} — ${F.int(u.masofa_m)} m` : ''} · ${E(u.manba || '')}</p>
       ${P.qoidalar.slice(0, 2).map(t => `<p class="small muted">• ${E(t)}</p>`).join('')}
-      <button class="btn xs" data-act="plan-show">🗺 Bosh reja / muhofaza zonalarini xaritada koʻrsatish</button>`;
+      <button class="btn xs" data-act="plan-show">🗺 Bosh reja / muhofaza zonalarini xaritada koʻrsatish</button>
+      <p class="small muted">🟨 konservatsiya · 🟧 rekonstruksiya · 🟪 renovatsiya — geoportaldan raqamlashtirilgan (±30 m)</p>`;
   }
   function area(S) {
     const A = S.area, st = A.st;

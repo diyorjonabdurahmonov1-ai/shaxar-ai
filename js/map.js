@@ -425,7 +425,8 @@
   }
   function drawSystems(list) {
     L_.sys.clearLayers();
-    (list || []).forEach(({ sys, gj }) => {
+    (list || []).forEach(({ sys, gj, img }) => {
+      if (img) { L.imageOverlay(img.url, img.bounds, { opacity: img.opacity || 0.55, interactive: false }).addTo(L_.sys); return; }
       const c = NX.SYSTEMS[sys].color, ico = NX.SYSTEMS[sys].icon;
       L.geoJSON(gj, {
         style: f => ({ color: (f && f.properties && f.properties.color) || c, weight: 3, opacity: 0.85, fillOpacity: f && f.properties && f.properties.tur === 'bufer' ? 0.08 : 0.12 }),

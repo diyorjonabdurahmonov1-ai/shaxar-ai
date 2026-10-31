@@ -14,7 +14,7 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - `js/analysis/hazard.js` — zilzila zonalari (bino shaklida, 40 m kataklar), evakuatsiya (Dijkstra, sigʻim boʻyicha taqsimot, zaxira yoʻl, vaqt; hudud / har bir mahalla / butun shahar `cityPlan`), suv toshqinida baland joylar, yongʻin/tez yordam qamrovi, `waterItems`, `reportItems` (OAV real hodisalari), `summary` (AI ishlamasa ham toʻliq javob). Aholi 560 mingga kalibrlangan.
 - `js/analysis/twin.js` — relyef (AWS Terrarium), `ground()` (SRTM→yer sathi filtri), `flood2d` (LISFLOOD-FP worker `js/sim/flood2d.js`), `CURB=0.15` (yoʻl chetidan oshgan suv = koʻchani bosgan), koʻchalar (`roadsStatic` → `data/roads-samarqand.json`).
 - `js/analysis/area.js` — hudud statistikasi, nomzod joylar, `needs` (xizmatlar qamrovi meʼyor boʻyicha).
-- `js/data/masterplan.js` — Bosh reja 2045 (loyiha 8969: 2-versiya zonalari/UMN/QMN, 3-versiya yakuniy koʻrsatkichlari), UNESCO muhofaza zonalari RASMIY chegarasi (VM 119-son 9-ilova xaritasidan raqamlashtirilgan: Temuriylar qismi, Yevropa qismi, Afrosiyob, bufer), `zoneAt()`, `check()` — hudud tahlilida va AI’da. Qaror lex.uz’da chiqsa — matnini solishtirish.
+- `js/data/masterplan.js` — Bosh reja 2045 (loyiha 8969: 2-versiya zonalari/UMN/QMN, 3-versiya yakuniy koʻrsatkichlari), UNESCO muhofaza zonalari RASMIY chegarasi (VM 119-son 9-ilova xaritasidan raqamlashtirilgan: Temuriylar qismi, Yevropa qismi, Afrosiyob, bufer), `zoneAt()`; bosh reja zonalari (konservatsiya/rekonstruksiya/renovatsiya) — `data/masterplan-samarqand.png` (dshk.shaffofqurilish.uz geoportali ekran tasvirlaridan raqamlashtirilgan 15 m rastr, ±30 m; geoportal faqat Oʻzbekiston IP’laridan ochiladi), `planZoneAt()`; `check()` — hudud tahlilida va AI’da. Qaror lex.uz’da chiqsa — matnini solishtirish.
 - `js/data/buildings.js` — `data/buildings-samarqand.json` (Overture: OSM + Microsoft, ~123 ming bino).
 - `js/ui/map3d.js` — MapLibre 3D: “Raqamli egizak” uslubi, derazalar, realistik suv (tekstura), yomgʻir, zilzila silkinishi, hazard qatlamlari va oqim nuqtalari (`hz-dots`).
 - `js/ui/fx.js` — 2D xaritadagi jonli simulyatsiya canvas’i (3D da oʻchadi). `js/ui/backdrop.js` — orqa fon animatsiyasi.
@@ -41,7 +41,7 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - Maxfiy infratuzilma maʼlumotlari ulanishidan oldin sayt Cloudflare Access yoki davlat serveri orqasiga oʻtishi kerak.
 
 ## Ochiq ishlar
-- Bosh reja: qaror lex.uz’da eʼlon qilinsa — yakuniy matnni `PLAN` bilan solishtirish; zonalar boʻyicha UMN/QMN va qavat cheklovlari faqat Shaharsozlik kadastri GAT’ida (hokimiyatdan GIS fayl soʻralsin). Bufer zonadagi aniq balandlik raqamlari ochiq hujjatlarda yoʻq (qoʻriqlanadigan tegra loyihasida — Madaniy meros agentligidan soʻralsin).
+- Bosh reja: qaror lex.uz’da eʼlon qilinsa — yakuniy matnni `PLAN` bilan solishtirish; zonalar raqamlashtirilgan (±30 m) — aniq vektor fayl va UMN/QMN, qavat cheklovlari uchun hokimiyatdan GIS fayl soʻralsin (geoportalda faqat “Funksiya” maydoni koʻrinadi). Bufer zonadagi aniq balandlik raqamlari ochiq hujjatlarda yoʻq (qoʻriqlanadigan tegra loyihasida — Madaniy meros agentligidan soʻralsin).
 - Hokimiyatdan soʻraladigan maʼlumotlar: bosh reja GIS fayli, kadastr (bino yili/materiali), mahalla chegaralari, kanalizatsiya/ariqlar, FVV yigʻilish joylari va stansiyalar.
 - Oʻt oʻchirish qismlari Overture’da yoʻq — Overpass orqali; tayyor faylga qoʻshish kerak.
 - Worker oxirgi versiyasini foydalanuvchi deploy qilishi kerak (`masterplan` qatlami qoʻshilgan).

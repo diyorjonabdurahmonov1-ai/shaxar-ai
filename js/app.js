@@ -1646,7 +1646,7 @@
         case 'dyn-clear': NX.fx.clear(); NX.view.clearDynamic(); S.dynT = null; render(); break;
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
-        case 'plan-show': (async () => { const layers = [{ sys: 'masterplan', gj: await NX.masterplan.geo() }]; const mp = NX.systems.get('masterplan'); if (mp) layers.push({ sys: 'masterplan', gj: mp.gj }); ensureLeaflet(); NX.view.drawSystems(layers); toast(NX.systems.get('masterplan') ? 'Bosh reja zonalari va muhofaza hududlari xaritada.' : 'Muhofaza hududlari xaritada (rasmiy bosh reja fayli yuklanmagan).', 'ok'); })(); break;
+        case 'plan-show': (async () => { const PM = NX.masterplan.PLANMAP, layers = [{ sys: 'masterplan', img: { url: PM.url, bounds: [[PM.s, PM.w], [PM.n, PM.e]], opacity: 0.5 } }, { sys: 'masterplan', gj: await NX.masterplan.geo() }]; const mp = NX.systems.get('masterplan'); if (mp) layers.push({ sys: 'masterplan', gj: mp.gj }); ensureLeaflet(); NX.view.drawSystems(layers); toast('Bosh reja zonalari (sariq — konservatsiya, toʻq sariq — rekonstruksiya, binafsha — renovatsiya) va UNESCO muhofaza hududlari xaritada.', 'ok'); })(); break;
         case 'q-fill': { const ta = panel.querySelector(b.dataset.target); if (ta) { ta.value = b.dataset.q; ta.focus(); } break; }
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
         case 'review-undo': reviewUndo(b.dataset.fid); break;

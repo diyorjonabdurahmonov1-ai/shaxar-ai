@@ -889,8 +889,9 @@ async function clickStreet(page, name) {
   // Rasmiy muhofaza zonalari (VM 119-son 9-ilova) va bosh reja talablari — nuqtalar boʻyicha
   const mpz = await p9.evaluate(async () => {
     const M = NX.masterplan, c = (lat, lon, o) => M.check(Object.assign({ center: [lat, lon], poly: null }, o));
-    const reg = await c(39.6547, 66.9757, { build: true, floors: 5 }), afr = await c(39.6684, 66.9906, { build: true }), buf = await c(39.6747, 67.0054, { build: true, floors: 3 });
+    const reg = await c(39.6547, 66.9757, { build: true, floors: 5 }), afr = await c(39.6684, 66.9906, { build: true }), buf = await c(39.6415, 66.9755, { build: true, floors: 3 });
     const far = await c(39.6780, 66.9340, { build: true, floors: 12 }), view = await c(39.6547, 66.9757, { build: false });
+    const air = await c(39.7000, 66.9840, { build: true }), ren = await c(39.71166, 66.99898, { build: true }), out = await c(39.5500, 66.9500, { build: true });
     const gj = await M.geo(), ha = k => M.ZONES[k].ha;
     return {
       zones: [M.zoneAt(39.6547, 66.9757), M.zoneAt(39.6627, 66.9878), M.zoneAt(39.6543, 66.9619), M.zoneAt(39.6747, 67.0054), M.zoneAt(39.6780, 66.9340)],
@@ -900,10 +901,13 @@ async function clickStreet(page, name) {
       far: [far.unesco.zona, far.unesco.chegaragacha_m > 300, far.ziddiyatlar.length, far.qoidalar.some(t => /6–9 qavatli/.test(t))],
       view: view.ziddiyatlar.length,
       core: Math.round(ha('temur') + ha('yevropa') + ha('afrosiyob')), gj: gj.features.map(f => f.properties.tur + ':' + f.geometry.coordinates.length).join(','),
+      pz: [air.reja_zonasi.markaz, air.ziddiyatlar.some(t => /KONSERVATSIYA/.test(t)), far.reja_zonasi.markaz, far.qoidalar.some(t => /REKONSTRUKSIYA/.test(t)), ren.reja_zonasi.markaz, ren.qoidalar.some(t => /RENOVATSIYA/.test(t)), ren.ziddiyatlar.length, out.reja_zonasi.markaz, view.reja_zonasi.markaz],
+      pmha: Object.values(M.PLANMAP.ha).reduce((a, b) => a + b, 0),
       plan: [M.PLAN.aholi.y2045, M.PLAN.maydon_ga.y2045, M.PLAN.maks_qavat_rejada, M.PLAN.eski_shahar_kochalari.length],
     };
   });
   ok('Muhofaza zonalari rasmiy xaritadan: Registon — Temuriylar qismi, Shohi Zinda — Afrosiyob, Mustaqillik maydoni — Yevropa qismi, rasadxona — bufer, vokzal — tashqarida; asosiy hudud ≈ UNESCO 1123 ga', mpz.zones.join() === 'temur,afrosiyob,yevropa,bufer,' && Math.abs(mpz.core - 1123) < 40 && mpz.gj === 'bufer:4,temur:1,yevropa:1,afrosiyob:1', JSON.stringify(mpz));
+  ok('Bosh reja zonalari (geoportal, raqamlashtirilgan): aeroport — konservatsiya (qurilish ziddiyat), vokzal — rekonstruksiya, shimoliy uchastka — renovatsiya, shahar tashqarisi — zonasiz; jami ≈ 28 415 ga', mpz.pz.join() === 'konservatsiya,true,rekonstruksiya,true,renovatsiya,true,0,,rekonstruksiya' && Math.abs(mpz.pmha - 28415) < 600, JSON.stringify(mpz));
   ok('Muhofaza rejimi: asosiy hududda qurilish — ziddiyat (UNESCO kelishuvi), Afrosiyobda — taqiqlanadi, bufer — cheklov (ziddiyat emas), tashqarida 12 qavat — bosh reja qavatlilik ogohlantirishi, faqat koʻrish — ziddiyatsiz', mpz.reg.join() === 'temur,true,true' && mpz.afr.join() === 'afrosiyob,true' && mpz.buf.join() === 'bufer,true,0,true' && mpz.far.join() === ',true,0,true' && mpz.view === 0 && mpz.plan.join() === '1209000,28415,9,13', JSON.stringify(mpz));
   await p9.click('[data-act=plan-show]'); await p9.waitForTimeout(800);
   ok('Muhofaza zonalari xaritada', await p9.evaluate(() => Object.values(NX.map.leaflet()._layers).some(l => l.feature && l.feature.properties && l.feature.properties.zona === 'muhofaza')));

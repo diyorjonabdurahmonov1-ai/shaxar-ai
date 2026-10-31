@@ -98,6 +98,7 @@
       if (!list || !list.length) { drop('sys'); return; }
       const c = coll('sys');
       list.forEach(({ sys, gj }) => {
+        if (!gj) return;
         const col = NX.SYSTEMS[sys].color, ico = NX.SYSTEMS[sys].icon;
         gj.features.forEach(f => {
           const g = f.geometry, html = NX.map.sysPopup(sys, f), sw = (a) => a.map(q => [q[1], q[0]]);

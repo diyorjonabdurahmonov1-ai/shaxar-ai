@@ -10,7 +10,11 @@
    • Prezidentning 2026-yil 10-iyundagi PQ-219-son qarori 24-band va 2-ilova (lex.uz/docs/-8263374) — “eski shahar” 13 koʻchasi.
    Zonalar chegarasi 119-son qaror 9-ilova xaritasidan raqamlashtirildi: xarita OSM/Overture koʻchalari bilan avtomatik
    moslashtirildi (1 piksel ≈ 10.7 m, aniqlik taxminan ±20–30 m). Asosiy hudud 1 137 ga (UNESCO: 1 123 ga),
-   bufer zona 1 470 ga (UNESCO 2001: 1 369 ga). Rasmiy bosh reja GIS zonalari (UMN/QMN) “Tizimlar → Bosh reja” orqali yuklanadi. */
+   bufer zona 1 470 ga (UNESCO 2001: 1 369 ga).
+   • Bosh reja zonalari (konservatsiya / rekonstruksiya / renovatsiya) — Davlat shaharsozlik kadastri geoportali
+     (dshk.shaffofqurilish.uz, “Bosh rejalar” qatlami, obyekt “Funksiya” maydoni) ekran tasvirlaridan raqamlashtirildi
+     (2026-10-31): koʻchalar bilan moslashtirilgan, 15 m katakli rastr `data/masterplan-samarqand.png`, aniqlik ±30 m.
+     Jami 28 498 ga (bosh rejada 28 415 ga). Rasmiy GIS fayli “Tizimlar → Bosh reja” orqali yuklansa — u ustun turadi. */
 (function () {
   'use strict';
   const NX = window.NX;
@@ -69,6 +73,52 @@
     yevropa: [[39.66521,66.94847],[39.66491,66.94798],[39.66366,66.94790],[39.66258,66.94718],[39.66094,66.94698],[39.66007,66.94663],[39.65958,66.94615],[39.65919,66.94616],[39.65870,66.94542],[39.65752,66.94446],[39.65694,66.94435],[39.65502,66.94453],[39.65339,66.94508],[39.65099,66.94539],[39.64994,66.94617],[39.64985,66.94654],[39.64919,66.94718],[39.64824,66.94771],[39.64727,66.94761],[39.64659,66.94713],[39.64597,66.94504],[39.64568,66.94480],[39.64375,66.94460],[39.64216,66.94216],[39.64138,66.94169],[39.64023,66.94172],[39.63966,66.94198],[39.63909,66.94262],[39.63797,66.94464],[39.63808,66.94563],[39.63858,66.94636],[39.63926,66.94684],[39.63946,66.94733],[39.63948,66.94833],[39.63893,66.94996],[39.63877,66.95158],[39.63821,66.95271],[39.63804,66.95396],[39.63749,66.95547],[39.63723,66.95709],[39.63659,66.95848],[39.63624,66.96085],[39.63589,66.96235],[39.63551,66.96273],[39.63533,66.96336],[39.63534,66.96411],[39.63603,66.96496],[39.63661,66.96494],[39.63671,66.96519],[39.63758,66.96566],[39.63864,66.96563],[39.63992,66.96186],[39.64049,66.96123],[39.64085,66.95985],[39.64150,66.95871],[39.64256,66.95843],[39.64462,66.96036],[39.64530,66.96072],[39.64599,66.96157],[39.64647,66.96168],[39.64677,66.96217],[39.64823,66.96325],[39.64941,66.96458],[39.65105,66.96466],[39.65116,66.96528],[39.65164,66.96539],[39.65195,66.96625],[39.65254,66.96685],[39.65259,66.96959],[39.65288,66.96995],[39.65434,66.97041],[39.65502,66.97101],[39.65618,66.97110],[39.65807,66.96918],[39.65901,66.96767],[39.65907,66.96580],[39.65877,66.96544],[39.65875,66.96419],[39.65903,66.96381],[39.65903,66.96344],[39.65950,66.96305],[39.66153,66.96324],[39.66152,66.96262],[39.66171,66.96249],[39.66189,66.96174],[39.66273,66.96072],[39.66369,66.96020],[39.66416,66.95944],[39.66423,66.95807],[39.66403,66.95770],[39.66354,66.95747],[39.66296,66.95749],[39.66230,66.95788],[39.66104,66.95779],[39.66026,66.95706],[39.66023,66.95557],[39.66080,66.95494],[39.66098,66.95431],[39.66295,66.95127],[39.66504,66.94972],[39.66521,66.94847]],
     afrosiyob: [[39.67804,66.98105],[39.67764,66.98007],[39.67705,66.97946],[39.67694,66.97909],[39.67548,66.97814],[39.67279,66.97834],[39.67009,66.97817],[39.66808,66.97922],[39.66702,66.97925],[39.66673,66.97901],[39.66519,66.97918],[39.66463,66.97994],[39.66415,66.98020],[39.66406,66.98070],[39.66369,66.98108],[39.66332,66.98196],[39.66265,66.98248],[39.66198,66.98250],[39.66199,66.98312],[39.66171,66.98363],[39.66163,66.98462],[39.66144,66.98475],[39.66127,66.98575],[39.66122,66.98874],[39.66172,66.98972],[39.66192,66.98971],[39.66261,66.99081],[39.66329,66.99092],[39.66407,66.99139],[39.66496,66.99261],[39.66662,66.99393],[39.66780,66.99539],[39.66910,66.99796],[39.66999,66.99918],[39.67116,67.00014],[39.67174,67.00012],[39.67288,66.99922],[39.67295,66.99798],[39.67379,66.99634],[39.67553,66.99119],[39.67712,66.98866],[39.67777,66.98715],[39.67816,66.98229],[39.67804,66.98105]],
   };
+  // Bosh reja zonalari rastri (geoportaldan raqamlashtirilgan): 0 — reja hududidan tashqari, 1/2/3 — zonalar
+  const PLANMAP = {
+    url: 'data/masterplan-samarqand.png?v=20261031', n: 39.750253, s: 39.566575, w: 66.834548, e: 67.079223, cell: 15,
+    ha: { konservatsiya: 12200, rekonstruksiya: 15231, renovatsiya: 1067 },
+    manba: 'Bosh reja zonalari: Davlat shaharsozlik kadastri geoportali (dshk.shaffofqurilish.uz), ekran tasvirlaridan raqamlashtirilgan, aniqlik ±30 m',
+  };
+  const PZ = [null, 'konservatsiya', 'rekonstruksiya', 'renovatsiya'];
+  let pmP = null;
+  function planMap() {
+    if (pmP) return pmP;
+    pmP = new Promise(res => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+          const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0);
+          const d = x.getImageData(0, 0, c.width, c.height).data, a = new Uint8Array(c.width * c.height);
+          // palitra: konservatsiya (250,240,90), rekonstruksiya (240,150,110), renovatsiya (200,110,240)
+          for (let i = 0; i < a.length; i++) { const g = d[i * 4 + 1], b = d[i * 4 + 2]; a[i] = d[i * 4 + 3] < 128 ? 0 : b > 180 ? 3 : g > 200 ? 1 : 2; }
+          res({ w: c.width, h: c.height, a });
+        } catch (e) { res(null); }
+      };
+      img.onerror = () => res(null);
+      img.src = PLANMAP.url;
+    });
+    return pmP;
+  }
+  const pmAt = (pm, lat, lon) => {
+    const i = Math.floor((PLANMAP.n - lat) / (PLANMAP.n - PLANMAP.s) * pm.h), j = Math.floor((lon - PLANMAP.w) / (PLANMAP.e - PLANMAP.w) * pm.w);
+    return i < 0 || j < 0 || i >= pm.h || j >= pm.w ? null : PZ[pm.a[i * pm.w + j]];
+  };
+  async function planZoneAt(lat, lon) { const pm = await planMap(); return pm ? pmAt(pm, lat, lon) : undefined; }
+  // Hudud boʻyicha zonalar ulushi (30 m qadam bilan namunalar)
+  function planShare(pm, poly, center) {
+    const cnt = { konservatsiya: 0, rekonstruksiya: 0, renovatsiya: 0, tashqari: 0 };
+    let n = 0;
+    if (poly && poly.length > 2) {
+      const la = poly.map(p => p[0]), lo = poly.map(p => p[1]), s = Math.min(...la), N = Math.max(...la), w = Math.min(...lo), e = Math.max(...lo);
+      const dLa = 30 / 110574, dLo = 30 / (111320 * Math.cos(center[0] * Math.PI / 180));
+      for (let y = s + dLa / 2; y < N; y += dLa) for (let x = w + dLo / 2; x < e; x += dLo) { if (!inside(poly, y, x)) continue; const z = pmAt(pm, y, x); cnt[z || 'tashqari']++; n++; }
+    }
+    if (!n) { cnt[pmAt(pm, center[0], center[1]) || 'tashqari'] = 1; n = 1; }
+    const ul = {}; Object.keys(cnt).forEach(k => { ul[k] = Math.round(cnt[k] / n * 100); });
+    return { markaz: pmAt(pm, center[0], center[1]), ulush: ul };
+  }
+
   // Zonalar va ularning huquqiy rejimi (qatʼiyligi boʻyicha)
   const ZONES = {
     afrosiyob: {
@@ -173,7 +223,22 @@
           else if (mf == null && nAvg != null && floors && floors > Math.ceil(nAvg)) out.ziddiyatlar.push(`Bosh reja zonasida UMN ${umn} va QMN ${qmn}% — oʻrtacha ${nAvg} qavat (N = UMN / QMN); rejadagi ${floors} qavat bu zichlikdan oshadi.`);
         });
       });
-    } else out.qoidalar.push('Rasmiy bosh reja zonalari (UMN/QMN) fayli hali yuklanmagan (Tizimlar → Bosh reja) — zona turi va zichlik aniq tekshirilmadi; xaritalar Qurilish vazirligining Shaharsozlik kadastri GAT’ida eʼlon qilinishi kerak.');
+    } else {
+      // Geoportaldan raqamlashtirilgan bosh reja zonalari
+      const pm = await planMap();
+      if (pm) {
+        const sh = planShare(pm, poly, center), u = sh.ulush, mz = sh.markaz;
+        out.manba.push(PLANMAP.manba);
+        out.reja_zonasi = { markaz: mz, ulush_foiz: u, manba: PLANMAP.manba };
+        ['konservatsiya', 'rekonstruksiya', 'renovatsiya'].filter(k => u[k] > 0).sort((a, b) => u[b] - u[a]).forEach(k => out.zonalar.push({ zona: k, ulush_foiz: u[k], ruxsat_qavat: null, nomi: '' }));
+        if ((mz === 'konservatsiya' || u.konservatsiya >= 50) && build) out.ziddiyatlar.push(`Bosh reja: hudud${u.konservatsiya < 100 && poly ? ` (${u.konservatsiya}%)` : ''} KONSERVATSIYA zonasida — yashil hudud, suv yoki yoʻl boʻyi himoya hududi yoxud madaniy meros maydoni; qoʻshimcha turar va noturar bino qurilishi taqiqlanadi.`);
+        else if (u.konservatsiya >= 10 && build) out.qoidalar.push(`Hududning ~${u.konservatsiya}% qismi bosh rejada konservatsiya zonasi (yoʻl/suv boʻyi yoki yashil) — shu qismida bino qurilmaydi.`);
+        if (mz === 'rekonstruksiya') out.qoidalar.push('Bosh reja: REKONSTRUKSIYA zonasi — ' + PLAN.zonalar.rekonstruksiya + '.' + (build && floors >= 5 ? ` ${floors} qavatli bino faqat “zichlashtiriladigan” hududda mumkin; hudud turi batafsil rejalashtirish loyihasida aniqlanadi.` : ''));
+        if (mz === 'renovatsiya') out.qoidalar.push('Bosh reja: RENOVATSIYA zonasi — ' + PLAN.zonalar.renovatsiya + '.');
+        if (!mz && build) out.qoidalar.push('Hudud markazi bosh reja chegarasidan (28 415 ga) tashqarida — avval shahar chegarasi va batafsil rejalashtirish loyihasini aniqlash kerak.');
+        out.qoidalar.push('Zonalar boʻyicha UMN/QMN va ruxsat etilgan qavat geoportalda koʻrsatilmagan — aniq raqamlar uchun hokimiyatdan GIS fayl soʻralsin (Tizimlar → Bosh reja).');
+      } else out.qoidalar.push('Bosh reja zonalari xaritasi yuklanmadi — zona turi tekshirilmadi.');
+    }
 
     // 2) UNESCO / “Samarqand” muzey-qoʻriqxonasi qoʻriqlanadigan tegrasi (rasmiy xarita)
     const hits = P.map(p => zoneAt(p[0], p[1])), main = zoneAt(center[0], center[1]);
@@ -220,5 +285,5 @@
     return Promise.resolve({ type: 'FeatureCollection', features: f });
   }
 
-  NX.masterplan = { PLAN, ZONES, RINGS, MONUMENTS, zoneAt, check, geo, zoneType };
+  NX.masterplan = { PLAN, ZONES, RINGS, MONUMENTS, PLANMAP, zoneAt, planZoneAt, planMap, check, geo, zoneType };
 })();
