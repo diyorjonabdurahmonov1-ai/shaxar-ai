@@ -91,6 +91,21 @@
     if (mode !== 'flood' || !data.scen || data.scen.mode !== 'street') return { type: 'FeatureCollection', features: [] };
     return { type: 'FeatureCollection', features: data.scen.segs.map(s => ({ type: 'Feature', properties: { d: s.d, w: s.w }, geometry: { type: 'LineString', coordinates: s.c } })) };
   }
+  // Hajmli suv: har koʻcha boʻlagi — kengligi koʻcha + yoyilish, balandligi chuqurlikka mos (koʻrinishi uchun ×1.6, kamida 0.35 m)
+  function waterVolGeo() {
+    if (mode !== 'flood' || !data.scen || data.scen.mode !== 'street') return { type: 'FeatureCollection', features: [] };
+    const f = [];
+    data.scen.segs.forEach(s => {
+      const [a, b] = s.c, lat = (a[1] + b[1]) / 2, kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320;
+      const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, L = Math.hypot(dx, dy);
+      if (L < 1) return;
+      const hw = Math.min(16, (s.w || 8) * 0.45 + s.d * 6), nx = -dy / L * hw / kx, ny = dx / L * hw / ky;
+      // Uchlari biroz uzaytiriladi — boʻlaklar orasida tirqish qolmasin
+      const ex = dx / L * 2 / kx, ey = dy / L * 2 / ky;
+      f.push({ type: 'Feature', properties: { d: s.d, h: Math.max(0.35, s.d * 1.6) }, geometry: { type: 'Polygon', coordinates: [[[a[0] - ex + nx, a[1] - ey + ny], [b[0] + ex + nx, b[1] + ey + ny], [b[0] + ex - nx, b[1] + ey - ny], [a[0] - ex - nx, a[1] - ey - ny], [a[0] - ex + nx, a[1] - ey + ny]]] } });
+    });
+    return { type: 'FeatureCollection', features: f };
+  }
   // Eski katak koʻrinishi olib tashlangan — suv faqat koʻchalar boʻylab
   const floodGeo = () => ({ type: 'FeatureCollection', features: [] });
   // Koʻchalar (butun shahar) — “Raqamli egizak” rejimida nur chiziqlar
@@ -153,6 +168,17 @@
         const wz = (k) => ['interpolate', ['linear'], ['zoom'], 13, ['*', k * 0.35, ['+', 1, ['*', 6, ['get', 'd']]]], 17, ['*', k, ['+', 1, ['*', 6, ['get', 'd']]]]];
         map.addLayer({ id: 'water-glow', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#38bdf8', 'line-width': wz(5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 8], 'line-opacity': 0.45 } });
         map.addLayer({ id: 'water', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['interpolate', ['linear'], ['get', 'd'], 0.05, '#7dd3fc', 0.3, '#2563eb', 0.6, '#1e3a8a'], 'line-width': wz(2.4), 'line-opacity': 0.9 } });
+        map.addSource('water-vol', { type: 'geojson', data: waterVolGeo() });
+        map.addLayer({ id: 'water-vol', type: 'fill-extrusion', source: 'water-vol', paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'd'], 0.05, '#7dd3fc', 0.3, '#3b82f6', 0.7, '#1e40af'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.78, 'fill-extrusion-vertical-gradient': true } });
+        // Mavj: suv sathi sekin koʻtarilib-tushadi, rangi yaltiraydi
+        let wv = 0;
+        setInterval(() => {
+          if (mode !== 'flood' || !map.getLayer('water-vol') || document.getElementById('map3d').hidden || document.hidden) return;
+          wv += 0.18;
+          const k = 1 + 0.18 * Math.sin(wv), c = 0.5 + 0.5 * Math.sin(wv * 0.7);
+          map.setPaintProperty('water-vol', 'fill-extrusion-height', ['*', ['get', 'h'], k]);
+          map.setPaintProperty('water-glow', 'line-opacity', 0.3 + 0.25 * c);
+        }, 120);
         map.addLayer({ id: 'water-flow', type: 'line', source: 'water', paint: { 'line-color': '#e0f2fe', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.8, 17, 2.2], 'line-opacity': 0.75, 'line-dasharray': [0, 4, 3] } });
         // Oqim effekti: shtrixlar oqim yoʻnalishida suriladi
         const DASH = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
@@ -224,6 +250,9 @@
     if (map.getSource('roads') && rk !== roadsKey) { roadsKey = rk; map.getSource('roads').setData(base === 'twin' ? roadsGeo() : { type: 'FeatureCollection', features: [] }); }
     map.getSource('flood').setData(floodGeo());
     if (map.getSource('water')) map.getSource('water').setData(waterGeo());
+    if (map.getSource('water-vol')) map.getSource('water-vol').setData(waterVolGeo());
+    // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
+    ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));
     map.getSource('plan').setData(planGeo());
     if (map.getSource('hz')) map.getSource('hz').setData(hzGeo());
   }

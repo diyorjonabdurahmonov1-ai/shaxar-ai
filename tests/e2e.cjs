@@ -161,8 +161,8 @@ async function clickStreet(page, name) {
   await page.click('details.extra > summary');
   await page.click('[data-act=twin-rain][data-mm="80"]');
   await page.waitForFunction(() => NX.state.twin.dyn && !NX.state.twin.dynBusy, null, { timeout: 180000 });
-  const d80 = await page.evaluate(() => { const R = NX.state.twin.dyn; return { frames: R.frames.length, peak: R.peak.km, steps: R.steps, st: R.streets.length, top: R.streets[0] && R.streets[0].name, lines: NX.map3d.map().getSource('water')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length }; });
-  ok('2D fizik model: suv vaqt boʻyicha (LISFLOOD-FP), real koʻchalar boʻylab, kvadratsiz', d80.frames > 5 && d80.steps > 50 && d80.peak > 0 && d80.st > 0 && d80.lines > 0 && d80.sq === 0 && /koʻchasi/.test(d80.top), JSON.stringify(d80));
+  const d80 = await page.evaluate(() => { const R = NX.state.twin.dyn; return { frames: R.frames.length, peak: R.peak.km, steps: R.steps, st: R.streets.length, top: R.streets[0] && R.streets[0].name, lines: NX.map3d.map().getSource('water')._data.features.length, vol: NX.map3d.map().getSource('water-vol')._data.features.length, sq: NX.map3d.map().getSource('flood')._data.features.length }; });
+  ok('2D fizik model: suv vaqt boʻyicha (LISFLOOD-FP), real koʻchalar boʻylab, 3D da hajmli suv, kvadratsiz', d80.frames > 5 && d80.steps > 50 && d80.peak > 0 && d80.st > 0 && d80.lines > 0 && d80.vol > 0 && d80.sq === 0 && /koʻchasi/.test(d80.top), JSON.stringify(d80));
   await page.fill('[data-input=twin-t]', '1');
   await page.dispatchEvent('[data-input=twin-t]', 'input');
   const early = await page.evaluate(() => ({ f: NX.state.twin.dynFrame, n: NX.map3d.map().getSource('water')._data.features.length }));
