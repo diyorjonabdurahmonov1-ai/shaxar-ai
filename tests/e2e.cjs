@@ -43,7 +43,7 @@ async function setupRoutes(ctx, opts = {}) {
   // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)
-  if (!opts.realBuildings) await ctx.route(/data\/buildings-samarqand\.json/, route => route.abort('failed'));
+  if (!opts.realBuildings) await ctx.route(/data\/(buildings|roads|places)-samarqand\.json/, route => route.abort('failed'));
   await ctx.route(/overpass|maps\.mail\.ru/, async route => {
     ctx.overpassCalls++;
     if (opts.overpassDown) return route.abort('failed');
@@ -932,6 +932,13 @@ async function clickStreet(page, name) {
   ok('Butun shahar binolari 3D da (~123 ming: OSM + sunʼiy yoʻldoshdan Microsoft), “Raqamli egizak” koʻrinishi, osmon', b11.n > 100000 && b11.ml > 20000 && b11.f === b11.n && b11.base === 'twin' && b11.sky && b11.ring && /sunʼiy yoʻldosh/.test(await p11.textContent('#panel')), JSON.stringify(b11));
   const w11 = await p11.evaluate(() => { const m = NX.map3d.map(); return { pat: JSON.stringify(m.getPaintProperty('bld', 'fill-extrusion-pattern') || null), roof: m.getLayoutProperty('bld-roof', 'visibility'), img: ['w1', 'w2', 'w3'].every(k => m.hasImage(k)), bg: !!document.getElementById('backdrop') && document.getElementById('backdrop').width > 0 }; });
   ok('Kechki shahar: binolar derazalari yonib turadi (3 xil devor), tomlar rangli; sayt orqa fonida jonli koʻchalar tarmogʻi', /w1/.test(w11.pat) && w11.roof === 'visible' && w11.img && w11.bg, JSON.stringify(w11));
+  const rd = await p11.evaluate(async () => { const r = await NX.twin.roads(); const o = await NX.hazard.openSpaces(); return { roads: r.length, complete: r.complete, spaces: o.spaces.length, places: o.places.length }; });
+  ok('Tayyor fayllar: butun shahar koʻchalari, ochiq joylar va mahallalar — Overpass’siz', rd.roads > 10000 && rd.complete && rd.spaces > 100 && rd.places > 20, JSON.stringify(rd));
+  const f0 = await p11.evaluate(() => NX.map3d.map().getSource('bld')._data.features.length);
+  await p11.click('#btnLite'); await p11.waitForTimeout(800);
+  const lt = await p11.evaluate(() => ({ lite: document.documentElement.classList.contains('lite'), f: NX.map3d.map().getSource('bld')._data.features.length, pat: !!NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-pattern') }));
+  ok('Yengil rejim (⚡): kichik binolar va deraza animatsiyasi oʻchadi, eslab qolinadi', lt.lite && lt.f < f0 && !lt.pat && (await p11.evaluate(() => localStorage.getItem('lite') === '1')), JSON.stringify(Object.assign({ f0 }, lt)));
+  await p11.click('#btnLite'); await p11.waitForTimeout(500);
   const tm = await p11.evaluate(() => { const t = performance.now(); NX.map3d.setMode('quake'); NX.map3d.setMode('height'); return Math.round(performance.now() - t); });
   ok('Rejim almashishi tez (binolar qayta chizilmaydi)', tm < 300, tm + ' ms');
   await p11.click('[data-act=twin-base][data-base=sat]');

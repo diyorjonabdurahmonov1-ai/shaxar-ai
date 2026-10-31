@@ -48,7 +48,8 @@
     }
     return g.getImageData(0, 0, WSZ, WSZ);
   }
-  const windowsOn = () => base === 'twin' && mode === 'height';
+  const isLite = () => document.documentElement.classList.contains('lite');
+  const windowsOn = () => base === 'twin' && mode === 'height' && !isLite();
   function addWindows() {
     Object.keys(WIN).forEach(k => { if (!map.hasImage(k)) map.addImage(k, winImage(k)); });
     // Har necha soniyada bir devor turi yangilanadi — kimdir chiroq yoqadi, kimdir oʻchiradi
@@ -65,10 +66,10 @@
   const CRIT = /school|kindergarten|hospital|clinic/;
   let geoKey = '', geoCache = null;
   function buildingsGeo() {
-    const ghi = data.ghi && data.ghi.kwh, key = data.buildings.length + ':' + (ghi || 0) + ':' + (data.buildings[0] && data.buildings[0].id);
+    const ghi = data.ghi && data.ghi.kwh, lite = isLite(), key = data.buildings.length + ':' + (ghi || 0) + ':' + (data.buildings[0] && data.buildings[0].id) + ':' + lite;
     if (geoCache && key === geoKey) return geoCache;
     geoKey = key;
-    geoCache = { type: 'FeatureCollection', features: data.buildings.map(b => ({ type: 'Feature', id: b.id, properties: { h: b.height, lv: b.levels, id: b.id, cr: CRIT.test(b.kind) ? 1 : 0, kwh: ghi ? NX.twin.roofKwh(b, ghi) : 0 }, geometry: { type: 'Polygon', coordinates: [b.ring] } })) };
+    geoCache = { type: 'FeatureCollection', features: (lite ? data.buildings.filter(b => b.area >= 60 || b.levels >= 3) : data.buildings).map(b => ({ type: 'Feature', id: b.id, properties: { h: b.height, lv: b.levels, id: b.id, cr: CRIT.test(b.kind) ? 1 : 0, kwh: ghi ? NX.twin.roofKwh(b, ghi) : 0 }, geometry: { type: 'Polygon', coordinates: [b.ring] } })) };
     return geoCache;
   }
   // Suv yetgan / soyada qolgan binolar — feature-state (minglab binoni qayta chizmasdan)
@@ -99,12 +100,35 @@
       const [a, b] = s.c, lat = (a[1] + b[1]) / 2, kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320;
       const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, L = Math.hypot(dx, dy);
       if (L < 1) return;
-      const hw = Math.min(16, (s.w || 8) * 0.45 + s.d * 6), nx = -dy / L * hw / kx, ny = dx / L * hw / ky;
+      // Haqiqiy oʻlcham: koʻcha kengligi (chuqur suv yoʻlakka ham chiqadi — +2 m gacha), balandligi = chuqurlik
+      const hw = Math.min(12, (s.w || 8) * 0.5 + Math.min(2, s.d * 3)), nx = -dy / L * hw / kx, ny = dx / L * hw / ky;
       // Uchlari biroz uzaytiriladi — boʻlaklar orasida tirqish qolmasin
       const ex = dx / L * 2 / kx, ey = dy / L * 2 / ky;
-      f.push({ type: 'Feature', properties: { d: s.d, h: Math.max(0.35, s.d * 1.6) }, geometry: { type: 'Polygon', coordinates: [[[a[0] - ex + nx, a[1] - ey + ny], [b[0] + ex + nx, b[1] + ey + ny], [b[0] + ex - nx, b[1] + ey - ny], [a[0] - ex - nx, a[1] - ey - ny], [a[0] - ex + nx, a[1] - ey + ny]]] } });
+      f.push({ type: 'Feature', properties: { d: s.d, h: Math.max(0.12, s.d), k: s.d >= 0.6 ? 'wv3' : s.d >= 0.3 ? 'wv2' : 'wv1' }, geometry: { type: 'Polygon', coordinates: [[[a[0] - ex + nx, a[1] - ey + ny], [b[0] + ex + nx, b[1] + ey + ny], [b[0] + ex - nx, b[1] + ey - ny], [a[0] - ex - nx, a[1] - ey - ny], [a[0] - ex + nx, a[1] - ey + ny]]] } });
     });
     return { type: 'FeatureCollection', features: f };
+  }
+  // Suv teksturasi: toshqin suvi (loyqa moviy), bir nechta toʻlqin yigʻindisi — choʻqqilarida quyosh yaltirashi
+  const WATER = [
+    { id: 'wv1', a: [96, 150, 168], b: [150, 196, 210] },     // sayoz: tiniqroq, yerga yaqin rang
+    { id: 'wv2', a: [52, 104, 140], b: [110, 160, 190] },
+    { id: 'wv3', a: [26, 62, 104], b: [70, 118, 160] },        // chuqur: toʻq
+  ];
+  const WSZ2 = 64;
+  function waterFrame(w, t) {
+    const c = document.createElement('canvas'); c.width = c.height = WSZ2;
+    const g = c.getContext('2d'), img = g.createImageData(WSZ2, WSZ2), T = t * 0.35, P = Math.PI * 2 / WSZ2;
+    for (let y = 0; y < WSZ2; y++) for (let x = 0; x < WSZ2; x++) {
+      // Plitka chegarasida uzilmasin — butun davrli toʻlqinlar
+      const v = Math.sin(x * P * 2 + T) + Math.sin(y * P * 3 - T * 1.3) + Math.sin((x + y) * P * 1 + T * 0.7) + 0.6 * Math.sin((x - 2 * y) * P * 2 - T * 1.7);
+      const n = (v + 3.6) / 7.2, glint = Math.max(0, n - 0.82) * 5.5;
+      const i = (y * WSZ2 + x) * 4;
+      img.data[i] = Math.min(255, w.a[0] + (w.b[0] - w.a[0]) * n + 255 * glint * 0.8);
+      img.data[i + 1] = Math.min(255, w.a[1] + (w.b[1] - w.a[1]) * n + 255 * glint * 0.85);
+      img.data[i + 2] = Math.min(255, w.a[2] + (w.b[2] - w.a[2]) * n + 255 * glint);
+      img.data[i + 3] = 235;
+    }
+    return img;
   }
   // Eski katak koʻrinishi olib tashlangan — suv faqat koʻchalar boʻylab
   const floodGeo = () => ({ type: 'FeatureCollection', features: [] });
@@ -166,19 +190,18 @@
         // Koʻchalardagi suv: yorugʻ yoyilish + chuqurlik rangidagi oʻzak + oqim yoʻnalishida harakatlanuvchi yaltirash
         map.addSource('water', { type: 'geojson', data: waterGeo() });
         const wz = (k) => ['interpolate', ['linear'], ['zoom'], 13, ['*', k * 0.35, ['+', 1, ['*', 6, ['get', 'd']]]], 17, ['*', k, ['+', 1, ['*', 6, ['get', 'd']]]]];
-        map.addLayer({ id: 'water-glow', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#38bdf8', 'line-width': wz(5), 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 8], 'line-opacity': 0.45 } });
+        map.addLayer({ id: 'water-glow', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#38bdf8', 'line-width': wz(3), 'line-blur': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 6], 'line-opacity': 0.3 } });
         map.addLayer({ id: 'water', type: 'line', source: 'water', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['interpolate', ['linear'], ['get', 'd'], 0.05, '#7dd3fc', 0.3, '#2563eb', 0.6, '#1e3a8a'], 'line-width': wz(2.4), 'line-opacity': 0.9 } });
         map.addSource('water-vol', { type: 'geojson', data: waterVolGeo() });
-        map.addLayer({ id: 'water-vol', type: 'fill-extrusion', source: 'water-vol', paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'd'], 0.05, '#7dd3fc', 0.3, '#3b82f6', 0.7, '#1e40af'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.78, 'fill-extrusion-vertical-gradient': true } });
-        // Mavj: suv sathi sekin koʻtarilib-tushadi, rangi yaltiraydi
-        let wv = 0;
+        // Suv yuzasi: harakatlanuvchi mavj va yaltirash teksturasi (3 xil chuqurlik rangi), haqiqiy chuqurlik balandligida
+        WATER.forEach((w, i) => map.addImage(w.id, waterFrame(w, 0)));
+        map.addLayer({ id: 'water-vol', type: 'fill-extrusion', source: 'water-vol', paint: { 'fill-extrusion-pattern': ['get', 'k'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.86, 'fill-extrusion-vertical-gradient': false } });
+        let wt = 0;
         setInterval(() => {
           if (mode !== 'flood' || !map.getLayer('water-vol') || document.getElementById('map3d').hidden || document.hidden) return;
-          wv += 0.18;
-          const k = 1 + 0.18 * Math.sin(wv), c = 0.5 + 0.5 * Math.sin(wv * 0.7);
-          map.setPaintProperty('water-vol', 'fill-extrusion-height', ['*', ['get', 'h'], k]);
-          map.setPaintProperty('water-glow', 'line-opacity', 0.3 + 0.25 * c);
-        }, 120);
+          wt++;
+          WATER.forEach(w => { try { map.updateImage(w.id, waterFrame(w, wt)); } catch (e) { /* */ } });
+        }, 110);
         map.addLayer({ id: 'water-flow', type: 'line', source: 'water', paint: { 'line-color': '#e0f2fe', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.8, 17, 2.2], 'line-opacity': 0.75, 'line-dasharray': [0, 4, 3] } });
         // Oqim effekti: shtrixlar oqim yoʻnalishida suriladi
         const DASH = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
@@ -231,9 +254,38 @@
   const KIND = { house: 'Uy', apartments: 'Koʻp qavatli uy', school: 'Maktab', kindergarten: 'Bogʻcha', hospital: 'Shifoxona', mosque: 'Masjid', commercial: 'Savdo binosi', retail: 'Doʻkon', office: 'Ofis', university: 'Universitet', government: 'Davlat idorasi' };
 
   // Osmon va ufq tumani — qiyalab qaralganda shahar chiroyli “ufqqa” cho‘ziladi
+  // ---------- Yomgʻir: tomchilar, bulutli osmon, kuchli jalada chaqmoq (faqat suv rejimida, yomgʻir yogʻayotgan paytda) ----------
+  let rainCv = null, rainG = null, drops = [], rainRaf = 0, flashAt = 0, flash = -1e9, rainOn = false;
+  function rainLoop() {
+    rainRaf = 0;
+    const mm = mode === 'flood' ? (data.rainMm || 0) : 0, host = document.getElementById('map3d');
+    if (!rainCv || !mm || !host || host.hidden) { if (rainCv) rainG.clearRect(0, 0, rainCv.width, rainCv.height); if (rainOn) { rainOn = false; sky(); } return; }
+    if (!rainOn) { rainOn = true; sky(); }
+    const W = host.clientWidth, H = host.clientHeight;
+    if (rainCv.width !== W || rainCv.height !== H) { rainCv.width = W; rainCv.height = H; }
+    const n = Math.min(isLite() ? 250 : 1100, Math.round(mm * (isLite() ? 4 : 14)));
+    while (drops.length < n) drops.push({ x: Math.random() * W, y: Math.random() * H, v: 900 + Math.random() * 500, l: 10 + Math.random() * 16 });
+    drops.length = n;
+    rainG.clearRect(0, 0, W, H);
+    rainG.strokeStyle = 'rgba(210,225,245,0.38)'; rainG.lineWidth = 1.1; rainG.beginPath();
+    drops.forEach(d => { d.y += d.v / 60; d.x += d.v / 60 * 0.18; if (d.y > H) { d.y = -d.l; d.x = Math.random() * W; } rainG.moveTo(d.x, d.y); rainG.lineTo(d.x - d.l * 0.18, d.y - d.l); });
+    rainG.stroke();
+    // Kuchli jala (≥ 40 mm/soat) — vaqti-vaqti bilan chaqmoq
+    const now = performance.now();
+    if (mm >= 40 && now > flashAt) { flashAt = now + 6000 + Math.random() * 8000; flash = now; }
+    if (now - flash < 140) { rainG.fillStyle = `rgba(235,240,255,${0.4 * (1 - (now - flash) / 140)})`; rainG.fillRect(0, 0, W, H); }
+    rainRaf = requestAnimationFrame(rainLoop);
+  }
+  function rainStart() {
+    const host = document.getElementById('map3d');
+    if (!rainCv && host) { rainCv = document.createElement('canvas'); rainCv.className = 'rain-layer'; rainCv.setAttribute('aria-hidden', 'true'); host.appendChild(rainCv); rainG = rainCv.getContext('2d'); }
+    if (!rainRaf) rainRaf = requestAnimationFrame(rainLoop);
+  }
   function sky() {
     if (!map || !map.setSky) return;
     try {
+      // Yomgʻir paytida — qorongʻi bulutli osmon va qalin tuman
+      if (rainOn) { map.setSky({ 'sky-color': '#3b4656', 'horizon-color': '#6b7787', 'fog-color': '#5b6573', 'sky-horizon-blend': 0.8, 'horizon-fog-blend': 0.9, 'fog-ground-blend': 0.55 }); return; }
       map.setSky(base === 'twin' ? { 'sky-color': '#020617', 'horizon-color': '#0e7490', 'fog-color': '#0b1220', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85 }
         : { 'sky-color': '#7cb4e6', 'horizon-color': '#e8f0f8', 'fog-color': '#eef3f8', 'sky-horizon-blend': 0.5, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.9 });
     } catch (e) { /* eski versiya */ }
@@ -251,6 +303,7 @@
     map.getSource('flood').setData(floodGeo());
     if (map.getSource('water')) map.getSource('water').setData(waterGeo());
     if (map.getSource('water-vol')) map.getSource('water-vol').setData(waterVolGeo());
+    if (mode === 'flood' && data.rainMm) rainStart();
     // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
     ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));
     map.getSource('plan').setData(planGeo());
@@ -263,6 +316,13 @@
     refresh();
   }
   function setMode(m) { mode = m; refresh(); }
+  // Yer qimirlashi: kamera 2.5 s davomida titraydi, soʻng joyiga qaytadi
+  function shake() {
+    if (!map) return;
+    const c0 = map.getCenter(), b0 = map.getBearing(), t0 = performance.now();
+    const step = () => { const t = (performance.now() - t0) / 2500; if (t >= 1) { map.jumpTo({ center: c0, bearing: b0 }); return; } const a = (1 - t) * 0.00025; map.jumpTo({ center: [c0.lng + a * Math.sin(t * 90), c0.lat + a * Math.cos(t * 73)], bearing: b0 + (1 - t) * 1.2 * Math.sin(t * 60) }); requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
   function setHazard(list) { data.hz = list && list.length ? list : null; refresh(); hzMarkers(); }
   // Hamma belgilar koʻrinadigan qilib
   function fitTo(pts) {
@@ -291,5 +351,5 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  NX.map3d = { show, snapshot, setMode, setHazard, fitTo, base: () => base, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  NX.map3d = { show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 })();

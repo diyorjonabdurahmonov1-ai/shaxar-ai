@@ -295,7 +295,26 @@
     return { id: e.id, hw: e.tags && e.tags.highway, name: (e.tags && (e.tags['name:uz'] || e.tags.name)) || '', nodes, ll };
   });
   // onPart(list, done, total) — har yangi qism kelganda chaqiriladi
+  // Butun shahar koʻchalari — tayyor fayl (Overture/OSM, ~17 ming boʻlak, 0.2 MB). Overpass’ga bogʻliq emas.
+  let staticRoads = null;
+  async function roadsStatic() {
+    if (staticRoads) return staticRoads;
+    const r = await fetch('data/roads-samarqand.json');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json(), S = d.scale, [lon0, lat0] = d.base;
+    const list = d.w.map((a, i) => {
+      let x = a[2], y = a[3];
+      const ll = [[+(lat0 + y / S).toFixed(6), +(lon0 + x / S).toFixed(6)]];
+      for (let k = 4; k < a.length; k += 2) { x += a[k]; y += a[k + 1]; ll.push([+(lat0 + y / S).toFixed(6), +(lon0 + x / S).toFixed(6)]); }
+      // Tugunlar — koordinata boʻyicha (Overture boʻlaklari chorrahalarda boʻlingan, uchlari bir xil)
+      return { id: 'o' + i, hw: d.hw[a[0]], name: d.names[a[1]] || '', nodes: ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)), ll };
+    });
+    if (list.length < 1000) throw new Error('fayl toʻliq emas');
+    list.complete = true; list.parts = 9; list.src = d.src;
+    return (staticRoads = list);
+  }
   async function roads(onStep, onPart, fallback) {
+    try { const st = await roadsStatic(); if (onPart) onPart(st, 9, 9); return st; } catch (e) { console.warn('Koʻchalar fayli:', e.message); }
     const parts = partsOf(), got = new Map();
     for (const p of parts) { const h = await NX.bigStore.get('rt:' + p.k); if (h && h.list && Date.now() - h.ts < 30 * 86400e3) got.set(p.k, h.list); }
     // Kelmagan qismlar oʻrniga — sayt modelidagi (markaz) koʻchalar

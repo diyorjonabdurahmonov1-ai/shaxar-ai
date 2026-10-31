@@ -37,8 +37,12 @@
   const polyArea = ring => { const p = ring.map(c => G.xy(c[0], c[1])); let A = 0; for (let i = 0, j = p.length - 1; i < p.length; j = i++) A += p[j][0] * p[i][1] - p[i][0] * p[j][1]; return Math.abs(A / 2); };
   const OS_KIND = { park: 'park', garden: 'bogʻ', pitch: 'sport maydoni', stadium: 'stadion', recreation_ground: 'dam olish maydoni', playground: 'bolalar maydonchasi', square: 'maydon', grass: 'maysazor', meadow: 'ochiq maydon', pedestrian: 'piyodalar maydoni' };
   let osCache = null;
+  // Tayyor fayl: ochiq joylar, mahalla nomlari, shifoxona/politsiya (Overture Maps)
+  let placesP = null;
+  const placesStatic = () => (placesP = placesP || fetch('data/places-samarqand.json').then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).catch(e => { placesP = null; throw e; }));
   async function openSpaces() {
     if (osCache) return osCache;
+    try { const d = await placesStatic(); if (d.spaces && d.spaces.length) return (osCache = { ts: Date.now(), spaces: d.spaces, places: d.places || [] }); } catch (e) { /* zaxira — Overpass */ }
     const hit = await NX.bigStore.get('open:v2');
     if (hit && hit.spaces && Date.now() - hit.ts < 30 * 86400e3) return (osCache = hit);
     const C = NX.twin.CITY, bb = `${C.s},${C.w},${C.n},${C.e}`;
@@ -364,8 +368,21 @@
   let svcCache = null;
   async function services() {
     if (svcCache) return svcCache;
+    // Shifoxona va politsiya — tayyor fayldan; oʻt oʻchirish qismlari — OSM (Overpass, 20 s), kelmasa ham tayyor roʻyxat ishlatiladi
+    let base = null;
+    try { const d = await placesStatic(); base = d.svc || null; } catch (e) { base = null; }
+    if (base) {
+      let extra = [];
+      try { const live = await Promise.race([servicesLive(), NX.sleep(20000).then(() => null)]); if (live) extra = live.list; } catch (e) { extra = []; }
+      const near = (a, b) => Math.abs(a.c[0] - b.c[0]) < 0.001 && Math.abs(a.c[1] - b.c[1]) < 0.0013 && a.k === b.k;
+      const list = base.concat(extra.filter(x => !base.some(y => near(x, y))));
+      return (svcCache = { ts: Date.now(), list });
+    }
+    return servicesLive();
+  }
+  async function servicesLive() {
     const hit = await NX.bigStore.get('svc:v1');
-    if (hit && hit.list && Date.now() - hit.ts < 30 * 86400e3) return (svcCache = hit);
+    if (hit && hit.list && Date.now() - hit.ts < 30 * 86400e3) return hit;
     const C = NX.twin.CITY, bb = `${C.s - 0.03},${C.w - 0.04},${C.n + 0.03},${C.e + 0.04}`;
     const q = `[out:json][timeout:40];(nwr["amenity"~"^(fire_station|hospital|police|ambulance_station)$"](${bb});nwr["emergency"="ambulance_station"](${bb}););out tags center qt;`;
     for (const url of NX.config.overpassMirrors) {
@@ -373,9 +390,9 @@
         const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 45000);
         if (!r.ok || !r.data || !r.data.elements) continue;
         const list = r.data.elements.map(e => { const t = e.tags || {}, la = e.lat != null ? e.lat : e.center && e.center.lat, lo = e.lon != null ? e.lon : e.center && e.center.lon; const k = t.amenity === 'fire_station' ? 'fire' : t.amenity === 'police' ? 'police' : 'ambulance'; return la == null ? null : { k, name: t['name:uz'] || t.name || '', c: [la, lo] }; }).filter(Boolean);
-        svcCache = { ts: Date.now(), list };
-        NX.bigStore.set('svc:v1', svcCache);
-        return svcCache;
+        const out = { ts: Date.now(), list };
+        NX.bigStore.set('svc:v1', out);
+        return out;
       } catch (e) { /* keyingi server */ }
     }
     throw new Error('Xizmatlar roʻyxati yuklanmadi');

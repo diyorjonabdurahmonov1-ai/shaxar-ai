@@ -87,6 +87,17 @@
       // 3) Yoʻllar: qorongʻi asos + yorugʻ chiziq; ustida oqim
       g.lineCap = 'round'; g.lineJoin = 'round';
       C.routes.forEach(rt => {
+        if (rt.style === 'traffic') {
+          // Tirbandlik: rangli koʻcha + mashinalar (tezligi real tezlik nisbatiga mos)
+          g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+          g.strokeStyle = rgba(rt.color, 0.55); g.lineWidth = 4; g.stroke();
+          if (rt.L < 12) return;
+          const n = Math.max(1, Math.min(14, Math.round(rt.L / 28 * (1.4 - rt.v)))), sp = 8 + 70 * rt.v;
+          g.fillStyle = '#fef9c3'; g.shadowColor = rt.color; g.shadowBlur = 6;
+          for (let k = 0; k < n; k++) { const q = at(rt, (T * sp + (k / n) * rt.L) % rt.L); g.beginPath(); g.arc(q[0], q[1], 1.9, 0, Math.PI * 2); g.fill(); }
+          g.shadowBlur = 0;
+          return;
+        }
         if (rt.style === 'blocked') {
           // Toʻsilishi mumkin koʻcha: qizil, miltillaydi, ustida “×” belgilar
           const a = 0.55 + 0.45 * Math.sin(T * 4);
@@ -133,7 +144,7 @@
     data = {
       kind,
       zones: list.filter(a => a.kind === 'zone'),
-      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style }))),
+      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style, v: a.v != null ? a.v : 1 }))),
       water: list.filter(a => a.kind === 'water').flatMap(a => a.segs),
       points: list.filter(a => a.kind === 'point'),
       epi: epi || null,

@@ -714,3 +714,13 @@ html, body { background: #050a14; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Natija rejimida: tirbandlik afsonasi yashiriladi (natija birinchi oʻrinda) */
 .map-wrap.hz-on .nx-legend { display: none; }
+/* 3D: yomgʻir tomchilari */
+.rain-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+/* Zilzila simulyatsiyasi: xarita silkinadi */
+@keyframes quake-shake { 0%, 100% { transform: translate(0, 0); } 10% { transform: translate(-6px, 3px) rotate(-.3deg); } 20% { transform: translate(5px, -4px) rotate(.3deg); } 30% { transform: translate(-5px, -2px); } 40% { transform: translate(4px, 4px) rotate(.2deg); } 55% { transform: translate(-3px, 2px); } 70% { transform: translate(2px, -2px); } 85% { transform: translate(-1px, 1px); } }
+.map-wrap.quake-shake > .leaflet-container, .map-wrap.quake-shake > #ymap, .map-wrap.quake-shake > #map3d, .map-wrap.quake-shake > .fx-layer { animation: quake-shake .45s ease-in-out 5; }
+@media (prefers-reduced-motion: reduce) { .map-wrap.quake-shake > * { animation: none !important; } }
+/* Yengil rejim: doimiy animatsiyalar oʻchadi */
+html.lite .panel .card::after, html.lite .topbar::after { animation: none; opacity: .4; }
+html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-duration: 3s; }
+#btnLite[aria-pressed="true"] { color: #fde68a; border-color: rgba(253, 230, 138, .5); }

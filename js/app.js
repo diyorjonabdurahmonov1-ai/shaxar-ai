@@ -290,6 +290,10 @@
     const P = T.res.P, a = T.si * P;
     NX.view.clearDeltas(false);
     NX.view.showDynamic(T.res.sr.subarray(a, a + P), T.res.ql.subarray(a, a + P), S.simInfo.pieces);
+    // Jonli: koʻchalarda mashinalar oqimi (tirband joyda sekin, erkin joyda tez)
+    const M = S.model, items = [];
+    S.simInfo.pieces.forEach(([wi, i0, i1], p) => { const r = T.res.sr[a + p], q = T.res.ql[a + p]; if (r >= 0.9 && q < 5) return; const path = M.ways[wi].ll.slice(i0, i1 + 1); if (path.length < 2) return; items.push({ kind: 'line', style: 'traffic', path, lat: path[0][0], lon: path[0][1], color: r >= 0.75 ? '#22c55e' : r >= 0.55 ? '#f59e0b' : r >= 0.35 ? '#ef4444' : '#7f1d1d', v: Math.max(0.08, r) }); });
+    NX.fx.show(items.slice(0, 900), 'traffic');
     const el = panel.querySelector('#dynTInfo'); if (el) el.outerHTML = V.dynTInfo(S);
   }
   let dynTTimer = null;
@@ -328,7 +332,9 @@
     const T = twinState(), R = T.dyn; if (!R) return;
     T.dynFrame = Math.max(0, Math.min(R.frames.length - 1, i));
     NX.map3d.setMode('flood');
-    NX.map3d.set({ scen: { mode: 'street', segs: NX.twin.frameSegs(R, T.dynFrame), wetIds: R.wetIds } });
+    // Shu paytda yomgʻir yogʻyaptimi (vaqt shkalasi boʻyicha) — 3D da tomchilar shu paytda
+    const tNow = R.frames[T.dynFrame] ? R.frames[T.dynFrame].t : 0, mmNow = (R.rain || []).reduce((a, x) => a + (tNow >= x.t0 && tNow < x.t1 ? x.mmh : 0), 0);
+    NX.map3d.set({ scen: { mode: 'street', segs: NX.twin.frameSegs(R, T.dynFrame), wetIds: R.wetIds }, rainMm: mmNow });
     if (fly && R.streets[0] && R.streets[0].at) NX.map3d.flyTo(R.streets[0].at[0], R.streets[0].at[1], 15.3);
     const el = panel.querySelector('#dynInfo'); if (el) el.outerHTML = V.dynInfo(S); const rg = panel.querySelector('[data-input=twin-t]'); if (rg && +rg.value !== T.dynFrame) rg.value = T.dynFrame;
   }
@@ -415,6 +421,8 @@
     ensureLeaflet(); NX.view.showActions(H.items);
     // Jonli simulyatsiya xaritada (2D); boshqa belgilar xira — natija birinchi oʻrinda
     NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter);
+    // Zilzila: xarita bir necha soniya silkinadi (simulyatsiya), 3D da kamera titraydi
+    if (H.kind === 'quake') { const w = $('.map-wrap'); w.classList.remove('quake-shake'); void w.offsetWidth; w.classList.add('quake-shake'); setTimeout(() => w.classList.remove('quake-shake'), 2600); NX.map3d.shake && NX.map3d.shake(); }
     hazardFocus(true);
     if (S.tab !== 'twin') NX.view.fitPoints(pts.filter(Boolean));
     return H;
@@ -431,6 +439,7 @@
     if (on && !b) { b = document.createElement('button'); b.className = 'hz-close'; b.type = 'button'; b.innerHTML = '✕ Natijani yopish'; b.onclick = hazardClear; wrap.appendChild(b); }
     if (!on && b) b.remove();
   }
+  const hashStr = t => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
   function hazardClear() { NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
@@ -468,6 +477,8 @@
       // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
       R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
+      // Simulyatsiya: boshidan — yomgʻir yogʻadi, suv koʻtariladi, keyin kamayadi (3D egizakda)
+      if (R && S.tab === 'twin') setTimeout(() => { const T1 = twinState(); if (T1.dyn === R && !T1.playing) { twinShowFrame(0); twinPlay(); } }, 900);
       extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
       // Kichik yomgʻir: kanalizatsiya ishlasa suv qolmaydi — ariqlar tiqilgan holat ham hisoblanadi (xaritada shu koʻrsatiladi)
       if (R && R.peak.km < 0.5 && mm <= 30) {
@@ -508,8 +519,16 @@
     }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
-    try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
-    catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
+    // Bir xil savol (shu hudud, shu hisob) — bir xil javob: AI javobi 24 soat saqlanadi; “qayta” deyilsa — yangidan
+    const ck = 'ans:' + hashStr(n.replace(/[^a-z0-9ʻ' ]/g, '').replace(/\s+/g, ' ').trim() + '|' + (S.area ? S.area.st.center.map(v => v.toFixed(4)).join() : '') + '|' + (H ? H.kind + ':' + (H.items || []).length : ''));
+    let cached = null;
+    if (!/qayta|yangidan/.test(n)) { try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.ts < 86400e3) cached = c.r; } catch (e) { cached = null; } }
+    if (cached) r = cached;
+    else {
+      try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
+      catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
+      if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src } })); } catch (e) { /* */ } }
+    }
     const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
@@ -1489,6 +1508,16 @@
     $('#btnRefresh').addEventListener('click', () => loadData(true));
     $('#btnDraw').addEventListener('click', drawArea);
     $('#btnSettings').addEventListener('click', () => openSettings());
+    // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
+    const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));
+    liteSync();
+    liteBtn.addEventListener('click', () => {
+      const on = !document.documentElement.classList.contains('lite');
+      document.documentElement.classList.toggle('lite', on);
+      try { localStorage.setItem('lite', on ? '1' : '0'); } catch (e) { /* */ }
+      liteSync(); NX.backdrop && NX.backdrop.redraw(); NX.map3d.refresh && NX.map3d.refresh();
+      toast(on ? 'Yengil rejim yoqildi — animatsiyalar kamaydi.' : 'Toʻliq rejim.', 'ok');
+    });
     $('#btnTheme').addEventListener('click', () => {
       const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = t; NX.store.set('theme', t);
@@ -1600,7 +1629,7 @@
         case 'dyn-run': runDynamic(null, 'Hozirgi holat'); break;
         case 'dyn-sim': if (S.sim.last) { const s0 = S.model.streets[S.sim.last.street]; runDynamic(scenarioFor(s0, S.sim.last.type).sc, S.sim.last.label); setTab('map'); clearStreet(); } break;
         case 'dyn-play': dynTPlay(); break;
-        case 'dyn-clear': NX.view.clearDynamic(); S.dynT = null; render(); break;
+        case 'dyn-clear': NX.fx.clear(); NX.view.clearDynamic(); S.dynT = null; render(); break;
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
         case 'q-fill': { const ta = panel.querySelector(b.dataset.target); if (ta) { ta.value = b.dataset.q; ta.focus(); } break; }

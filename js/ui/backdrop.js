@@ -147,10 +147,11 @@
       g.globalAlpha = 1;
     });
   }
-  function loop(now) { frame(now); if (!still) requestAnimationFrame(loop); }
+  const lite = () => document.documentElement.classList.contains('lite');
+  function loop(now) { if (!lite()) frame(now); requestAnimationFrame(loop); }
   window.addEventListener('resize', () => { clearTimeout(resize.t); resize.t = setTimeout(resize, 150); });
   resize();
   if (!still) requestAnimationFrame(loop);
-  else setInterval(() => { if ((NX.state && NX.state.model) !== modelRef) frame(performance.now(), true); }, 3000);
+  if (still) setInterval(() => { if ((NX.state && NX.state.model) !== modelRef) frame(performance.now(), true); }, 3000);
   NX.backdrop = { redraw: () => { geometry(); frame(performance.now(), true); } };
 })();
