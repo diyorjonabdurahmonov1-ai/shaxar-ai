@@ -175,6 +175,9 @@ async function clickStreet(page, name) {
   await page.click('#twinChat form button');
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
+  const wq = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H && H.kind, water: H ? H.items.filter(a => a.kind === 'water').reduce((t, a) => t + a.segs.length, 0) : 0, pins: H ? H.items.filter(a => a.kind === 'point').map(a => a.id) : [], lines: H ? H.items.filter(a => a.kind === 'line').length : -1, fx: NX.fx.active() }; });
+  ok('“Qaysi koʻchalarni suv bosadi” — evakuatsiya emas: koʻchalardagi suv (jonli) va eng chuqur koʻchalar', wq.kind === 'water' && wq.water > 0 && wq.pins.some(p => /^W/.test(p)) && wq.lines === 0 && wq.fx, JSON.stringify(wq));
+  if (process.env.SHOT15) { await page.click('.tabs [data-tab=map]'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT15 }); await page.click('.tabs [data-tab=twin]'); await page.waitForTimeout(800); }
   // Favqulodda vaziyat: zarar zonalari va evakuatsiya yoʻllari koʻcha tarmogʻida hisoblanib, xaritada chiziladi
   await page.fill('#twinChat textarea[name=tq]', '9 ballik zilzila boʻlsa qayer koʻp zarar koʻradi va evakuatsiya uchun qaysi yoʻl xavfsiz?');
   await page.click('#twinChat form button');
@@ -201,6 +204,17 @@ async function clickStreet(page, name) {
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 10, null, { timeout: 180000 });
   const fsv = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, svc: H.svc, st: H.stations.length, cover: H.cover, route: H.route && H.route.min, pins: document.querySelectorAll('.hz-pin').length }; });
   ok('Yongʻin xizmati: stansiyalar, meʼyorda (10 daq.) yetiladigan foiz, uzoq hududlar va yoʻl xaritada', fsv.kind === 'svc' && fsv.svc === 'fire' && fsv.st === 1 && fsv.cover != null && fsv.pins > 0, JSON.stringify(fsv));
+  // Zilzila: faqat zarar soʻralsa — yoʻl chizilmaydi; “qaysi koʻchalardan oʻtib boʻlmaydi” — toʻsiladigan koʻchalar
+  await page.fill('#twinChat textarea[name=tq]', 'Seysmik xavf boʻyicha eng zaif binolar qayerda?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 12, null, { timeout: 180000 });
+  const qd = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, zones: H.items.filter(a => a.kind === 'zone').length, routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
+  ok('Zilzila “qayer zaif” — faqat xavfli hududlar (yoʻllar chizilmaydi)', qd.kind === 'quake' && qd.zones > 0 && qd.routes === 0, JSON.stringify(qd));
+  await page.fill('#twinChat textarea[name=tq]', 'Zilziladan keyin qutqaruvchilar qaysi koʻchalardan oʻta olmaydi?');
+  await page.click('#twinChat form button');
+  await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 14, null, { timeout: 180000 });
+  const qb = await page.evaluate(() => { const H = NX.state.twin.hz; return { show: H.show, facts: Array.isArray(H.facts.vayronadan_toʻsilishi_mumkin_koʻchalar), routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
+  ok('Zilzila “qaysi koʻchalardan oʻtib boʻlmaydi” — vayronadan toʻsiladigan koʻchalar hisobi', qb.show.blocked && qb.facts && qb.routes === 0, JSON.stringify(qb));
   // AI yordamchi (asosiy chat) ham shu hisobga ulanadi — javob 2D xaritada
   await page.click('.tabs [data-tab=ai]');
   await page.fill('#chat textarea[name=q]', 'Suv toshsa odamlarni qaysi yoʻldan baland joyga olib chiqamiz?');

@@ -80,7 +80,7 @@
       list.forEach((a, i) => {
         const bal = { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` };
         if (a.fx) {
-          if (a.kind === 'line') return;
+          if (a.kind === 'line' || a.kind === 'water') return;
           c.add(new window.ymaps.Placemark([a.lat, a.lon], { iconContent: a.id || String(i + 1), hintContent: a.title, balloonContent: bal.balloonContent }, { preset: 'islands#circleIcon', iconColor: a.color || '#16a34a', zIndex: 1000 }));
           return;
         }

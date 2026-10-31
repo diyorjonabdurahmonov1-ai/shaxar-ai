@@ -147,7 +147,7 @@
   }
   // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
   function msgExtras(m, fly) {
-    const list = m.hz || null;
+    const list = m.hz ? m.hz.filter(a => a.kind !== 'water') : null;
     return `${list && list.length ? `<p class="small"><b>📍 Xaritada:</b></p><ul class="locs hz-list">${list.map(a => `<li class="locrow"><button class="loc" data-act="${m.fly || fly}" data-lat="${a.lat}" data-lon="${a.lon}"><b>${E(a.title)}</b> <small class="muted">— ${E(a.note || '')}</small></button></li>`).join('')}</ul>` : ''}${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' Xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}`;
   }
   // “Nimalarni soʻrash mumkin” — yopiq roʻyxat; bosilsa savol maydoniga yoziladi (yuborilmaydi)

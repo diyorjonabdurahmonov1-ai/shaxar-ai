@@ -150,14 +150,14 @@
   // Zavod, ochiq maydon, yoʻl ustiga qizil tushmaydi; raqamlar ham shu binolardan.
   const WORKS = b => (b.area > 800 && b.levels <= 2 && !CRIT.test(b.kind) && !/apartments|residential|school|university|hospital/.test(b.kind)) || /industrial|warehouse|garage|shed|greenhouse|roof|construction/.test(b.kind);
   function region(blds, I, c0, R, inside) {
-    const [cx, cy] = G.xy(c0[0], c0[1]), cells = new Map(), st = { n: 0, A: 0, B: 0, C: 0, ppl: 0, hp: 0, hb: 0, tall: 0, crit: [] };
+    const [cx, cy] = G.xy(c0[0], c0[1]), cells = new Map(), st = { n: 0, A: 0, B: 0, C: 0, ppl: 0, hp: 0, hb: 0, tall: 0, crit: [], critB: [] };
     blds.forEach(b => {
       if (WORKS(b)) return;
       const [x, y] = G.xy(b.c[0], b.c[1]);
       if (inside ? !inside(b.c[0], b.c[1]) : Math.hypot(x - cx, y - cy) > R) return;
       const cls = vclass(b), h = heavy(cls, I), p = people(b);
       st.n++; st[cls]++; st.ppl += p; st.hp += p * h; st.hb += h; if (b.levels >= 5) st.tall++;
-      if (CRIT.test(b.kind)) { st.crit.push(b.name || KIND_UZ[b.kind] || b.kind); st.hp += 150 * h; }
+      if (CRIT.test(b.kind)) { const nm = b.name || KIND_UZ[b.kind] || b.kind; st.crit.push(nm); st.critB.push({ name: nm, kind: KIND_UZ[b.kind] || b.kind, c: b.c, levels: b.levels, h }); st.hp += 150 * h; }
       const k = Math.floor(x / 40) + ':' + Math.floor(y / 40), v = cells.get(k) || { x: Math.floor(x / 40) * 40 + 20, y: Math.floor(y / 40) * 40 + 20, r: 0 };
       v.r += h; cells.set(k, v);
     });
@@ -216,6 +216,7 @@
     // Avval haqiqiy ochiq joylar (park, maydon) — 2.5 km ichida boʻlmasa, keng koʻchalar
     const real = new Map(SH.filter(s => !s.road).map(s => [s.node.ix, s])), any = new Map(SH.map(s => [s.node.ix, s]));
     const cost = quakeCost(net, tallNear);
+    const blocked = blockedStreets(net, blds, I);
     // Kimni evakuatsiya qilamiz: belgilangan hudud (soʻralsa — faqat shu), har bir mahalla yoki shahar boʻyicha eng xavfli zonalar
     if (o.area) {
       const inside = (la, lo) => NX.area.inside(o.area.poly, la, lo);
@@ -224,12 +225,32 @@
       const origins = areaOrigins(blds, inside);
       if (!origins.length) origins.push({ id: 'A1', name: 'hudud markazi', c: o.area.center, ppl: Math.round(zone.ppl) || 1 });
       const P = evacPlan(net, hz, origins, SH, cost, real);
-      return { kind: 'quake', scope: 'area', I, zones: [zone], tot: { hb: zone.hb, hp: zone.hp, ppl: zone.ppl, n: zone.n, A: zone.A }, shelters: P.shelters, allShelters: SH.length, routes: P.routes, total: P.total, epicenter: o.area.center };
+      return { kind: 'quake', scope: 'area', blocked: blocked.filter(b => b.segs.some(sg => inside(sg[0][0], sg[0][1]))), I, zones: [zone], tot: { hb: zone.hb, hp: zone.hp, ppl: zone.ppl, n: zone.n, A: zone.A }, shelters: P.shelters, allShelters: SH.length, routes: P.routes, total: P.total, epicenter: o.area.center };
     }
     const mh = o.mahalla ? mahallaOrigins(os.places, blds, net) : [];
     const origins = (mh.length ? mh : Z.top.map(z => ({ id: z.id, name: z.name, c: z.c, ppl: z.ppl }))).concat(o.extraOrigins || []);
     const P = evacPlan(net, hz, origins, SH, cost, real);
-    return { kind: 'quake', scope: mh.length ? 'mahalla' : 'city', I, zones: Z.top, tot: Z.tot, shelters: P.shelters, allShelters: SH.length, routes: P.routes, byMahalla: !!mh.length, total: P.total, epicenter: Z.top[0] ? Z.top[0].c : null };
+    return { kind: 'quake', scope: mh.length ? 'mahalla' : 'city', blocked, I, zones: Z.top, tot: Z.tot, shelters: P.shelters, allShelters: SH.length, routes: P.routes, byMahalla: !!mh.length, total: P.total, epicenter: Z.top[0] ? Z.top[0].c : null };
+  }
+
+  // Vayronalar bilan toʻsilishi mumkin koʻchalar: ikki tomonida 5+ qavatli binolar (sg.tq) yoki tor koʻcha boʻyida koʻp eski past uylar
+  function blockedStreets(net, blds, I) {
+    const old = bgrid(blds.filter(b => !WORKS(b) && vclass(b) === 'A'), 50);
+    const byName = new Map();
+    net.segs.forEach(sg => {
+      const x = (sg.a.x + sg.b.x) / 2, y = (sg.a.y + sg.b.y) / 2;
+      let a = 0; old(x, y, 22, () => { a++; });
+      const risk = (sg.tq || 0) >= 2 ? 1 : sg.w <= 8 && a >= 4 && I >= 8 ? 0.8 : 0;
+      if (!risk || sg.len < 15) return;
+      const k = sg.name || '';
+      const v = byName.get(k) || { name: sg.name || 'nomsiz koʻcha', segs: [], len: 0, tall: 0, old: 0 };
+      v.segs.push([[sg.a.lat, sg.a.lon], [sg.b.lat, sg.b.lon]]); v.len += sg.len; v.tall += sg.tq || 0; v.old += a;
+      byName.set(k, v);
+    });
+    return [...byName.values()].filter(v => v.len >= 60).sort((p, q) => q.len - p.len).slice(0, 10).map((v, i) => {
+      const m = v.segs[Math.floor(v.segs.length / 2)][0];
+      return { id: 'V' + (i + 1), name: v.name, len: Math.round(v.len), segs: v.segs.slice(0, 120), c: m, why: v.tall ? 'ikki tomonida baland binolar' : 'tor koʻcha, eski past uylar' };
+    });
   }
 
   // Mahallalar (OSM nomlari) — har biriga aholisi (500 m ichidagi turar joylar), eng koʻp aholili 12 tasi, bir-biridan ≥ 700 m
@@ -396,12 +417,18 @@
     const out = [];
     const mid = p => p[Math.floor(p.length / 2)];
     if (H.kind === 'quake') {
+      const show = H.show || { routes: true, blocked: true, critical: true };
       H.zones.forEach((z, i) => out.push({ kind: 'zone', id: z.id, ring: z.ring || null, cells: z.cells, lat: z.c[0], lon: z.c[1], color: ZCOL[i] || '#f97316', title: `⚠️ ${z.id}: ${z.name || 'xavfli hudud'}`, note: `~${NX.fmt.int(z.hp)} kishi ogʻir shikastlangan binolarda boʻlishi mumkin (${H.I} ball, taxminiy). ${z.n} bino, ${z.A} tasi past (paxsa/gʻisht), ${z.tall} tasi 5+ qavat.${z.crit.length ? ' ' + z.crit.slice(0, 3).join(', ') + '.' : ''}` }));
-      H.routes.forEach(r => {
+      if (show.critical) {
+        let k = 0;
+        H.zones.forEach(z => (z.critB || []).filter(b => b.h >= 0.05).slice(0, 4).forEach(b => out.push({ kind: 'point', id: 'K' + (++k), lat: b.c[0], lon: b.c[1], color: '#e11d48', title: `🏫 ${b.name} (${z.id})`, note: `${b.kind}, ${b.levels} qavat — ${H.I} ballda ogʻir shikast ehtimoli ~${Math.round(b.h * 100)}%. Birinchi tekshiriladi.` })));
+      }
+      if (show.blocked) (H.blocked || []).forEach(b => out.push({ kind: 'line', style: 'blocked', id: b.id, paths: b.segs, path: b.segs[0], lat: b.c[0], lon: b.c[1], color: '#ef4444', title: `⛔ ${b.id}: ${b.name}`, note: `${NX.fmt.int(b.len)} m — vayronalar bilan toʻsilishi mumkin (${b.why}). Evakuatsiya va qutqaruv uchun ishlatmaslik.` }));
+      if (show.routes) H.routes.forEach(r => {
         out.push({ kind: 'line', id: r.id, ppl: r.ppl, path: r.path, from: r.path[0], to: r.path[r.path.length - 1], lat: mid(r.path)[0], lon: mid(r.path)[1], color: r.part ? '#0d9488' : '#22c55e', title: `🚶 ${r.id}: ${r.fromName || r.from} → ${r.sh.id} (${NX.fmt.int(r.ppl)} kishi)`, note: `${NX.fmt.int(r.len)} m, piyoda ~${r.min} daq.; hammasi chiqib boʻlishi ~${r.totalMin} daq. (eng tor joy ${r.narrowM} m).${r.streets.length ? ' ' + r.streets.join(' → ') + '.' : ''}` });
         if (r.backup) out.push({ kind: 'line', id: r.id + 'z', path: r.backup.path, from: r.backup.path[0], to: r.backup.path[r.backup.path.length - 1], lat: mid(r.backup.path)[0], lon: mid(r.backup.path)[1], color: '#38bdf8', dash: true, title: `↪ ${r.id} zaxira yoʻli`, note: `${NX.fmt.int(r.backup.len)} m, ~${r.backup.min} daq.${r.backup.streets.length ? ' ' + r.backup.streets.join(' → ') + '.' : ''} Asosiy yoʻl toʻsilsa.` });
       });
-      H.shelters.forEach(s => out.push({ kind: 'point', id: s.id, lat: s.c[0], lon: s.c[1], color: '#16a34a', title: `🟢 ${s.id}: ${s.name}`, note: `${s.kind}${s.area ? `, ${NX.fmt.int(s.area)} m² — ~${NX.fmt.int(s.cap)} kishi sigʻadi` : ''}; bu yerga ~${NX.fmt.int(s.assigned)} kishi yoʻnaltirilgan.` }));
+      if (show.routes) H.shelters.forEach(s => out.push({ kind: 'point', id: s.id, lat: s.c[0], lon: s.c[1], color: '#16a34a', title: `🟢 ${s.id}: ${s.name}`, note: `${s.kind}${s.area ? `, ${NX.fmt.int(s.area)} m² — ~${NX.fmt.int(s.cap)} kishi sigʻadi` : ''}; bu yerga ~${NX.fmt.int(s.assigned)} kishi yoʻnaltirilgan.` }));
     } else if (H.kind === 'svc') {
       const S0 = SVC[H.svc];
       H.slow.forEach(t => out.push({ kind: 'point', id: t.id, lat: t.c[0], lon: t.c[1], color: '#f97316', title: `⏱ ${t.id}: ${t.name || 'uzoq hudud'} — ~${t.min} daq.`, note: `${S0.uz} meʼyori ${S0.norm} daqiqa; eng yaqini: ${t.st}.` }));
@@ -429,6 +456,9 @@
       savol_doirasi: H.scope === 'area' ? 'FAQAT belgilangan hudud (foydalanuvchi xaritada chizgan): zona Z1 — shu hudud, A1… — hududdagi uy guruhlari' : H.scope === 'mahalla' ? 'har bir mahalla' : 'butun shahar — eng xavfli zonalar',
       ball: H.I, [H.scope === 'area' ? 'hudud_boʻyicha' : 'shahar_boʻyicha']: { binolar: H.tot.n, past_uylar_paxsa_gisht: H.tot.A, ogʻir_shikastlanishi_mumkin_binolar: Math.round(H.tot.hb), shu_binolardagi_odamlar_tunda: Math.round(H.tot.hp), aholi_taxmin_osm: Math.round(H.tot.ppl) },
       xavfli_zonalar: H.zones.map(z => ({ id: z.id, joy: z.name, binolar: z.n, past_uylar: z.A, qavat5_plus: z.tall, zichlik_foiz: Math.round(z.cover * 100), aholi: Math.round(z.ppl), xavf_ostidagi_odamlar: Math.round(z.hp), maktab_shifoxona: z.crit.slice(0, 4) })),
+      vayronadan_toʻsilishi_mumkin_koʻchalar: (H.blocked || []).map(b => ({ id: b.id, koʻcha: b.name, uzunlik_m: b.len, sabab: b.why })),
+      xavfdagi_maktab_shifoxonalar: H.zones.flatMap(z => (z.critB || []).filter(b => b.h >= 0.05).slice(0, 4).map(b => ({ nomi: b.name, turi: b.kind, zona: z.id, qavat: b.levels, ogʻir_shikast_ehtimoli_foiz: Math.round(b.h * 100) }))),
+      xaritada_koʻrsatilgan: H.show ? Object.keys(H.show).filter(k => H.show[k]) : null,
       yigʻilish_joylari: H.shelters.map(s => ({ id: s.id, nomi: s.name, turi: s.kind, maydon_m2: s.area, sigʻim_kishi: s.cap, yoʻnaltirilgan_kishi: s.assigned })),
       kimlar_uchun: H.byMahalla ? 'har bir mahalla (OSM nomlari, aholisi 500 m ichidagi turar joylardan)' : 'eng xavfli zonalar',
       evakuatsiya_rejasi: H.routes.map(r => ({ id: r.id, qayerdan: r.from + (r.fromName ? ' (' + r.fromName + ')' : ''), qayerga: r.sh.id + ' ' + r.sh.name, odamlar: r.ppl, qism: r.part ? 'qolganlar (birinchi joy toʻldi)' : 'asosiy', uzunlik_m: r.len, piyoda_daqiqa: r.min, hammasi_chiqib_boʻlishi_daqiqa: r.totalMin, eng_tor_joy_m: r.narrowM, koʻchalar: r.streets, sigʻim_yetmaydi_kishi: r.over || undefined, zaxira_yoʻl: r.backup ? { id: r.id + 'z', uzunlik_m: r.backup.len, daqiqa: r.backup.min, koʻchalar: r.backup.streets } : 'yoʻq (muqobil koʻcha topilmadi)' })),
@@ -444,6 +474,20 @@
       shahar_eng_baland_quruq_joylari: H.high.map(h => ({ nomi: h.name, balandlik_m: h.z })),
       yoʻl_tanlash_qoidasi: '30 sm+ suvli koʻchalardan oʻtilmaydi; 3 m+ balandroq va quruq joygacha eng qisqa yoʻl',
     };
+  }
+
+  // Suv toshqini: koʻchalardagi suv (eng yuqori payt) + eng chuqur koʻchalar + suv yetadigan maktab/shifoxonalar
+  function waterItems(R, blds) {
+    const out = [], streets = (R.streets || []).slice(0, 8);
+    let segs = [];
+    if (R.frames) { const pk = R.frames.indexOf(R.peak); segs = R.segs.map((sg, i) => ({ a: [sg.c[0][1], sg.c[0][0]], b: [sg.c[1][1], sg.c[1][0]], d: Math.min(1.2, R.frames.reduce((m, f) => Math.max(m, f.d[i]), 0)), w: sg.w, now: pk >= 0 ? R.frames[pk].d[i] : 0 })); }
+    else if (R.segs) segs = R.segs.map(sg => ({ a: [sg.c[0][1], sg.c[0][0]], b: [sg.c[1][1], sg.c[1][0]], d: Math.min(1.2, sg.d), w: sg.w }));
+    segs = segs.filter(x => x.d >= 0.08).sort((p, q) => q.d - p.d).slice(0, 7000);
+    if (segs.length) out.push({ kind: 'water', id: 'suv', segs, lat: segs[0].a[0], lon: segs[0].a[1], title: '💧 Suv', note: '' });
+    streets.forEach((x, i) => x.at && out.push({ kind: 'point', id: 'W' + (i + 1), lat: x.at[0], lon: x.at[1], color: '#2563eb', title: `💧 W${i + 1}: ${x.name} — ${Math.round(Math.min(1.2, x.max) * 100)} sm${x.max > 1.2 ? '+' : ''}`, note: `${NX.fmt.int(x.len)} m koʻchada 10 sm dan chuqur suv.` }));
+    const wet = R.wetIds ? (blds || []).filter(b => R.wetIds.has(b.id) && CRIT.test(b.kind)).slice(0, 6) : [];
+    wet.forEach((b, i) => out.push({ kind: 'point', id: 'K' + (i + 1), lat: b.c[0], lon: b.c[1], color: '#e11d48', title: `🏫 ${b.name || KIND_UZ[b.kind] || 'bino'} — suv yetadi`, note: 'Bino oldida 20 sm dan chuqur suv toʻplanadi.' }));
+    return out;
   }
 
   // AI ishlamasa ham toʻliq javob — hisob natijasidan matn (zilzila / suv / xizmatlar)
@@ -471,5 +515,5 @@
     return L.join('\n');
   }
 
-  NX.hazard = { summary, intensity, openSpaces, services, responders, SVC, quake, flood, items, facts, vclass, heavy, _search: search };
+  NX.hazard = { summary, waterItems, intensity, openSpaces, services, responders, SVC, quake, flood, items, facts, vclass, heavy, _search: search };
 })();

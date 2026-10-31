@@ -227,9 +227,9 @@
   // rain: [{ t0, t1 (soniya), mmh }]; drainMm — soatiga kanalizatsiya/ariqlar olib ketadigan
   async function flood2d(D, roadList, rain, opt, onProgress) {
     const o = Object.assign({ drainMm: 10, infilMm: 8, after: 2 * 3600, snapMin: 10 }, opt || {});
-    // SRTM’dagi soxta chuqurlar (bino, daraxt, koʻprik izlari) — 2 m dan sayozlari toʻldiriladi; chuqurroqlari (karyer, jar) qoladi
+    // SRTM’dagi soxta chuqurlar (bino, daraxt, koʻprik izlari) — 5 m dan sayozlari (SRTM — sirt modeli, binolar orasi “chuqur” chiqadi) toʻldiriladi; chuqurroqlari (karyer, jar) qoladi
     const Fh = hydro(D).F;
-    const N = D.nx * D.ny, z = Float32Array.from(D.z, (v, k) => (Fh[k] - v < 2 ? Fh[k] : v)), nArr = new Float32Array(N).fill(0.05), loss = new Float32Array(N).fill(o.infilMm / 1000 / 3600);
+    const N = D.nx * D.ny, z = Float32Array.from(D.z, (v, k) => (Fh[k] - v < 5 ? Fh[k] : v)), nArr = new Float32Array(N).fill(0.05), loss = new Float32Array(N).fill(o.infilMm / 1000 / 3600);
     const cellOf = (lat, lon) => { const [x, y] = G.xy(lat, lon), i = Math.floor((x - D.x0) / D.step), j = Math.floor((y - D.y0) / D.step); return i < 0 || j < 0 || i >= D.nx || j >= D.ny ? -1 : j * D.nx + i; };
     // Binolar — gʻadir-budir (suv sekin oʻtadi), oʻtkazmaydigan sirt
     (NX.buildings.get() || []).forEach(b => { const k = cellOf(b.c[0], b.c[1]); if (k >= 0) { nArr[k] = 0.08; loss[k] = o.drainMm / 1000 / 3600; } });
@@ -263,7 +263,8 @@
       v.len += sg.len; if (best > v.max) { v.max = best; v.at = sg.mid; v.t = bt; }
       byName.set(sg.name, v);
     });
-    const streets = [...byName.values()].map(v => Object.assign(v, { max: +v.max.toFixed(2), len: Math.round(v.len) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
+    // SRTM — sirt modeli (binolar, daraxtlar ham bor): 1.2 m dan chuqur qiymatlar ishonchsiz — “1.2 m+” deb cheklanadi
+    const streets = [...byName.values()].map(v => Object.assign(v, { max: +Math.min(1.2, v.max).toFixed(2), len: Math.round(v.len) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
     const peak = frames.reduce((b, f) => (f.km > b.km ? f : b), frames[0] || { km: 0, t: 0 });
     // Eng yuqori nuqtada suv yetadigan binolar
     const hmax = res.hmax, wetB = (NX.buildings.get() || []).filter(b => { const k = cellOf(b.c[0], b.c[1]); return k >= 0 && hmax[k] >= 0.2; });

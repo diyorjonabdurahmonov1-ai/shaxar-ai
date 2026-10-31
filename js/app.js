@@ -399,11 +399,18 @@
       else if (fl && fl.segs) fl.segs.forEach(sg => wet.push({ lat: (sg.c[0][1] + sg.c[1][1]) / 2, lon: (sg.c[0][0] + sg.c[1][0]) / 2, d: sg.d }));
       H = NX.hazard.flood({ net, blds, os, wet, streets: fl ? fl.streets : [], extraOrigins: ex.map(e => ({ name: e.name, c: e.c, d: 0 })), area });
     }
-    H.items = NX.hazard.items(H).map(a => Object.assign(a, { fx: true }));
+    if (opts && opts.show) H.show = opts.show;
+    H.items = ((opts && opts.extraItems) || []).concat(NX.hazard.items(H));
     H.facts = NX.hazard.facts(H);
+    return showHazard(H);
+  }
+  // Natijani xaritaga chiqarish: 3D, 2D (jonli qatlam + bosiladigan belgilar), boshqa chizmalar xira
+  function showHazard(H) {
+    const T = twinState();
+    H.items.forEach(a => { a.fx = true; });
     T.hz = H;
     NX.map3d.setHazard(H.items);
-    const pts = []; H.items.forEach(a => { pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
+    const pts = []; H.items.forEach(a => { if (a.kind === 'water') return; pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
     NX.map3d.fitTo(pts);
     ensureLeaflet(); NX.view.showActions(H.items);
     // Jonli simulyatsiya xaritada (2D); boshqa belgilar xira — natija birinchi oʻrinda
@@ -418,6 +425,8 @@
     if (!wrap) return;
     wrap.classList.toggle('hz-on', !!on);
     NX.camwall.show(!on && S.tab === 'map');
+    // Yandex tirbandlik ranglari natijani toʻsmasin — vaqtincha oʻchiriladi
+    if (NX.yandex && NX.yandex.setTraffic) { if (on && hazardFocus.traffic == null) { hazardFocus.traffic = NX.yandex.trafficOn ? NX.yandex.trafficOn() : true; NX.yandex.setTraffic(false); } if (!on && hazardFocus.traffic != null) { NX.yandex.setTraffic(hazardFocus.traffic); hazardFocus.traffic = null; } }
     let b = wrap.querySelector('.hz-close');
     if (on && !b) { b = document.createElement('button'); b.className = 'hz-close'; b.type = 'button'; b.innerHTML = '✕ Natijani yopish'; b.onclick = hazardClear; wrap.appendChild(b); }
     if (!on && b) b.remove();
@@ -483,10 +492,19 @@
       C.busy = 'Favqulodda xizmatlar yetib borish vaqti hisoblanmoqda'; renderKeepScroll();
       try { H = await hazardRun('svc', q, null, opts); } catch (e) { console.warn('xizmatlar:', e); }
       if (H) { extra.xizmatlar_xaritasi = H.facts; local = NX.hazard.summary(H); }
-    } else if (quakeQ || rainQ || evacQ) {
-      C.busy = quakeQ || !rainQ ? (it.mahalla ? 'Har bir mahalla uchun evakuatsiya rejasi hisoblanmoqda' : 'Xavfli zonalar va evakuatsiya yoʻllari hisoblanmoqda') : 'Suvdan chiqish yoʻllari va baland joylar hisoblanmoqda'; renderKeepScroll();
-      try { H = await hazardRun(rainQ && !quakeQ ? 'flood' : 'quake', q, R || sc0, opts); } catch (e) { console.warn('xavf xaritasi:', e); }
-      if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
+    } else if (quakeQ || (!rainQ && it.main === 'evac')) {
+      // Zilzila: savolga qarab — zarar zonalari (doim), maktab/shifoxonalar, toʻsiladigan koʻchalar, evakuatsiya yoʻllari
+      const show = quakeQ ? { routes: it.evac, blocked: it.blocked || it.evac, critical: it.critical || (!it.evac && !it.blocked) } : { routes: true, blocked: true, critical: false };
+      C.busy = 'Tahlil'; renderKeepScroll();
+      try { H = await hazardRun('quake', q, null, Object.assign({}, opts, { show })); } catch (e) { console.warn('xavf xaritasi:', e); }
+      if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H); }
+    } else if (rainQ) {
+      // Suv toshqini: “qaysi koʻchani suv bosadi” — koʻchalardagi suv (jonli); “qayerga olib chiqamiz / baland joy” — qoʻshimcha yoʻllar
+      const W = R || sc0, wItems = W ? NX.hazard.waterItems(W, twinState().buildings) : [];
+      if (it.evac) {
+        try { H = await hazardRun('flood', q, W, Object.assign({}, opts, { extraItems: wItems })); } catch (e) { console.warn('xavf xaritasi:', e); }
+        if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
+      } else if (wItems.length) H = showHazard({ kind: 'water', items: wItems });
     }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;

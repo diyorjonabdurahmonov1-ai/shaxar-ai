@@ -693,7 +693,7 @@ html, body { background: #050a14; }
 .hz-ann { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
 .hz-tag { display: inline-grid; place-items: center; min-width: 30px; height: 24px; padding: 0 7px; border-radius: 8px; font: 700 12px/1 system-ui, sans-serif; color: #fff;
   background: rgba(3, 7, 16, .82); border: 2px solid var(--c); box-shadow: 0 0 14px var(--c), 0 2px 6px rgba(0, 0, 0, .5); }
-.hz-close { position: absolute; z-index: 900; top: 64px; left: 50%; transform: translateX(-50%); border: 1px solid rgba(94, 234, 212, .35); background: rgba(3, 7, 16, .82); color: #e2e8f0;
+.hz-close { position: absolute; z-index: 900; bottom: 80px; left: 50%; transform: translateX(-50%); border: 1px solid rgba(94, 234, 212, .35); background: rgba(3, 7, 16, .82); color: #e2e8f0;
   border-radius: 999px; padding: 8px 16px; font-weight: 600; cursor: pointer; box-shadow: 0 0 18px rgba(45, 212, 191, .25); backdrop-filter: blur(4px); }
 .hz-close:hover { border-color: #2dd4bf; }
 /* AI “Tahlil qilinmoqda” */
@@ -712,3 +712,5 @@ html, body { background: #050a14; }
 @keyframes think-shine { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 @keyframes think-run { from { left: -40%; } to { left: 100%; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Natija rejimida: tirbandlik afsonasi yashiriladi (natija birinchi oʻrinda) */
+.map-wrap.hz-on .nx-legend { display: none; }

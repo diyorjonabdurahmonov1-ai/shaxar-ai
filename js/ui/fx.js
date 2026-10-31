@@ -28,9 +28,10 @@
     const P = (la, lo) => proj(la, lo, r);
     const mPerPx = 1113 / Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]) / Math.SQRT2);  // ~0.01° ≈ 1113 m (lat)
     const zones = data.zones.map(z => ({ color: z.color, cells: (z.cells || []).map(c => { const p = P(c[0], c[1]); return p && [p[0], p[1], c[2]]; }).filter(Boolean), ring: z.ring ? z.ring.map(q => P(q[0], q[1])) : null, c: P(z.lat, z.lon) }));
+    const water = data.water.map(w => { const a = P(w.a[0], w.a[1]), b = P(w.b[0], w.b[1]); return a && b ? [a[0], a[1], b[0], b[1], w.d] : null; }).filter(Boolean);
     const routes = data.routes.map(rt => { const pts = rt.path.map(q => P(q[0], q[1])); const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return Object.assign({}, rt, { pts, cum, L: cum[cum.length - 1] }); });
     const points = data.points.map(p => Object.assign({}, p, { p: P(p.lat, p.lon) }));
-    cache = { key, zones, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
+    cache = { key, zones, water, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
     return cache;
   }
   function at(rt, d) {
@@ -66,9 +67,34 @@
         const ph = ((T * 0.45 + k / 3) % 1), rad = 20 + ph * Math.max(r.width, r.height) * 0.6;
         g.strokeStyle = rgba('#f97316', 0.55 * (1 - ph)); g.lineWidth = 3 * (1 - ph) + 1; g.beginPath(); g.arc(C.epi[0], C.epi[1], rad, 0, Math.PI * 2); g.stroke();
       }
+      // 2b) Koʻchalardagi suv: yorugʻ yoyilish + chuqurlik rangidagi oʻzak + oqim yoʻnalishida yaltirash
+      if (C.water.length) {
+        const zw = Math.max(1, Math.min(2.4, C.cellPx / 10));
+        g.lineCap = 'round';
+        [[0.10, 0.3, '#7dd3fc'], [0.3, 0.6, '#2563eb'], [0.6, 9, '#1e3a8a']].forEach(([lo, hi, col]) => {
+          const L = C.water.filter(w => w[4] >= lo && w[4] < hi); if (!L.length) return;
+          g.beginPath(); L.forEach(w => { g.moveTo(w[0], w[1]); g.lineTo(w[2], w[3]); });
+          g.strokeStyle = 'rgba(56,189,248,0.28)'; g.lineWidth = (6 + lo * 14) * zw; g.stroke();
+          g.strokeStyle = col; g.lineWidth = (2.4 + lo * 6) * zw; g.globalAlpha = 0.9; g.stroke(); g.globalAlpha = 1;
+        });
+        const thin = C.water.filter(w => w[4] < 0.1);
+        if (thin.length) { g.beginPath(); thin.forEach(w => { g.moveTo(w[0], w[1]); g.lineTo(w[2], w[3]); }); g.strokeStyle = 'rgba(125,211,252,0.55)'; g.lineWidth = 2 * zw; g.stroke(); }
+        // Oqim: oq shtrixlar pastga qarab siljiydi
+        g.setLineDash([3, 9]); g.lineDashOffset = -T * 24;
+        g.beginPath(); C.water.forEach(w => { if (w[4] >= 0.15) { g.moveTo(w[0], w[1]); g.lineTo(w[2], w[3]); } });
+        g.strokeStyle = 'rgba(224,242,254,0.85)'; g.lineWidth = 1.4 * zw; g.stroke(); g.setLineDash([]);
+      }
       // 3) Yoʻllar: qorongʻi asos + yorugʻ chiziq; ustida oqim
       g.lineCap = 'round'; g.lineJoin = 'round';
       C.routes.forEach(rt => {
+        if (rt.style === 'blocked') {
+          // Toʻsilishi mumkin koʻcha: qizil, miltillaydi, ustida “×” belgilar
+          const a = 0.55 + 0.45 * Math.sin(T * 4);
+          g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
+          g.strokeStyle = `rgba(239,68,68,${0.85 * a})`; g.lineWidth = 5; g.shadowColor = '#ef4444'; g.shadowBlur = 10; g.stroke(); g.shadowBlur = 0;
+          if (rt.L > 30) { const q = at(rt, rt.L / 2); g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(q[0] - 4, q[1] - 4); g.lineTo(q[0] + 4, q[1] + 4); g.moveTo(q[0] + 4, q[1] - 4); g.lineTo(q[0] - 4, q[1] + 4); g.stroke(); }
+          return;
+        }
         const path = () => { g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
         g.setLineDash(rt.dash ? [10, 8] : []);
         g.lineDashOffset = rt.dash ? -T * 20 : 0;
@@ -107,7 +133,8 @@
     data = {
       kind,
       zones: list.filter(a => a.kind === 'zone'),
-      routes: list.filter(a => a.kind === 'line' && a.path && a.path.length > 1).map(a => ({ path: a.path, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl })),
+      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style }))),
+      water: list.filter(a => a.kind === 'water').flatMap(a => a.segs),
       points: list.filter(a => a.kind === 'point'),
       epi: epi || null,
     };

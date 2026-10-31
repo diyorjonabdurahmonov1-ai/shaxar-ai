@@ -384,7 +384,7 @@
       const label = `<span class="ann-n">${i + 1}</span><span class="ann-i" title="${NX.esc(a.title)}">${ico}</span>`;
       // Favqulodda vaziyat natijasi: chiziq va hudud — jonli qatlamda (NX.fx); bu yerda faqat bosiladigan ixcham belgi
       if (a.fx) {
-        if (a.kind === 'line') return;
+        if (a.kind === 'line' || a.kind === 'water') return;
         L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
         return;
       }

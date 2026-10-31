@@ -117,6 +117,7 @@
         const dLat = 20 / 111320, dLon = 20 / (111320 * Math.cos(a.lat * Math.PI / 180));
         a.cells.forEach(c => f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.25 + 0.5 * c[2] }, geometry: { type: 'Polygon', coordinates: [[[c[1] - dLon, c[0] - dLat], [c[1] + dLon, c[0] - dLat], [c[1] + dLon, c[0] + dLat], [c[1] - dLon, c[0] + dLat], [c[1] - dLon, c[0] - dLat]]] } }));
       } else if (a.kind === 'zone' && a.ring) f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.32 }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
+      else if (a.kind === 'line' && a.paths) f.push({ type: 'Feature', properties: { t: a.style === 'blocked' ? 'blocked' : 'route', col: a.color }, geometry: { type: 'MultiLineString', coordinates: a.paths.map(p => p.map(q => [q[1], q[0]])) } });
       else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: a.dash ? 'alt' : 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
     });
     return { type: 'FeatureCollection', features: f };
@@ -125,7 +126,7 @@
     hzMarks.forEach(m => m.remove()); hzMarks = [];
     if (!map || !window.maplibregl.Marker) return;
     (data.hz || []).forEach((a, i) => {
-      if (a.dash) return;
+      if (a.dash || a.kind === 'water' || a.style === 'blocked') return;
       const el = document.createElement('div');
       el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
       const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
@@ -182,6 +183,7 @@
         let hi = 0;
         const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
         setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
+        map.addLayer({ id: 'hz-blocked', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'blocked'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ef4444', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7], 'line-opacity': 0.9, 'line-blur': 1 } });
         map.addLayer({ id: 'hz-alt', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'alt'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 17, 5], 'line-dasharray': [2, 1.5] } });
         hzMarkers();
         map.on('click', 'bld', e => {
