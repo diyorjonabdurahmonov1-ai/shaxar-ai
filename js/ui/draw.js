@@ -57,5 +57,45 @@
     svg.addEventListener('pointercancel', finish);
   }
 
-  NX.draw = { start, stop, active: () => !!ov };
+  // Koʻcha (chiziq) chizish: bosib nuqta qoʻyiladi yoki bosib turib erkin chiziladi; ✓ Tayyor yoki ikki marta bosish — tugatadi
+  function startLine(onDone, onCancel) {
+    stop();
+    const wrap = document.querySelector('.map-wrap');
+    ov = document.createElement('div');
+    ov.className = 'draw-ov line';
+    ov.onCancel = onCancel;
+    ov.innerHTML = `<svg><polyline points="" /><g class="v"></g></svg><div class="nx-pickbar draw-bar"><span>🛣 Koʻcha yoʻnalishini <b>bosib-bosib</b> belgilang (yoki bosib turib chizing)</span><button type="button" data-k="undo" title="Oxirgi nuqtani olib tashlash">↶</button><button type="button" class="ok" data-k="ok">✓ Tayyor</button><button type="button" data-k="x">✕</button></div>`;
+    wrap.appendChild(ov);
+    const svg = ov.querySelector('svg'), pl = ov.querySelector('polyline'), vg = ov.querySelector('g.v');
+    let pts = [], down = null, moved = false;
+    const draw = () => { pl.setAttribute('points', pts.map(x => x[0] + ',' + x[1]).join(' ')); vg.innerHTML = pts.filter((p, i) => p.v || i === 0 || i === pts.length - 1).map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="6"/>`).join(''); };
+    const done = () => {
+      const raw = thin(pts, 4);
+      if (raw.length < 2) return;
+      const line = raw.map(p => NX.view.pxToLL(p[2], p[3])).filter(Boolean);
+      stop();
+      if (line.length >= 2) onDone(line); else if (onCancel) onCancel();
+    };
+    ov.querySelector('.draw-bar').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
+      if (b.dataset.k === 'undo') { pts.pop(); draw(); }
+      else if (b.dataset.k === 'ok') done();
+      else { stop(); if (onCancel) onCancel(); }
+    });
+    document.addEventListener('keydown', onKey);
+    const rel = e => { const r = svg.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, e.clientX, e.clientY]; };
+    svg.addEventListener('pointerdown', e => { e.preventDefault(); svg.setPointerCapture(e.pointerId); down = rel(e); moved = false; });
+    svg.addEventListener('pointermove', e => {
+      if (!down) return;
+      const p = rel(e), q = pts[pts.length - 1] || down;
+      if (!moved && Math.hypot(p[0] - down[0], p[1] - down[1]) > 8) { moved = true; if (!pts.length || Math.hypot(pts[pts.length - 1][0] - down[0], pts[pts.length - 1][1] - down[1]) > 4) pts.push(Object.assign(down, { v: 1 })); }
+      if (moved && Math.hypot(p[0] - q[0], p[1] - q[1]) >= 5) { pts.push(p); draw(); }
+    });
+    const up = e => { if (!down) return; if (!moved) { const p = down; p.v = 1; pts.push(p); draw(); } else if (pts.length) pts[pts.length - 1].v = 1; down = null; draw(); void e; };
+    svg.addEventListener('pointerup', up);
+    svg.addEventListener('pointercancel', up);
+    svg.addEventListener('dblclick', e => { e.preventDefault(); done(); });
+  }
+
+  NX.draw = { start, startLine, stop, active: () => !!ov };
 })();

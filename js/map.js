@@ -8,6 +8,7 @@
   let map, M, renderer, h = {};
   const L_ = {};             // qatlam guruhlari
   let wayLines = [];         // har bir yoʻl uchun polyline
+  let roadR = null;
   let selected = null, selLayer = null, routeHi = null, deltaLayer = null;
   let colorMode = { mode: 'now' };
   let forcedProblems = false, hoverId = null, realTiles = null, tilesTs = null;
@@ -52,6 +53,8 @@
     L_.area = L.layerGroup().addTo(map);
     L_.sys = L.layerGroup().addTo(map);
     L_.ann = L.layerGroup().addTo(map);
+    L_.road = L.layerGroup().addTo(map);
+    roadR = L.svg({ padding: 0.6 });   // CSS animatsiyalar uchun alohida SVG qatlam
     addSearch();
     addLayerControl();
     addLegend();
@@ -494,7 +497,86 @@
     if (redraw) { restyle(); updateLegend(); }
   }
 
+  // Chizilgan yangi koʻcha tekshiruvi: boʻlaklar holat rangida (oqib turadi), buziladigan binolar, tegilgan zonalar,
+  // mavjud yoʻllar orqali muqobil, yorliqlar — hammasi xarita qatlami (surilganda/kattalashganda joyida qoladi)
+  function showRoad(R, opt) {
+    bindDeclutter();
+    L_.road.clearLayers();
+    if (!R) return;
+    const RC = NX.roadcheck, o = opt || {};
+    const g = L_.road, sv = { renderer: roadR, interactive: false };
+    // 1) Tegilgan muhofaza zonalari — yumshoq toʻlqinli fon
+    if (o.zones) L.geoJSON(o.zones, { renderer: roadR, interactive: false, style: f => ({ color: f.properties.color, weight: 2, fillColor: f.properties.color, fillOpacity: 0.16, dashArray: '6 6', className: 'rd-zone' }) }).addTo(g);
+    // 2) Muqobil: mavjud koʻchalar orqali
+    if (R.tarmoq && R.tarmoq.path && R.tarmoq.path.length > 1) {
+      L.polyline(R.tarmoq.path, Object.assign({ color: '#10b981', weight: 5, opacity: 0.9, dashArray: '2 10', lineCap: 'round', className: 'rd-alt' }, sv)).addTo(g);
+    }
+    // 3) Buziladigan binolar — qizil, miltillaydi
+    R.binolar.forEach(b => { if (b.ring && b.ring.length > 2) L.polygon(b.ring.map(c => [c[1], c[0]]), Object.assign({ color: '#ef4444', weight: 1.5, fillColor: '#ef4444', fillOpacity: 0.55, className: 'rd-bld' }, sv)).addTo(g); });
+    // 4) Yoʻl yoʻlagi (kenglik) va boʻlaklar
+    const full = R.line;
+    L.polyline(full, Object.assign({ color: '#0f172a', weight: 16, opacity: 0.35, lineCap: 'round', className: 'rd-casing' }, sv)).addTo(g);
+    R.segs.forEach(sg => {
+      const c = RC.COLOR[sg.lv];
+      L.polyline(sg.path, Object.assign({ color: c, weight: 12, opacity: 0.28, lineCap: 'round', className: 'rd-glow rd-' + sg.lv }, sv)).addTo(g);
+      L.polyline(sg.path, Object.assign({ color: c, weight: 6, opacity: 1, lineCap: 'round', dashArray: '14 10', className: 'rd-seg rd-' + sg.lv }, sv)).addTo(g);
+    });
+    // 5) Yorliqlar: muammoli boʻlaklar, binolar, uchlar
+    const lab = (ll, cls, html, z) => { const mk = L.marker(ll, { icon: L.divIcon({ className: 'rd-pin', html: `<div class="rd-lab ${cls}">${html}</div>`, iconSize: null }), zIndexOffset: z || 0, keyboard: false, interactive: false }).addTo(g); mk._prio = z || 0; return mk; };
+    const shown = new Set();
+    R.segs.filter(sg => RC.LV[sg.lv] >= 1 && sg.len >= 25).sort((a, b) => RC.LV[b.lv] - RC.LV[a.lv]).forEach(sg => {
+      const k = sg.lv + sg.why; if (shown.has(k) || shown.size >= 5) return; shown.add(k);
+      const short = sg.tur === 'unesco' ? (sg.her ? NX.masterplan.ZONES[sg.her].qisqa : 'UNESCO') : sg.plan === 'konservatsiya' ? 'Konservatsiya zonasi' : sg.plan === 'rekonstruksiya' ? 'Rekonstruksiya zonasi' : sg.plan === 'renovatsiya' ? 'Renovatsiya zonasi' : 'Bosh reja';
+      lab(sg.mid, 'rd-' + sg.lv, `<b>${RC.ICON[sg.lv]} ${NX.esc(RC.LVUZ[sg.lv])}</b><span>${NX.esc(short)} · ${sg.len} m</span>`, 500 + RC.LV[sg.lv] * 100);
+    });
+    if (R.binolar.length) {
+      const c = R.binolar.reduce((a, b) => [a[0] + b.c[0] / R.binolar.length, a[1] + b.c[1] / R.binolar.length], [0, 0]);
+      lab(c, 'rd-bldlab', `<b>🏚 ${R.binolar.length} ta bino</b><span>yoʻl yoʻlagida — buziladi</span>`, 400);
+    }
+    R.yodgorliklar.filter(m => m.d < 100).forEach(m => lab(m.c, 'rd-mon', `<b>🕌 ${NX.esc(m.name)}</b><span>${m.d} m</span>`, 450));
+    (o.photos || []).forEach(p => L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'rd-pin', html: `<a class="rd-lab rd-photo" href="${NX.esc(p.link)}" target="_blank" rel="noopener" title="Koʻcha surati (Mapillary)"><img src="${NX.esc(p.url)}" alt=""><span>📷 surat</span></a>`, iconSize: null }), zIndexOffset: 300 }).addTo(g)._prio = 300);
+    const A = full[0], Bp = full[full.length - 1];
+    lab(A, 'rd-end', '<b>A</b>', 900); lab(Bp, 'rd-end', '<b>B</b>', 900);
+    // 6) Umumiy xulosa nishoni (chiziq oʻrtasida)
+    const X = R.xulosa, mid = R.segs[Math.floor(R.segs.length / 2)].mid;
+    if (!o.noBadge) lab(mid, 'rd-verdict rd-' + X.holat, `<b>${X.belgi} ${NX.esc(X.nomi)}</b><span>${R.uzunlik_m >= 1000 ? (R.uzunlik_m / 1000).toFixed(2) + ' km' : R.uzunlik_m + ' m'}${R.tarmoq && R.tarmoq.qisqarish_m > 50 ? ` · yoʻl ${(R.tarmoq.qisqarish_m / 1000).toFixed(1)} km qisqaradi` : ''}</span>`, 1000);
+    if (o.fit !== false) map.fitBounds(L.latLngBounds(full.concat(R.tarmoq && R.tarmoq.path ? R.tarmoq.path : [])), { padding: [70, 70], maxZoom: 17 });
+    declutterSoon();
+  }
+  // Yorliqlar bir-birining ustiga tushmasin: muhimroq (zIndex katta) yorliq qoladi, ustiga tushgani yashiriladi.
+  // Har surish/kattalashtirishdan keyin qayta tekshiriladi — yorliqlar baribir geografik joyida turadi.
+  let dcT = 0;
+  function declutter() {
+    const ms = []; L_.road.eachLayer(l => { if (l._icon && l._prio != null) ms.push(l); });
+    ms.sort((a, b) => b._prio - a._prio);
+    const kept = [];
+    ms.forEach(m => {
+      const el = m._icon.firstElementChild; if (!el) return;
+      el.style.visibility = '';
+      const r = el.getBoundingClientRect(), pad = 4;
+      const hit = kept.some(k => !(r.right + pad < k.left || r.left - pad > k.right || r.bottom + pad < k.top || r.top - pad > k.bottom));
+      if (hit) el.style.visibility = 'hidden'; else kept.push(r);
+    });
+  }
+  function declutterSoon() { clearTimeout(dcT); dcT = setTimeout(declutter, 80); }
+  let dcBound = false;
+  function bindDeclutter() { if (dcBound || !map) return; dcBound = true; map.on('zoomend moveend resize', declutterSoon); }
+
+  // Bitta joy uchun zona belgisi (savol javobida: “bu yerda bosh reja/UNESCO …”)
+  function showPlace(P) {
+    L_.road.clearLayers();
+    if (!P) return;
+    if (P.zones) L.geoJSON(P.zones, { renderer: roadR, interactive: false, style: f => ({ color: f.properties.color, weight: 2.5, fillColor: f.properties.color, fillOpacity: 0.2, dashArray: '6 6', className: 'rd-zone' }) }).addTo(L_.road);
+    if (P.poly) L.polygon(P.poly, { renderer: roadR, interactive: false, color: '#6366f1', weight: 3, fillOpacity: 0.08, className: 'rd-zone' }).addTo(L_.road);
+    bindDeclutter();
+    (P.labels || []).forEach((l, i) => { const mk = L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'rd-pin', html: `<div class="rd-lab ${l.cls || ''}"><b>${NX.esc(l.title)}</b>${l.note ? `<span>${NX.esc(l.note)}</span>` : ''}</div>`, iconSize: null }), interactive: false, zIndexOffset: 800 - i }).addTo(L_.road); mk._prio = 800 - i; });
+    if (P.ring) L.circleMarker([P.ring[0], P.ring[1]], { renderer: roadR, radius: 18, color: '#f43f5e', weight: 3, fill: false, className: 'rd-ping' }).addTo(L_.road);
+    if (P.fit) map.fitBounds(P.fit, { padding: [60, 60], maxZoom: 17 });
+    declutterSoon();
+  }
+
   NX.map = {
+    showRoad, showPlace,
     init, setModel, restyle, drawFixes, problemPopup, fixPopup, pickPoint, cancelPick, setRealTraffic, setIncidents, hasRealTiles: () => !!realTiles, setColorMode, selectStreet, selectSegment, drawArea, drawSystems, sysPopup, pxToLL, llToPx, fitPoints, showDynamic, clearDynamic, showActions, hasDynamic: () => !!dynLayer, highlightRoute, showDeltas, clearDeltas, drawProblems, showProblems, focusProblem, updateLegend,
     flyTo: (lat, lon, z = 17) => map.flyTo([lat, lon], z, { duration: 0.6 }),
     invalidate: () => map && map.invalidateSize(),

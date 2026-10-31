@@ -125,8 +125,63 @@ async function clickStreet(page, name) {
   await page.mouse.click(pt.x, pt.y);
 }
 
+
+// ---------- Yangi koʻcha chizish, bosh reja/UNESCO savoli, savollar katalogi ----------
+async function roadBlock(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 } });
+  await setupRoutes(ctx);
+  const p = await ctx.newPage();
+  const e = watchErrors(p);
+  await p.goto(BASE);
+  await p.waitForSelector('#panel .live', { timeout: 20000 });
+  await p.evaluate(() => { localStorage.setItem('nx:key:openai', JSON.stringify('sk-test')); if (NX.state.widgetOn) document.getElementById('btnYandex').click(); });
+  // Katalog: 200+ savol, har biri oʻz turiga
+  const cat = await p.evaluate(() => { const all = NX.QUESTIONS.flatMap(g => g.q); return { n: all.length, uniq: new Set(all.map(x => x[0])).size, bad: all.filter(([q, k]) => NX.intent(q).main !== k).map(([q, k]) => q + ' → ' + NX.intent(q).main + ' (kutilgan ' + k + ')'), road: all.filter(x => x[1] === 'road').length, plan: all.filter(x => x[1] === 'plan').length }; });
+  ok('Savollar katalogi: 200+ turli savol, har biri oʻz hisobiga yoʻnaltiriladi (koʻcha chizish, bosh reja/UNESCO ham)', cat.n >= 200 && cat.uniq === cat.n && cat.bad.length === 0 && cat.road >= 15 && cat.plan >= 15, JSON.stringify(cat).slice(0, 1500));
+  // Koʻcha chizish: Registon koʻchasi atrofida sichqoncha bilan 3 nuqta
+  await p.click('#btnRoad');
+  await p.waitForSelector('.draw-ov.line svg', { timeout: 5000 });
+  const pts = await p.evaluate(() => { const map = NX.map.leaflet(); map.setView([39.6540, 66.9700], 16, { animate: false }); const r = document.getElementById('map').getBoundingClientRect(); return [[39.6512, 66.9620], [39.6540, 66.9700], [39.6560, 66.9790]].map(ll => { const q = map.latLngToContainerPoint(ll); return [q.x + r.left, q.y + r.top]; }); });
+  for (const [x, y] of pts) { await p.mouse.click(x, y); await p.waitForTimeout(120); }
+  await p.click('.draw-bar [data-k=ok]');
+  await p.waitForFunction(() => NX.state.road && NX.state.road.res && !NX.state.road.qaBusy && NX.state.road.qa.length >= 2, null, { timeout: 90000 });
+  const rd = await p.evaluate(() => { const R = NX.state.road.res; return { len: R.uzunlik_m, segs: R.segs.length, lv: R.xulosa.holat, her: Object.keys(R.xulosa.unesco_m), reasons: R.xulosa.sabablar.length, bld: R.binolar.length, net: !!R.tarmoq, card: !!document.querySelector('.rd-card .rd-big'), ans: NX.state.road.qa[1].text.slice(0, 80), paths: document.querySelectorAll('.leaflet-overlay-pane path.rd-seg').length, labs: document.querySelectorAll('.rd-lab').length, verdict: !!document.querySelector('.rd-lab.rd-verdict') }; });
+  ok('Koʻcha chizish: chiziq boʻlaklarga boʻlinadi (UNESCO/bosh reja zonasi), xulosa va sabablar, AI javobi panelda', rd.len > 1000 && rd.segs >= 2 && rd.her.length > 0 && rd.reasons > 0 && rd.card && rd.ans.length > 0, JSON.stringify(rd));
+  ok('Tarixiy markazdan yangi koʻcha — “Mumkin emas” (UNESCO asosiy hududi), xaritada rangli animatsiyali boʻlaklar va yorliqlar', rd.lv === 'taqiq' && rd.paths >= 2 && rd.labs >= 3 && rd.verdict, JSON.stringify(rd));
+  ok('Yoʻl yoʻlagiga tushadigan binolar va mavjud yoʻllar orqali muqobil hisoblanadi', rd.bld > 0 && rd.net && (await p.evaluate(() => !!document.querySelector('.leaflet-overlay-pane path.rd-alt') && !!document.querySelector('.leaflet-overlay-pane path.rd-bld'))), JSON.stringify(rd));
+  // Xarita surilganda yorliq geografik joyida qoladi
+  await p.waitForTimeout(1200);
+  const anc = await p.evaluate(async () => { const map = NX.map.leaflet(); map.stop(); await new Promise(r => setTimeout(r, 200)); const _m = map, el = document.querySelector('.rd-lab.rd-end'), R = NX.state.road.res, ll = R.line[0];
+    const pos = () => { const a = el.getBoundingClientRect(), q = map.latLngToContainerPoint(ll), r = document.getElementById('map').getBoundingClientRect(); return Math.hypot(a.left + a.width / 2 - (q.x + r.left), a.top + a.height / 2 - (q.y + r.top)); };
+    const d0 = pos(); map.panBy([180, -120], { animate: false }); await new Promise(r => setTimeout(r, 300)); const d1 = pos(); map.setZoom(map.getZoom() - 1, { animate: false }); await new Promise(r => setTimeout(r, 300)); return [Math.round(d0), Math.round(d1), Math.round(pos())]; });
+  ok('Xarita surilsa va kattalashsa — koʻcha belgilari geografik joyida qoladi', anc.every(d => d < 6), JSON.stringify(anc));
+  if (process.env.SHOT_ROAD) { await p.evaluate(() => NX.view.showRoad(NX.state.road.res, { zones: NX.state.road.zones })); await p.waitForTimeout(1200); await p.screenshot({ path: process.env.SHOT_ROAD }); }
+  // Kenglikni oʻzgartirish — qayta hisob
+  await p.click('[data-act=road-width][data-w="40"]');
+  await p.waitForFunction(() => NX.state.road && NX.state.road.res && NX.state.road.res.width === 40 && !NX.state.road.qaBusy, null, { timeout: 90000 });
+  ok('Yoʻl kengligi 40 m — buziladigan binolar koʻpayadi, savol-javob davom etadi', await p.evaluate(b => NX.state.road.res.binolar.length >= b && NX.state.road.qa.length >= 4, rd.bld));
+  // Chat: bosh reja / UNESCO savoli — zonalar xaritada, javob joy boʻyicha
+  await p.click('[data-act=road-clear]');
+  await p.click('.tabs [data-tab=ai]');
+  await p.fill('#chat textarea[name=q]', 'Registon koʻchasida 12 qavatli bino qurish uchun UNESCO ruxsat beradimi?');
+  await p.click('#chat form button');
+  await p.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length >= 2, null, { timeout: 60000 });
+  const pl = await p.evaluate(() => { const m = NX.state.chat.msgs[NX.state.chat.msgs.length - 1]; return { it: NX.intent('Registon koʻchasida 12 qavatli bino qurish uchun UNESCO ruxsat beradimi?').main, hz: (m.hz || []).length, title: m.hz && m.hz[0] && m.hz[0].title, zones: document.querySelectorAll('.leaflet-overlay-pane path.rd-zone').length, labs: document.querySelectorAll('.rd-lab').length, img: !!document.querySelector('.leaflet-image-layer') }; });
+  if (process.env.SHOT_PLAN) { await p.click('.tabs [data-tab=map]'); await p.waitForTimeout(1500); await p.screenshot({ path: process.env.SHOT_PLAN }); await p.click('.tabs [data-tab=ai]'); }
+  ok('Bosh reja/UNESCO savoli: joy aniqlanadi, zonalar va belgi xaritada (bosh reja rastr + UNESCO chegaralari)', pl.it === 'plan' && pl.hz === 1 && pl.title && /Registon/.test(pl.title) && pl.zones >= 1 && pl.labs >= 1 && pl.img, JSON.stringify(pl));
+  // Chatdan “yangi koʻcha” savoli — chizish rejimi ochiladi
+  await p.click('.tabs [data-tab=ai]');
+  await p.fill('#chat textarea[name=q]', 'Bu yerdan yangi koʻcha ochsak boʻladimi?');
+  await p.click('#chat form button');
+  await p.waitForSelector('.draw-ov.line', { timeout: 5000 });
+  ok('Chatda “yangi koʻcha” savoli — xaritada chizish rejimi ochiladi', await p.evaluate(() => NX.state.roadPendingQ === undefined || !!document.querySelector('.draw-ov.line')));
+  await p.keyboard.press('Escape');
+  ok('Koʻcha chizish va bosh reja savolida konsol xatosi yoʻq', e.length === 0, e.join(' || '));
+  await ctx.close();
+}
 (async () => {
   const browser = await chromium.launch();
+  if (process.env.ONLY_ROAD) { await roadBlock(browser); await browser.close(); console.log(results.map(r => r.join('  ')).join('\n')); console.log(`\n${results.filter(r => r[0] === 'OK  ').length}/${results.length} tekshiruv oʻtdi`); return; }
 
   // ---------- 1. Desktop: toʻliq oqim ----------
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 }, acceptDownloads: true });
@@ -978,6 +1033,7 @@ async function clickStreet(page, name) {
   if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.evaluate(() => NX.map3d.map().jumpTo({ zoom: 16.8, pitch: 68 })); await p11.waitForTimeout(4000); await p11.screenshot({ path: process.env.SHOT11 }); }
   ok('Konsolda xato yoʻq (butun shahar binolari)', e11.length === 0, e11.join(' || '));
   await ctx11.close();
+  await roadBlock(browser);
 
   await browser.close();
   console.log(results.map(r => r.join('  ')).join('\n'));

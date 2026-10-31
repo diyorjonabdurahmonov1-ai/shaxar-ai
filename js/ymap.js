@@ -219,7 +219,7 @@
   const yOn = () => !!Y();
   NX.view = { onFix: null, yandexActive: yOn };
   ['setModel', 'restyle', 'setColorMode', 'selectStreet', 'highlightRoute', 'showDeltas', 'clearDeltas', 'selectSegment', 'drawArea', 'drawSystems', 'showDynamic', 'clearDynamic', 'showActions', 'fitPoints', 'drawProblems', 'showProblems',
-    'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo'].forEach(fn => {
+    'focusProblem', 'updateLegend', 'drawFixes', 'pickPoint', 'cancelPick', 'setRealTraffic', 'setIncidents', 'flyTo', 'showRoad', 'showPlace'].forEach(fn => {
     NX.view[fn] = function () {
       const args = arguments;
       if (ONLY_ACTIVE[fn] && yOn()) return Ymap[fn].apply(Ymap, args);

@@ -521,6 +521,7 @@ Qoidalar:
 - Faqat savolga javob ber. 1-qator: aniq xulosa raqam bilan (masalan: “50 mm yomgʻirda ~12 ga suv ostida qoladi, eng xavfli — X koʻchasi, 60 sm gacha”).
 - Keyin: **Xavfli joylar** (koʻcha — chuqurlik, uzunlik), **Odamlar va binolar** (nechta bino, qaysi maktab/shifoxona), **Hozir nima qilish kerak** (ariq va kollektorlarni tozalash, nasoslar, ogohlantirish, yoʻl yopish — qayerda), **Uzoq muddatli yechim**.
 - Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
+- “muhofaza” berilgan boʻlsa va koʻcha UNESCO zonasida — kengaytirish, yangi polosa, buzish kabi yechimlarda Madaniy meros agentligi kelishuvi kerakligini ayt; UNESCO asosiy hududida (Temuriylar, Yevropa qismi, Afrosiyob) koʻchani kengaytirish yoki binolarni buzishni tavsiya qilma — tashkiliy yechimlarni (svetofor, bir tomonlama, jamoat transporti) taklif qil.
 - “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
 - “real_hodisalar_oav” berilgan boʻlsa (Samarqandda haqiqatda suv bosgan koʻchalar, OAV): **Real hodisalar bilan solishtirish** — har biri uchun bir qator: koʻcha, sana, model ham koʻrsatdimi. Model koʻrsatmagan joyda sabab odatda ariq/kanal tiqilishi ekanini ayt (xaritada 📰 H belgilar).
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
@@ -598,5 +599,40 @@ No text, no labels, no logos. Output only the prompt.`;
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  // Xaritada chizilgan koʻcha: UNESCO, bosh reja, binolar, tarmoq hisobi + internet → har taraflama xulosa
+  const ROAD = `Sen Samarqand shahar hokimligi uchun shaharsozlik, transport va madaniy meros ekspertisan. Senga xaritada chizilgan yangi koʻcha (yoki mavjud koʻchani kengaytirish) boʻyicha saytning hisobi beriladi: har bir boʻlak qaysi UNESCO muhofaza zonasida va bosh rejaning qaysi zonasida, holati, buziladigan binolar, yaqin yodgorliklar, tarmoqqa ulanish, mavjud yoʻllar bilan solishtirish, qoidalar; baʼzan internetdagi maʼlumot.
+Oʻzbek tilida (lotin), aniq va qisqa yoz.
+Tuzilma:
+1-qator: **Xulosa:** ✅ Mumkin / 🟡 Shartli / ⚠️ Kelishuv kerak / ⛔ Mumkin emas — va eng asosiy sabab bir gap bilan.
+**Nega** — har bir sabab: qaysi metrlar (masalan “120–340 m”), qaysi zona, qaysi qoida (VM 119-son qarori, 265-son nizom, bosh reja loyihasi). Xaritada qizil — mumkin emas, toʻq sariq — kelishuv, sariq — shartli, yashil — mumkin.
+**Nima beradi** — yoʻl qisqarishi, ulanish, qaysi koʻchalarni bogʻlaydi.
+**Narxi va taʼsiri** — buziladigan binolar soni va maydoni, yodgorliklar, aholi.
+**Muqobil** — mumkin boʻlmasa: xaritadagi yashil punktir (mavjud koʻchalar orqali) yoki qizil zonalarni aylanib oʻtish; konservatsiya va UNESCO hududidan tashqari.
+**Keyingi qadamlar** — 2–4 ta aniq ish.
+- Faqat berilgan raqamlardan foydalan; yoʻq narsani oʻylab topma. Bosh rejaga yoki UNESCO talablariga zid tavsiya berma.
+- “internet” berilgan boʻlsa — tegishlisini qisqa ayt (qaysi manbada nima deyilgan).
+- JSON, model, hisob usuli haqida yozma.`;
+  async function roadAsk(q, facts, history, extra) {
+    const local = () => NX.roadcheck.summary(facts._R);
+    const F = Object.assign({}, facts); delete F._R;
+    if (extra && extra.internet) F.internet = extra.internet;
+    if (!aiAvailable()) return { text: local(), src: 'hisob', error: 'AI ulanmagan.' };
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
+    const messages = [{ role: 'system', content: ROAD }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(F) }]);
+    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai' }; }
+    catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
+  }
+  // Bosh reja / UNESCO savoli (joy boʻyicha yoki butun shahar)
+  const PLANQ = `Sen Samarqand shahar hokimligi uchun shaharsozlik va madaniy meros ekspertisan. Senga Samarqand bosh rejasi 2045 (loyiha) koʻrsatkichlari, zonalar qoidalari, UNESCO muhofaza zonalari (Temuriylar qismi, Yevropa qismi, Afrosiyob, bufer) va — joy aytilgan boʻlsa — shu joyning tekshiruvi (zona, ziddiyatlar, qoidalar) beriladi; baʼzan internetdagi maʼlumot.
+Oʻzbek tilida (lotin), aniq yoz. 1-qator — savolga toʻgʻridan-toʻgʻri javob (mumkin / mumkin emas / kelishuv kerak) va sababi. Keyin **Xaritada** — qaysi zona qayerda (rangi bilan: sariq — konservatsiya, toʻq sariq — rekonstruksiya, binafsha — renovatsiya; UNESCO: pushti — Temuriylar qismi, koʻk — Yevropa qismi, toʻq sariq — Afrosiyob, sariq — bufer). **Qoidalar** — tegishli qoidalar qisqa. **Nima qilish kerak** — 2–3 qadam.
+Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi) oʻylab topma — boʻlmasa “ochiq hujjatlarda yoʻq, Madaniy meros agentligi / hokimiyatdan soʻrash kerak” de. Bosh rejaga zid tavsiya berma. JSON va usul haqida yozma.`;
+  async function planAsk(q, facts, history, localText) {
+    if (!aiAvailable()) return { text: localText, src: 'hisob', error: 'AI ulanmagan.' };
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
+    const messages = [{ role: 'system', content: PLANQ }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
+    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai' }; }
+    catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
+  }
+
+  NX.ai = { roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

@@ -100,7 +100,7 @@
     const M = S.model;
     let html;
     NX.view.showProblems(S.tab === 'problems');
-    if (S.tab === 'map') html = S.area ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
+    if (S.tab === 'map') html = S.road ? V.road(S) : S.area ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') {
       const op = S.problemOpen && M.problems.find(x => x.id === S.problemOpen);
       if (!op) S.problemOpen = null;
@@ -452,6 +452,14 @@
     if (!q || C.busy) return;
     const prev = C.msgs.slice(-2);
     C.msgs.push({ role: 'user', text: q });
+    const it0 = NX.intent(q);
+    if (it0.main === 'plan' || it0.main === 'road') {
+      if (it0.main === 'road') { C.msgs.push({ role: 'ai', text: ROAD_HINT, src: 'ai' }); renderKeepScroll(); drawRoad(q); return null; }
+      C.busy = 'Bosh reja va UNESCO zonalari tekshirilmoqda'; renderKeepScroll();
+      let m; try { m = await planAsk(q, prev); } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
+      C.msgs.push(m); C.busy = null; renderKeepScroll();
+      return m;
+    }
     C.busy = 'Maʼlumot tayyorlanmoqda'; renderKeepScroll();
     // Asosiy maʼlumot (binolar, relyef) — 40 s gacha; koʻchalar — 25 s gacha, kelmasa ularsiz davom etadi
     const T0 = twinState(), wait = (p, ms) => Promise.race([p, NX.sleep(ms)]);
@@ -576,6 +584,7 @@
       const prev = S.area;
       S.area = { st, spec: prev ? prev.spec : { flats: 500, floors: 9 }, A: prev ? prev.A : A0, res: null, busy: null, qa: [], qaBusy: null };
       S.street = null; NX.view.selectStreet(null); setSegment(null);
+      S.road = null; NX.view.showRoad(null);
       NX.view.clearDeltas();
       NX.view.drawArea(poly, null, true);
       render(); focusPanel();
@@ -586,10 +595,144 @@
     NX.draw.stop();
     S.area = null;
     NX.view.showActions(null);
+    if (!S.road) NX.view.showPlace(null);
     NX.view.drawArea(null);
     NX.view.clearDeltas();
     render();
   }
+  // ---------- Koʻcha chizish: UNESCO, bosh reja, binolar, tarmoq ----------
+  function drawRoad(pendingQ) {
+    if (!S.model) return;
+    if (S.tab !== 'map') setTab('map');
+    ensureLeaflet();
+    NX.view.cancelPick();
+    if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    NX.draw.startLine(line => runRoad(line, null, pendingQ), () => {});
+  }
+  async function runRoad(line, width, pendingQ) {
+    const prevQa = S.road && S.road.line === line ? S.road.qa : [];
+    S.road = { line, width: width || (S.road && S.road.width) || 15, res: null, busy: 'Koʻcha tekshirilmoqda (UNESCO, bosh reja, binolar, tarmoq)', qa: prevQa, qaBusy: null };
+    S.area = null; NX.view.drawArea(null); NX.view.showActions(null);
+    render(); focusPanel();
+    try {
+      if (NX.buildings && !(NX.buildings.get() || []).length) await Promise.race([NX.buildings.load().catch(() => null), NX.sleep(12000)]);
+      const R = await NX.roadcheck.analyze(S.model, line, { width: S.road.width });
+      if (!S.road || S.road.line !== line) return;
+      S.road.res = R; S.road.busy = null;
+      const zones = await NX.masterplan.geo(), touched = new Set(R.segs.map(s => s.her).filter(Boolean));
+      S.road.zones = { type: 'FeatureCollection', features: zones.features.filter(f => touched.has(f.properties.tur)) };
+      NX.view.showRoad(R, { zones: S.road.zones });
+      render();
+      const q = pendingQ || S.roadPendingQ; S.roadPendingQ = null;
+      roadAsk(q || 'Shu koʻchani qurish mumkinmi? Har taraflama tahlil qil.');
+    } catch (e) { console.warn(e); if (S.road) { S.road.busy = null; S.road.err = e.message; render(); } toast('Koʻcha tekshiruvi: ' + e.message, 'bad'); }
+  }
+  function clearRoad() {
+    NX.draw.stop();
+    S.road = null;
+    NX.view.showRoad(null);
+    render();
+  }
+  // Koʻcha boʻylab Mapillary ochiq suratlari (boshi, oʻrtasi, oxiri)
+  async function roadPhotos(R) {
+    if (!(NX.mly && NX.mly.available())) return null;
+    const L = R.line, pts = [L[0], L[Math.floor(L.length / 2)], L[L.length - 1]], out = [];
+    for (const p of pts) {
+      try { const ph = await Promise.race([NX.mly.photos(p[0], p[1], 120), NX.sleep(12000).then(() => [])]); if (ph && ph[0] && !out.some(x => x.id === ph[0].id)) out.push({ id: ph[0].id, url: ph[0].url, lat: ph[0].lat, lon: ph[0].lon, link: NX.mly.link(ph[0].id), when: ph[0].date }); } catch (e) { /* surat boʻlmasa ham davom etadi */ }
+    }
+    return out.length ? out : null;
+  }
+  async function roadAsk(q) {
+    const RD = S.road;
+    if (!RD || !RD.res || RD.qaBusy) return;
+    q = (q || '').trim(); if (!q) return;
+    RD.qa.push({ role: 'user', text: q });
+    const it = NX.intent(q);
+    RD.qaBusy = 'Ochiq manbalar va koʻcha suratlari qidirilmoqda'; renderRoadKeep();
+    const R = RD.res, F = Object.assign(NX.roadcheck.facts(R), { _R: R });
+    let internet = null, photos = null;
+    const names = R.koʻchalar.slice(0, 4).join(', ') || 'shahar markazi';
+    await Promise.all([
+      NX.ai.available() ? Promise.race([NX.ai.webSearchQ(`Samarqand shahri, ${names} atrofi: yangi koʻcha yoki yoʻl qurish, kengaytirish, uylarni buzish, Madaniy meros agentligi va UNESCO qarorlari, bosh reja — rasmiy xabarlar va yangiliklar`, `Chizilgan koʻcha: ${R.uzunlik_m} m, holati: ${R.xulosa.nomi}.`), NX.sleep(40000).then(() => null)]).then(w => { if (w && w.text) internet = { matn: w.text.slice(0, 2200), manbalar: w.sources.slice(0, 6) }; }).catch(() => null) : null,
+      roadPhotos(R).then(p => { photos = p; }).catch(() => null),
+    ]);
+    if (!S.road || S.road !== RD) return;
+    if (photos) { F.koʻcha_suratlari = photos.map(p => ({ joy: [p.lat, p.lon], sana: p.when ? new Date(p.when).toISOString().slice(0, 10) : null })); NX.view.showRoad(R, { zones: RD.zones, photos, fit: false }); }
+    RD.qaBusy = 'AI har taraflama xulosa yozmoqda'; renderRoadKeep();
+    const r = await NX.ai.roadAsk(q, F, RD.qa.slice(-3, -1), { internet });
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: internet ? internet.manbalar : null, photos };
+    RD.qa.push(msg);
+    if (it.image && NX.ai.available()) {
+      RD.qaBusy = 'AI loyiha rasmini chizmoqda (~1 daqiqa)'; renderRoadKeep();
+      try { msg.img = await NX.ai.chatImage(q, { javob: String(r.text).slice(0, 1500), koʻcha: names, holat: R.xulosa.nomi }, null); } catch (e) { msg.imgErr = e.message; }
+    }
+    RD.qaBusy = null; renderRoadKeep();
+    if (S.chatRoadMirror) { S.chatRoadMirror = false; S.chat.msgs.push(Object.assign({}, msg, { roadLink: true })); S.chat.busy = null; renderChat(); }
+  }
+  function renderRoadKeep() { if (S.tab === 'map' && S.road) { renderKeepScroll(); const c = $('#roadChat'); if (c) c.scrollIntoView({ block: 'end' }); } else if (S.tab === 'ai') renderChat(); }
+
+  // ---------- Bosh reja / UNESCO savoli: joy (koʻcha, hudud) yoki butun shahar — javob va xaritada zonalar ----------
+  async function planAsk(q, prevMsgs) {
+    const M = S.model, P = NX.masterplan;
+    let place = null;
+    const ds = NX.ai.detectStreets(q, M)[0], st = ds && ds.s;
+    if (st && st.center) place = { nomi: st.name, center: st.center, poly: null };
+    else if (S.area) place = { nomi: 'belgilangan hudud', center: S.area.st.center, poly: S.area.st.poly };
+    else if (S.road && S.road.res) { const L = S.road.line; place = { nomi: 'chizilgan koʻcha', center: L[Math.floor(L.length / 2)], poly: null }; }
+    const build = /qur|bino|qavat|dom|uy|koʻcha|ko'cha|yoʻl|yo'l|och|buz|kengay/i.test(q);
+    const nfl = (q.match(/(\d{1,2})\s*-?\s*(qavat|etaj)/i) || [])[1];
+    const chk = place ? await P.check({ center: place.center, poly: place.poly, floors: nfl ? +nfl : null, build }) : null;
+    const zones = await P.geo();
+    // Xarita: bosh reja rastr + UNESCO zonalari + joy belgisi
+    ensureLeaflet();
+    if (S.tab !== 'map' && S.tab !== 'ai') setTab('map');
+    const PM = P.PLANMAP;
+    NX.view.drawSystems([{ sys: 'masterplan', img: { url: PM.url, bounds: [[PM.s, PM.w], [PM.n, PM.e]], opacity: 0.45 } }]);
+    const labels = [];
+    if (place && chk) {
+      const u = chk.unesco, rz = chk.reja_zonasi;
+      labels.push({ lat: place.center[0], lon: place.center[1], cls: chk.ziddiyatlar.length ? 'rd-taqiq' : u.zona ? 'rd-kelishuv' : 'rd-mumkin', title: `${chk.ziddiyatlar.length ? '⛔' : u.zona ? '⚠️' : '✅'} ${place.nomi}`, note: [u.zona ? u.nomi : 'UNESCO hududidan tashqarida', rz && rz.markaz ? 'bosh reja: ' + rz.markaz : null].filter(Boolean).join(' · ') });
+    } else {
+      [['temur', 39.6555, 66.9800], ['yevropa', 39.6530, 66.9600], ['afrosiyob', 39.6700, 66.9950]].forEach(([k, la, lo]) => labels.push({ lat: la, lon: lo, cls: k === 'afrosiyob' ? 'rd-taqiq' : 'rd-kelishuv', title: P.ZONES[k].qisqa, note: `${P.ZONES[k].ha} ga` }));
+    }
+    NX.view.showPlace({ zones, poly: place && place.poly, labels, ring: place && place.center, fit: place ? (place.poly || [[place.center[0] - 0.006, place.center[1] - 0.008], [place.center[0] + 0.006, place.center[1] + 0.008]]) : [[39.640, 66.945], [39.678, 67.010]] });
+    const facts = {
+      joy: place ? { nomi: place.nomi, markaz: place.center } : 'butun shahar',
+      tekshiruv: chk ? { ziddiyatlar: chk.ziddiyatlar, qoidalar: chk.qoidalar.slice(0, 8), unesco: chk.unesco, bosh_reja_zonasi: chk.reja_zonasi || null, zonalar: chk.zonalar } : null,
+      unesco_zonalari: Object.keys(P.ZONES).map(k => ({ nomi: P.ZONES[k].nomi, maydon_ga: P.ZONES[k].ha, rejim: P.ZONES[k].rejim })),
+      bosh_reja_zonalari_ga: PM.ha, reja_2045: P.PLAN,
+    };
+    const loc = chk ? [`**${chk.ziddiyatlar.length ? '⛔ Cheklov bor' : chk.unesco.zona ? '⚠️ Kelishuv kerak' : '✅ Maʼlum cheklov yoʻq'}** — ${place.nomi}.`, chk.ziddiyatlar.length ? '**Nega:**\n' + chk.ziddiyatlar.map(t => '- ' + t).join('\n') : '', '**Qoidalar:**\n' + chk.qoidalar.slice(0, 5).map(t => '- ' + t).join('\n')].filter(Boolean).join('\n\n')
+      : `**Samarqand bosh rejasi 2045 (loyiha):** ${P.PLAN.holati}.\n\n**Zonalar:** konservatsiya ${PM.ha.konservatsiya} ga, rekonstruksiya ${PM.ha.rekonstruksiya} ga, renovatsiya ${PM.ha.renovatsiya} ga.\n\n**UNESCO:** ${P.PLAN.unesco}.`;
+    let internet = null;
+    if (NX.ai.available()) {
+      try { const w = await Promise.race([NX.ai.webSearchQ(`Samarqand${place ? ', ' + place.nomi : ''}: ${q} — bosh reja 2045, UNESCO, Madaniy meros agentligi qarorlari, rasmiy xabarlar va yangiliklar`, ''), NX.sleep(40000).then(() => null)]); if (w && w.text) { internet = { matn: w.text.slice(0, 2200), manbalar: w.sources.slice(0, 6) }; facts.internet = internet; } } catch (e) { /* internet boʻlmasa ham javob beriladi */ }
+    }
+    const r = await NX.ai.planAsk(q, facts, prevMsgs || [], loc);
+    return { role: 'ai', text: r.text, src: r.src, error: r.error, sources: internet ? internet.manbalar : null, hz: labels.map(l => ({ lat: l.lat, lon: l.lon, title: l.title, note: l.note })), fly: 'ann-fly' };
+  }
+
+  // Bosh reja / UNESCO cheklovi xaritada: tegishli muhofaza zonasi va izohli belgi (hudud, koʻcha oʻzgarishi uchun)
+  async function showPlanMarks(center, chk, title) {
+    if (!chk || !center) return;
+    const P = NX.masterplan, u = chk.unesco || {}, rz = chk.reja_zonasi, bad = (chk.ziddiyatlar || []).length;
+    if (!bad && !u.zona && !(rz && rz.markaz === 'konservatsiya')) return;
+    const zones = (await P.geo()).features.filter(f => f.properties.tur === u.zona);
+    NX.view.showPlace({ zones: { type: 'FeatureCollection', features: zones }, labels: [{ lat: center[0], lon: center[1], cls: bad ? 'rd-taqiq' : 'rd-kelishuv', title: `${bad ? '⛔' : '⚠️'} ${title}`, note: [u.zona ? u.nomi : null, rz && rz.markaz ? 'bosh reja: ' + rz.markaz : null].filter(Boolean).join(' · ') }], fit: false });
+  }
+  // Koʻcha muhofaza/bosh reja zonasida boʻlsa — xaritada belgi va AI uchun maʼlumot
+  function streetGuard(s) {
+    if (!s || !s.center) return null;
+    const P = NX.masterplan, z = P.zoneAt(s.center[0], s.center[1]), pz = P.planZoneSync(s.center[0], s.center[1]);
+    return { unesco: z ? P.ZONES[z].qisqa : 'tashqarida', unesco_tur: z, bosh_reja: pz || null, qoida: z ? P.ZONES[z].rejim : null };
+  }
+  async function showStreetGuard(s) {
+    const g = streetGuard(s);
+    if (!g || !g.unesco_tur) { NX.view.showPlace(null); return; }
+    const zones = (await NX.masterplan.geo()).features.filter(f => f.properties.tur === g.unesco_tur);
+    NX.view.showPlace({ zones: { type: 'FeatureCollection', features: zones }, labels: [{ lat: s.center[0], lon: s.center[1], cls: g.unesco_tur === 'bufer' ? 'rd-shartli' : 'rd-kelishuv', title: `⚠️ ${g.unesco}`, note: 'oʻzgarish Madaniy meros agentligi bilan kelishiladi' }], fit: false });
+  }
+
   async function runBuild() {
     const A = S.area;
     if (!A || A.busy) return;
@@ -712,6 +855,7 @@
       variantlar_hisob: opts.map(o => ({ variant: o.label, baho: o.v.label, umumiy_yol_vaqti_foiz: +o.r.ttChangePct.toFixed(1), shu_koʻcha_toʻlishi_foiz: o.r.target ? { oldin: Math.round(o.r.target.baseVC * 100), keyin: Math.round(o.r.target.scenVC * 100) } : null, yuk_oshadigan: o.r.affected.filter(x => x.dv > 0).slice(0, 4).map(row), yuk_kamayadigan: o.r.affected.filter(x => x.dv < 0).slice(0, 3).map(row), sigmay_qoladigan: o.r.overloaded.slice(0, 4).map(x => x.name || 'nomsiz yoʻl'), avtobus_yonalishi_ozgaradi: o.v.busLines, sabablar: o.v.reasons })),
       xaritada_korsatilgan: best.label,
       dinamik_tigiz_soat: dyn || 'hisoblanmadi',
+      muhofaza: streetGuard(s),
       internet: web && web.text ? { matn: web.text.slice(0, 2500), manbalar: web.sources.slice(0, 6) } : 'qidirilmadi yoki topilmadi',
       eslatma: 'variantlar_hisob — harakat modeli; real_yandex — real oʻlchov',
     };
@@ -800,6 +944,7 @@
     // Bosh reja va UNESCO muhofazasi: qurilish/oʻzgartirish rejaga zid emasmi
     A.qaBusy = 'Tahlil'; renderKeepScroll();
     try { A.plan = await Promise.race([NX.masterplan.check({ center: A.st.center, poly: A.st.poly, floors: pb && pb.floors ? pb.floors : A.res ? A.spec.floors : null, build: !!(pb || needQ) }), NX.sleep(25000).then(() => null)]); } catch (e) { A.plan = null; }
+    if (A.plan) showPlanMarks(A.st.center, A.plan, A.plan.ziddiyatlar.length ? 'Bosh rejaga zid' : 'Muhofaza hududi').catch(() => null);
     const candFacts = A.cand ? { L_boʻsh_yerlar: A.cand.L.map(x => ({ id: x.id, turi: x.turi, maydon_m2: x.maydon_m2, nomi: x.nomi })), C_yangi_yoʻl_variantlari: A.cand.C.map(x => ({ id: x.id, qaysi: x.qaysi, uzunlik_m: x.uzunlik_m })), P_muammolar: A.cand.P.map(x => ({ id: x.id, nima: x.nima, joy: x.joy })), S_koʻchalar: A.cand.S.map(x => ({ id: x.id, nomi: x.nomi, turi: x.turi })) } : null;
     // Tirbandlik / bir tomonlama / svetofor savoli — chuqur tahlil (variantlar, Yandex real vaqt, internet, xarita)
     let r = null;
@@ -1113,6 +1258,7 @@
       ensureLeaflet();
       NX.view.showDeltas(r, S.simInfo.pieces);
       NX.view.selectStreet(streetId, false);
+      S.sim.last.muhofaza = streetGuard(s); showStreetGuard(s).catch(() => null);
       if (segOf(streetId)) NX.view.selectSegment(S.segment.lines);
     } catch (e) {
       console.error(e);
@@ -1221,6 +1367,7 @@
     openStreet(id);
   }
   function clearStreet() {
+    if (!S.road) NX.view.showPlace(null);
     dropSegmentUnless(null);
     S.street = null;
     NX.view.selectStreet(null);
@@ -1358,6 +1505,7 @@
       lines: last.verdict.busLines,
     };
   }
+  const ROAD_HINT = '🛣 Xaritada koʻcha yoʻnalishini chizing: bosib-bosib nuqta qoʻying (yoki bosib turib chizing) va “✓ Tayyor”ni bosing. Chizilgach UNESCO muhofaza zonalari, bosh reja, yoʻlga tushadigan binolar va mavjud yoʻllar boʻyicha tekshiraman — natija xaritada rangli boʻlaklar bilan va shu yerda chiqadi.';
   async function chatSend(q) {
     q = (q || '').trim();
     if (!q || S.chat.busy || !S.model) return;
@@ -1370,6 +1518,24 @@
       let m = null;
       try { m = await twinAsk(q); } finally { clearInterval(tick); }
       S.chat.msgs.push(m ? Object.assign({}, m, { fly: 'ann-fly' }) : { role: 'ai', text: 'Hisoblab boʻlmadi — maʼlumot hali yuklanmagan, birozdan keyin qayta soʻrang.', src: 'hisob' });
+      S.chat.busy = null; renderChat();
+      return;
+    }
+    // Yangi koʻcha / koʻchani oʻzgartirish — xaritada chiziladi, UNESCO, bosh reja, binolar boʻyicha tekshiriladi
+    if (it.main === 'road') {
+      S.chat.msgs.push({ role: 'user', text: q });
+      S.chatRoadMirror = true;
+      if (S.road && S.road.res) { S.chat.busy = 'Koʻcha tahlil qilinmoqda…'; renderChat(); await roadAsk(q); return; }
+      S.chat.msgs.push({ role: 'ai', text: ROAD_HINT, src: 'ai' }); renderChat();
+      drawRoad(q);
+      return;
+    }
+    // Bosh reja, UNESCO, ruxsat savollari — zonalar xaritada, joy boʻyicha tekshiruv (hudud + aniq bino — hudud tahliliga, u ham bosh rejani tekshiradi)
+    if (it.main === 'plan' && !(S.area && NX.area.parseBuild(q))) {
+      const prevP = S.chat.msgs.slice(-2);
+      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.busy = 'Bosh reja va UNESCO zonalari tekshirilmoqda…'; renderChat();
+      try { S.chat.msgs.push(await planAsk(q, prevP)); } catch (e) { S.chat.msgs.push({ role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }); }
       S.chat.busy = null; renderChat();
       return;
     }
@@ -1521,6 +1687,7 @@
     document.querySelectorAll('.tabs [data-tab]').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
     $('#btnRefresh').addEventListener('click', () => loadData(true));
     $('#btnDraw').addEventListener('click', drawArea);
+    $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));
@@ -1603,6 +1770,12 @@
           break;
         }
         case 'area-clear': clearArea(); break;
+        case 'road-clear': clearRoad(); break;
+        case 'road-redraw': drawRoad(); break;
+        case 'road-ask': roadAsk(b.dataset.q); break;
+        case 'road-fly': NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
+        case 'road-width': if (S.road) runRoad(S.road.line, +b.dataset.w, `Yoʻl kengligi ${b.dataset.w} m boʻlsa nima oʻzgaradi?`); break;
+        case 'road-show': if (S.road && S.road.res) { setTab('map'); NX.view.showRoad(S.road.res, { zones: S.road.zones }); } break;
         case 'area-redraw': drawArea(); break;
         case 'area-ask': areaAsk(b.dataset.q); break;
         case 'ann-fly': NX.view.flyTo(+b.dataset.lat, +b.dataset.lon, 17); if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
@@ -1693,6 +1866,7 @@
       if (f.dataset.form === 'ai') askAI(f.q.value);
       else if (f.dataset.form === 'chat') chatSend(f.q.value);
       else if (f.dataset.form === 'area-q') areaAsk(f.aq.value);
+      else if (f.dataset.form === 'road-q') roadAsk(f.rq.value);
       else if (f.dataset.form === 'twin-q') twinAsk(f.tq.value);
       else if (f.dataset.form === 'build' && S.area) {
         S.area.spec = { flats: Math.max(10, Math.min(5000, +f.flats.value || 500)), floors: Math.max(1, Math.min(40, +f.floors.value || 9)) };
@@ -1701,6 +1875,7 @@
     });
     panel.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'aq') { e.preventDefault(); areaAsk(e.target.value); return; }
+      if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'rq') { e.preventDefault(); roadAsk(e.target.value); return; }
       if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'tq') { e.preventDefault(); twinAsk(e.target.value); return; }
       if (e.key === 'Enter' && !e.shiftKey && e.target.name === 'q') {
         e.preventDefault();
@@ -1709,6 +1884,7 @@
     });
 
     panel.addEventListener('input', e => {
+      if (e.target.classList && e.target.classList.contains('ask-filter')) { const v = e.target.value.trim().toLowerCase(), box = e.target.closest('.ask-help'); box.querySelectorAll('.ask-g').forEach(g => { let k = 0; g.querySelectorAll('.ask-q').forEach(b => { const on = !v || b.textContent.toLowerCase().includes(v); b.hidden = !on; if (on) k++; }); g.hidden = !k; if (v) g.open = k > 0; }); return; }
       const t = e.target;
       if (t.dataset.assume && S.area) { const v = parseFloat(t.value); if (isFinite(v) && v >= 0) S.area.A[t.dataset.assume] = v; return; }
       if (t.name === 'demand') {
@@ -1772,6 +1948,6 @@
     loadData(false);
   }
 
-  NX.app = { state: S, runWhatIf, reportJSON, loadData };
+  NX.app = { state: S, runWhatIf, reportJSON, loadData, runRoad, drawRoad, roadAsk, planAsk, clearRoad };
   start();
 })();

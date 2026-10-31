@@ -92,7 +92,7 @@
           const d = x.getImageData(0, 0, c.width, c.height).data, a = new Uint8Array(c.width * c.height);
           // palitra: konservatsiya (250,240,90), rekonstruksiya (240,150,110), renovatsiya (200,110,240)
           for (let i = 0; i < a.length; i++) { const g = d[i * 4 + 1], b = d[i * 4 + 2]; a[i] = d[i * 4 + 3] < 128 ? 0 : b > 180 ? 3 : g > 200 ? 1 : 2; }
-          res({ w: c.width, h: c.height, a });
+          pmReady = { w: c.width, h: c.height, a }; res(pmReady);
         } catch (e) { res(null); }
       };
       img.onerror = () => res(null);
@@ -105,6 +105,9 @@
     return i < 0 || j < 0 || i >= pm.h || j >= pm.w ? null : PZ[pm.a[i * pm.w + j]];
   };
   async function planZoneAt(lat, lon) { const pm = await planMap(); return pm ? pmAt(pm, lat, lon) : undefined; }
+  let pmReady = null;
+  // Yuklangandan keyin sinxron soʻrov (koʻp nuqtali tekshiruvlar uchun); yuklanmagan boʻlsa — undefined
+  function planZoneSync(lat, lon) { return pmReady ? pmAt(pmReady, lat, lon) : undefined; }
   // Hudud boʻyicha zonalar ulushi (30 m qadam bilan namunalar)
   function planShare(pm, poly, center) {
     const cnt = { konservatsiya: 0, rekonstruksiya: 0, renovatsiya: 0, tashqari: 0 };
@@ -285,5 +288,5 @@
     return Promise.resolve({ type: 'FeatureCollection', features: f });
   }
 
-  NX.masterplan = { PLAN, ZONES, RINGS, MONUMENTS, PLANMAP, zoneAt, planZoneAt, planMap, check, geo, zoneType };
+  NX.masterplan = { PLAN, ZONES, RINGS, MONUMENTS, PLANMAP, zoneAt, planZoneAt, planZoneSync, planMap, check, geo, zoneType };
 })();

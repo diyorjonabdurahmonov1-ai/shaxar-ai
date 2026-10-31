@@ -147,13 +147,19 @@
   }
   // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
   function msgExtras(m, fly) {
+    const ph = m.photos && m.photos.length ? `<p class="small"><b>📷 Koʻcha suratlari (Mapillary, ochiq):</b></p><div class="rd-photos">${m.photos.map(p => `<a href="${E(p.link)}" target="_blank" rel="noopener"><img src="${E(p.url)}" alt="Koʻcha surati" loading="lazy"></a>`).join('')}</div>` : '';
+    return ph + msgExtras0(m, fly);
+  }
+  function msgExtras0(m, fly) {
     const list = m.hz ? m.hz.filter(a => a.kind !== 'water' && a.list !== false).slice(0, 40) : null;
     return `${list && list.length ? `<p class="small"><b>📍 Xaritada:</b></p><ul class="locs hz-list">${list.map(a => `<li class="locrow"><button class="loc" data-act="${m.fly || fly}" data-lat="${a.lat}" data-lon="${a.lon}"><b>${E(a.title)}</b> <small class="muted">— ${E(a.note || '')}</small></button></li>`).join('')}</ul>` : ''}${m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}${m.img ? `<figure class="vgen"><img src="${m.img.src}" alt="AI rasm"><figcaption>🎨 <b>AI rasm — haqiqiy emas.</b>${m.img.edited ? ' Xarita koʻrinishi asosida.' : ''}</figcaption></figure>` : m.imgErr ? `<p class="small bad-text">⚠️ ${E(m.imgErr)}</p>` : ''}`;
   }
   // “Nimalarni soʻrash mumkin” — yopiq roʻyxat; bosilsa savol maydoniga yoziladi (yuborilmaydi)
   function askHelp(target) {
-    return `<details class="ask-help"><summary>❓ Nimalarni soʻrash mumkin</summary>${NX.QUESTIONS.map(g => `<div class="ask-g"><b>${E(g.g)}</b>${g.q.map(([t]) => `<button class="link ask-q" data-act="q-fill" data-target="${target}" data-q="${E(t)}">${E(t)}</button>`).join('')}</div>`).join('')}<p class="small muted">Har bir javob xaritada chiziladi. Oxiriga “rasmini chiz” qoʻshsangiz — rasm ham chiziladi.</p></details>`;
+    const n = NX.QUESTIONS.reduce((t, g) => t + g.q.length, 0);
+    return `<details class="ask-help"><summary>❓ Nimalarni soʻrash mumkin <small class="muted">(${n} ta savol)</small></summary><input class="ask-filter" type="search" placeholder="Savollar ichidan qidirish…" aria-label="Savollar ichidan qidirish">${NX.QUESTIONS.map(g => `<details class="ask-g"><summary><b>${E(g.g)}</b> <small class="muted">${g.q.length}</small></summary>${g.q.map(([t]) => `<button class="link ask-q" data-act="q-fill" data-target="${target}" data-q="${E(t)}">${E(t)}</button>`).join('')}</details>`).join('')}<p class="small muted">Savolni bosing — yozish maydoniga tushadi, oʻzgartirib yuborishingiz mumkin. 🛣 koʻcha savollarida xaritada chizasiz, 🏗 qurilish savollarida hudud belgilaysiz.</p></details>`;
   }
+
   function twinChat(S) {
     const C = S.twinChat || { msgs: [], busy: null };
     return `<section class="card chat" id="twinChat">
@@ -727,6 +733,47 @@
     </section>`;
   }
 
+  // ---------- Chizilgan koʻcha tekshiruvi ----------
+  function road(S) {
+    const RD = S.road, R = RD.res, RC = NX.roadcheck;
+    const km = m => (m >= 1000 ? F.num(m / 1000, 2) + ' km' : F.int(m) + ' m');
+    const widths = [10, 15, 25, 40];
+    const head = `<button class="back" data-act="road-clear">← Koʻchani olib tashlash</button>`;
+    if (!R) return `${head}<section class="card rd-card"><h2>🛣 Yangi koʻcha</h2>${RD.err ? `<p class="warn">${E(RD.err)}</p>` : thinking(RD.busy)}</section>`;
+    const X = R.xulosa, tot = R.uzunlik_m || 1;
+    const bar = ['taqiq', 'kelishuv', 'shartli', 'mumkin'].filter(k => X.uzunlik_holat_boʻyicha_m[k]).map(k => `<i style="width:${(X.uzunlik_holat_boʻyicha_m[k] / tot * 100).toFixed(1)}%;background:${RC.COLOR[k]}" title="${E(RC.LVUZ[k])}: ${km(X.uzunlik_holat_boʻyicha_m[k])}"></i>`).join('');
+    const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
+    const herM = Object.values(X.unesco_m).reduce((a, b) => a + b, 0), konsM = X.bosh_reja_m.konservatsiya || 0;
+    const qa = RD.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${msgExtras(m, 'road-fly')}</div></div>`).join('');
+    return `${head}
+    <section class="card rd-card">
+      <h2>🛣 Yangi koʻcha — tekshiruv</h2>
+      <div class="rd-big rd-${X.holat}"><b>${X.belgi} ${E(X.nomi)}</b><span>${km(R.uzunlik_m)} · ${R.width} m kenglik</span></div>
+      <div class="rd-bar" aria-hidden="true">${bar}</div>
+      <div class="rd-legend"><span><i style="background:${RC.COLOR.taqiq}"></i>mumkin emas</span><span><i style="background:${RC.COLOR.kelishuv}"></i>kelishuv</span><span><i style="background:${RC.COLOR.shartli}"></i>shartli</span><span><i style="background:${RC.COLOR.mumkin}"></i>mumkin</span><span><i style="background:#10b981;height:3px"></i>mavjud yoʻllar orqali</span></div>
+      <div class="atiles">
+        ${tile(km(herM), 'UNESCO hududida', herM > 0)}
+        ${tile(km(konsM), 'konservatsiya zonasida', konsM > 0)}
+        ${tile(R.binolar.length, 'bino buziladi', R.binolar.length > 0)}
+        ${tile(R.tarmoq ? km(Math.max(0, R.tarmoq.qisqarish_m)) : '—', 'yoʻl qisqaradi')}
+      </div>
+      ${X.sabablar.length ? `<h4>Nega — bosing, xaritada koʻrsatadi</h4><ul class="rd-why">${X.sabablar.slice(0, 8).map(r => `<li><button data-act="road-fly" data-lat="${r.lat}" data-lon="${r.lon}">${RC.ICON[r.lv]} <b>${E(RC.LVUZ[r.lv])}:</b> ${E(r.why)}${r.len ? ` <small class="muted">(${km(r.len)})</small>` : ''}</button></li>`).join('')}</ul>` : '<p class="small ok-text">✅ Zona cheklovlari topilmadi.</p>'}
+      ${R.koʻchalar.length ? `<p class="small muted">Kesib oʻtadi / ulanadi: ${E(R.koʻchalar.slice(0, 8).join(', '))}</p>` : ''}
+      <p class="small">Yoʻl kengligi: ${widths.map(w => `<button class="chip sm${w === R.width ? ' on' : ''}" data-act="road-width" data-w="${w}">${w} m</button>`).join(' ')}</p>
+      <button class="btn xs" data-act="road-redraw">✏️ Qayta chizish</button> <button class="btn xs" data-act="road-show">🗺 Xaritada koʻrsatish</button>
+    </section>
+    <section class="card chat" id="roadChat">
+      <h3>🤖 AI — har taraflama tahlil</h3>
+      <p class="small muted">AI hisob, bosh reja, UNESCO qoidalari, internetdagi ochiq manbalar va koʻcha suratlaridan foydalanadi. Natija xaritada.</p>
+      <div class="chat-log">${qa}${RD.qaBusy ? thinking(RD.qaBusy) : ''}</div>
+      <form data-form="road-q" class="chat-form">
+        <textarea name="rq" rows="2" placeholder="Masalan: 25 m keng qilsak-chi? Qaysi binolar buziladi? Rasmini chiz" aria-label="Savol" ${RD.qaBusy ? 'disabled' : ''}></textarea>
+        <button class="btn primary" ${RD.qaBusy ? 'disabled' : ''}>Yuborish</button>
+      </form>
+    </section>`;
+  }
+
   // ---------- AI yordamchi (chat) ----------
   function chatSuggestions(S) {
     const M = S.model, s = S.chatStreet != null ? M.streets[S.chatStreet] : null;
@@ -904,5 +951,5 @@
       </ul></section>`;
   }
 
-  NX.views = { loading, error, home, alertsCard, systems, twin, dynInfo, dynTInfo, area, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
+  NX.views = { loading, error, home, alertsCard, systems, twin, dynInfo, dynTInfo, area, road, problems, problem, effP, locRow, reviewCard, nowCard, aiChat, street, aiBox, actions, routes, routeList, report, simResult, progress, recommendations, mainStreets, directionLabels, DISCLAIMER };
 })();
