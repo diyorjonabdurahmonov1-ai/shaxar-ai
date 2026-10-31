@@ -23,7 +23,7 @@
   // Tunda uyda boʻlganlar: turar joy maydoni × 0.8 / 25 m² kishiga
   // Aholi: turar joy maydonidan (× 0.8 / 25 m²), soʻng butun shahar jami rasmiy aholiga moslanadi.
   // Binolarning koʻpi turi nomaʼlum (“yes”) — ombor, garaj ham kiradi; shuning uchun xom hisob ~3 baravar koʻp chiqadi.
-  const CITY_POP = 600000;   // Samarqand shahri aholisi (~0.6 mln, Oʻzbekiston statistika agentligi, 2024)
+  const CITY_POP = 560000;   // Samarqand shahri aholisi — Bosh reja 2045 loyihasidagi hozirgi koʻrsatkich (560 ming)
   const rawPeople = b => (RESID.test(b.kind) ? (b.area * b.levels * 0.8) / 25 : 0);
   let POPK = 1, popN = -1;
   function calibrate(blds) {

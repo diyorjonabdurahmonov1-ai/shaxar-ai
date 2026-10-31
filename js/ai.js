@@ -455,6 +455,7 @@ Qoidalar:
 - FAQAT qurilish (dom, bino) soʻralganda tuzilma: **Hozir**, **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk — xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak**, **Kelajakda (5 yil)**. Har biri 2–4 nuqta, raqamlar bilan.
 - Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.
 - Agar “internet” maʼlumoti berilgan boʻlsa — tegishlisini qisqa, manbasi bilan ayt.
+- “bosh_reja” berilgan boʻlsa — qurilish yoki oʻzgartirish tavsiyasidan OLDIN tekshir: “ziddiyatlar” boʻlsa, javob boshida ⚠️ bilan aniq ayt (konservatsiya zonasi, UNESCO muhofaza zonasi, qavat cheklovi) va u yerda qurishni TAVSIYA QILMA — muqobil (rekonstruksiya, yashil hudud) taklif qil. Ziddiyat yoʻq boʻlsa — bir qatorda “Bosh reja: …” (UNESCO yodgorligigacha masofa, rasmiy zonalar fayli yuklanganmi). UNESCO maʼlumoti “TAXMINIY” boʻlsa, buni ayt va Madaniy meros agentligidan tasdiqlashni tavsiya qil.
 - “ehtiyojlar” berilgan boʻlsa (savol: “bu yerga nima qursam/ochsam foydali”) — dom hisobini YOZMA. Tuzilma:
   1-qator: eng kerakli 1–2 obyekt va asosiy sabab raqam bilan (masalan: “Eng kerakli — bogʻcha: uylarning faqat 20% i 300 m meʼyorda, ~180 oʻrin kerak”).
   **Nima yetishmaydi** — yetishmovchilik balli boʻyicha 3–5 ta: qamrov foizi, eng yaqini qancha uzoqda (nomi bilan), meʼyor radiusi, nechta oʻrin kerak.
@@ -483,6 +484,7 @@ ${MAPRULE}`;
       sayt_bahosi: R ? R.ev : null,
       nomzod_joylar: X.cand || null,
       ehtiyojlar: X.needs || null,
+      bosh_reja: X.plan || null,
       internet: X.internet || null,
       soya_qishda: R && R.shadow ? { soyada_qoladigan_binolar: R.shadow.shaded.length, quyosh: R.shadow.list.filter(s => s.sun.alt > 2).map(s => `${s.label} ${s.hour}:00 — ${Math.round(s.sun.alt)}°`) } : null,
       hududdagi_binolar_osm: R && R.blds ? R.blds : null,

@@ -724,3 +724,6 @@ html, body { background: #050a14; }
 html.lite .panel .card::after, html.lite .topbar::after { animation: none; opacity: .4; }
 html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-duration: 3s; }
 #btnLite[aria-pressed="true"] { color: #fde68a; border-color: rgba(253, 230, 138, .5); }
+/* Bosh reja tekshiruvi */
+.plan-bad { margin: 6px 0; padding-left: 18px; color: #fca5a5; font-size: .88rem; }
+.plan-bad li { margin: 3px 0; }

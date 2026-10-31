@@ -797,6 +797,9 @@
           tavsiya_joy: A.match.map(m => ({ nima: m.need.uz, joy: m.site ? m.site.id : m.need.kerakli_yer_m2 ? 'mos boʻsh yer yoʻq' : 'yangi bino shart emas — turar joy 1-qavatida yoki kichik pavilyon' })) };
       }
     }
+    // Bosh reja va UNESCO muhofazasi: qurilish/oʻzgartirish rejaga zid emasmi
+    A.qaBusy = 'Tahlil'; renderKeepScroll();
+    try { A.plan = await Promise.race([NX.masterplan.check({ center: A.st.center, poly: A.st.poly, floors: pb && pb.floors ? pb.floors : A.res ? A.spec.floors : null, build: !!(pb || needQ) }), NX.sleep(25000).then(() => null)]); } catch (e) { A.plan = null; }
     const candFacts = A.cand ? { L_boʻsh_yerlar: A.cand.L.map(x => ({ id: x.id, turi: x.turi, maydon_m2: x.maydon_m2, nomi: x.nomi })), C_yangi_yoʻl_variantlari: A.cand.C.map(x => ({ id: x.id, qaysi: x.qaysi, uzunlik_m: x.uzunlik_m })), P_muammolar: A.cand.P.map(x => ({ id: x.id, nima: x.nima, joy: x.joy })), S_koʻchalar: A.cand.S.map(x => ({ id: x.id, nomi: x.nomi, turi: x.turi })) } : null;
     // Tirbandlik / bir tomonlama / svetofor savoli — chuqur tahlil (variantlar, Yandex real vaqt, internet, xarita)
     let r = null;
@@ -823,9 +826,11 @@
       }
       A.qaBusy = 'AI javob yozmoqda…';
       renderKeepScroll();
-      r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet, needs: needFacts }));
+      r = await NX.ai.areaAsk(q, A, prev, Object.assign(areaExtra(), { cand: candFacts, internet, needs: needFacts, plan: A.plan ? { tekshiruv: A.plan, reja_2045: NX.masterplan.PLAN } : null }));
       if (internet && !r.sources) r.sources = internet.manbalar;
     }
+    // AI ishlamasa ham — bosh rejaga ziddiyat boʻlsa javob boshida aytiladi
+    if (r.src !== 'ai' && A.plan && A.plan.ziddiyatlar.length) r.text = A.plan.ziddiyatlar.map(t => '⚠️ **' + t + '**').join('\n') + '\n\n' + r.text;
     // Xaritada: sayt hisobidagi asosiy joylar + AI belgilagan joylar (faqat real nomzodlardan)
     const pa = NX.area.actionsFrom(r.text, A.cand);
     r.text = pa.text;
@@ -1641,6 +1646,7 @@
         case 'dyn-clear': NX.fx.clear(); NX.view.clearDynamic(); S.dynT = null; render(); break;
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
+        case 'plan-show': (async () => { const layers = [{ sys: 'masterplan', gj: await NX.masterplan.geo() }]; const mp = NX.systems.get('masterplan'); if (mp) layers.push({ sys: 'masterplan', gj: mp.gj }); ensureLeaflet(); NX.view.drawSystems(layers); toast(NX.systems.get('masterplan') ? 'Bosh reja zonalari va muhofaza hududlari xaritada.' : 'Muhofaza hududlari xaritada (rasmiy bosh reja fayli yuklanmagan).', 'ok'); })(); break;
         case 'q-fill': { const ta = panel.querySelector(b.dataset.target); if (ta) { ta.value = b.dataset.q; ta.focus(); } break; }
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
         case 'review-undo': reviewUndo(b.dataset.fid); break;

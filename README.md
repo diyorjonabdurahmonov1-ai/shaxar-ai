@@ -107,3 +107,13 @@ Maʼlumot: © OpenStreetMap hissadorlari (ODbL); binolar: Overture Maps Foundati
 - **Yongʻin / tez yordam / politsiya:** OSM stansiyalaridan koʻp manbali Dijkstra. Meʼyorda yetiladigan ulush, uzoq hududlar va belgilangan joyga yoʻl.
 - **Savollar katalogi:** `js/data/questions.js` (32 savol). `NX.intent` savol turini aniqlaydi; testlar har bir savol oʻz hisobiga borishini tekshiradi.
 - **Chatlar:** barcha chatlar (3D egizak, AI yordamchi, hudud) bir xil hisobga ulangan. “rasmini chiz” — AI rasm.
+
+## Bosh reja va UNESCO muhofazasi
+
+- `js/data/masterplan.js` — Samarqand bosh rejasi 2045 (loyiha) koʻrsatkichlari va zona qoidalari: konservatsiya, rekonstruksiya, renovatsiya. Manbalar: Kun.uz, UzDaily, regulation.adliya.uz (loyiha 8969), UNESCO WHC 603.
+- **UNESCO chegarasi:** OpenStreetMap’dan olinadi (boʻlsa). Boʻlmasa — asosiy yodgorliklar atrofida **taxminiy** zona chiziladi (rasmiy chegara emas).
+- **Rasmiy fayl:** bosh reja GIS fayli ochiq eʼlon qilinmagan. Uni “Tizimlar → Bosh reja” orqali yuklash mumkin (GeoJSON/KML). Kerakli maydonlar:
+  - `zona` — konservatsiya / rekonstruksiya / renovatsiya / yashil / sanoat / turar joy;
+  - `max_qavat` — ruxsat etilgan qavat soni.
+- **Tekshiruv:** hudud tahlili va AI tavsiyalari avtomatik tekshiriladi. Ziddiyat boʻlsa (konservatsiya, UNESCO zonasi, qavat cheklovi) — ogohlantirish chiqadi va u yerda qurilish tavsiya qilinmaydi.
+- **Worker:** barcha xodimlar uchun umumiy saqlash uchun Worker’ni qayta deploy qilish kerak (`masterplan` qatlami qoʻshildi).

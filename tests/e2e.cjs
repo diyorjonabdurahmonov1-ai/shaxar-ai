@@ -52,6 +52,7 @@ async function setupRoutes(ctx, opts = {}) {
     // Ochiq joylar (yigʻilish joylari) va mahalla nomi; hudud atrofidagi xizmatlar (maktab, dorixona…)
     if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, bounds: { minlat: la, minlon: lo, maxlat: la + d, maxlon: lo + d * 1.3 }, center: { lat: la + d / 2, lon: lo + d * 0.65 } });
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [sq(39.6520, 66.9700, 0.0010, { leisure: 'park', name: 'Sinov bogʻi' }), sq(39.6620, 66.9620, 0.0008, { place: 'square', name: 'Sinov maydoni' }), { type: 'node', id: 5, lat: 39.6500, lon: 66.9700, tags: { place: 'neighbourhood', name: 'Sinov mahallasi' } }] }) }); }
+    if (/heritage/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [] }) });
     if (/fire_station/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 11, lat: 39.6470, lon: 66.9610, tags: { amenity: 'fire_station', name: 'Sinov oʻt oʻchirish qismi' } }, { type: 'node', id: 12, lat: 39.6560, lon: 66.9760, tags: { amenity: 'hospital', name: 'Sinov shifoxonasi' } }] }) });
     if (/"amenity"~"\^\(kindergarten/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 39.6465, lon: 66.9605, tags: { amenity: 'school', name: 'Sinov maktabi' } }, { type: 'node', id: 2, lat: 39.6700, lon: 66.9950, tags: { amenity: 'pharmacy' } }] }) });
     if (/way\["building"\]/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(BLD) });
@@ -228,7 +229,7 @@ async function clickStreet(page, name) {
   await page.click('.tabs [data-tab=map]');
   ok('Favqulodda vaziyat natijasi 2D xaritada ham', (await page.$$('.leaflet-marker-icon.ann')).length > 0);
   ok('Yogʻin xavfi “Hozirgi holat”da', /mm yomgʻir kutilmoqda/.test(await page.textContent('#alerts')) && (await page.evaluate(() => document.getElementById('map3d').hidden)));
-  ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 6 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
+  ok('Bosh sahifa — boshqaruv markazi: hozirgi holat va shahar tizimlari', (await page.$$('#alerts .alist2 li')).length >= 2 && (await page.$$('.sys-grid .sys-tile')).length === 7 && /Ulanmagan/.test(await page.textContent('.sys-grid')));
   // Dinamik transport: tigʻiz soat 07:00–10:00, 15 daqiqalik qadamlar
   await page.click('[data-act=dyn-run]');
   await page.waitForFunction(() => NX.state.dynT && NX.state.dynT.res && !NX.state.dynT.busy, null, { timeout: 120000 });
@@ -882,6 +883,11 @@ async function clickStreet(page, name) {
   await p9.waitForFunction(() => NX.state.area.qa.length === 4 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const nd = await p9.evaluate(() => { const A = NX.state.area; return { n: A.needs && A.needs.list.length, pop: A.needs && A.needs.aholi, school: A.needs && A.needs.list.find(x => x.k === 'school').eng_yaqini, flats: A.spec.flats, acts: A.qa[3].actions.map(a => a.title) }; });
   ok('“Nima qursam foydali”: yetishmaydigan xizmatlar (meʼyoriy radius, qamrov), dom hisobi qayta qilinmaydi, xaritada', nd.n === 9 && nd.pop > 0 && nd.school && nd.school.nomi === 'Sinov maktabi' && nd.flats === 500 && nd.acts.length > 0 && !nd.acts.some(t => /🏢/.test(t)), JSON.stringify(nd));
+  // Bosh reja va UNESCO: hudud tekshiruvi (rasmiy fayl yoʻq — taxminiy muhofaza zonasi), xaritada koʻrsatish
+  const pl = await p9.evaluate(() => { const P = NX.state.area.plan; return P && { u: P.unesco && P.unesco.manba, near: P.unesco && (P.unesco.eng_yaqin_yodgorlik || P.unesco.nomi), rules: P.qoidalar.length, box: !!document.querySelector('[data-act=plan-show]') }; });
+  ok('Bosh reja: hudud UNESCO muhofazasi va bosh reja 2045 qoidalari bilan tekshiriladi, panelda va AI maʼlumotida', pl && /TAXMINIY|OpenStreetMap/.test(pl.u) && pl.near && pl.rules > 0 && pl.box, JSON.stringify(pl));
+  await p9.click('[data-act=plan-show]'); await p9.waitForTimeout(800);
+  ok('Muhofaza zonalari xaritada', await p9.evaluate(() => Object.values(NX.map.leaflet()._layers).some(l => l.feature && l.feature.properties && l.feature.properties.zona === 'muhofaza')));
   // Hudud chatida favqulodda savol — FAQAT shu hudud uchun reja (shahar boʻyicha tayyor javob emas), jonli simulyatsiya xaritada
   await p9.fill('#areaChat textarea[name=aq]', 'Shu yerdagi odamlarni zilzila vaqtida qayerga evakuatsiya qilsa boʻladi?'); await p9.click('#areaChat form button');
   await p9.waitForFunction(() => NX.state.area.qa.length === 6 && !NX.state.area.qaBusy, null, { timeout: 240000 });

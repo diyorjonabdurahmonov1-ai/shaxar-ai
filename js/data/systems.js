@@ -27,6 +27,9 @@
       need: 'Kollektorlar va nasos stansiyalari xaritasi; toʻlish datchiklari (API)',
       ai: 'Toʻlib ketish xavfi, yomgʻirda suv bosishi' },
   };
+  NX.SYSTEMS.masterplan = { icon: '🗺', uz: 'Bosh reja (2045)', color: '#a855f7',
+    need: 'Bosh reja zonalari fayli (GeoJSON/KML): zona turi (konservatsiya, rekonstruksiya, renovatsiya, yashil, sanoat, turar joy) va ruxsat etilgan qavat — shaharsozlik boshqarmasidan',
+    ai: 'Qurilish yoki oʻzgartirish bosh rejaga va UNESCO muhofaza zonasiga zid emasmi — avtomatik tekshiruv' };
   NX.SYSTEMS.webcam = { icon: '🎥', uz: 'Ochiq vebkameralar', color: '#0284c7', hidden: true };   // Windy katalogi (Tizimlar → Kameralar ichida)
   const KEYS = Object.keys(NX.SYSTEMS).filter(k => k !== 'transport' && k !== 'webcam');
 

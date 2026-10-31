@@ -271,7 +271,7 @@ async function photoChecks(req, env, cors, okOrigin, path) {
 }
 
 // ---------- Shahar tizimlari xaritalari (GeoJSON) ----------
-const SYSTEMS = ['camera', 'power', 'gas', 'water', 'sewer'];
+const SYSTEMS = ['camera', 'power', 'gas', 'water', 'sewer', 'masterplan'];
 async function layers(req, env, cors, okOrigin, path) {
   if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
   const meta = JSON.parse((await env.CORRECTIONS.get('layers:meta')) || '{}');
