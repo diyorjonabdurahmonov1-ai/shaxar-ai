@@ -183,6 +183,8 @@ async function clickStreet(page, name) {
   await page.click('#twinChat form button');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 4, null, { timeout: 180000 });
   const hz = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, I: H.I, z: H.zones.length, r: H.routes.length, pl: H.routes[0] && H.routes[0].path.length, sh: H.shelters.map(s => s.name), f3: NX.map3d.map().getSource('hz')._data.features.length, pins: document.querySelectorAll('.hz-pin').length, list: document.querySelectorAll('#twinChat .hz-list li').length, mode: NX.map3d.mode() }; });
+  const fx3 = await page.evaluate(() => ({ fx: NX.fx.active(), op: NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-opacity'), close: getComputedStyle(document.querySelector('.hz-close')).zIndex }));
+  ok('3D egizakda ham evakuatsiya yoʻllari va oqim binolar ustida (jonli qatlam 3D kamerada), binolar shaffof', fx3.fx && fx3.op === 0.5 && +fx3.close > 1050, JSON.stringify(fx3));
   ok('Zilzila: xavfli zonalar, xavfsiz yoʻllar (koʻchalar boʻylab) va yigʻilish joylari xaritada', hz.kind === 'quake' && hz.I === 9 && hz.z > 0 && hz.r > 0 && hz.pl > 2 && hz.f3 >= hz.z + hz.r && hz.pins > 0 && hz.list > 0 && hz.mode === 'quake' && hz.sh.some(n => /Sinov/.test(n)), JSON.stringify(hz));
   await page.fill('#twinChat textarea[name=tq]', '50 mm yomgʻirda suv toshsa evakuatsiya uchun eng baland joy qayer?');
   await page.click('#twinChat form button');

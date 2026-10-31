@@ -247,7 +247,9 @@
         map.on('mouseleave', 'bld', () => { map.getCanvas().style.cursor = ''; });
         resolve(map);
         // Birinchi ochilishda — shahar ustidan sekin aylanib koʻrsatish
-        map.easeTo({ bearing: 25, pitch: 62, zoom: 15.9, duration: 7000, easing: t => t * (2 - t) });
+        mapReady = true;
+        if (pendingFit) { const p = pendingFit; pendingFit = null; setTimeout(() => fitTo(p), 50); }
+        else if (!data.hz) map.easeTo({ bearing: 25, pitch: 62, zoom: 15.9, duration: 7000, easing: t => t * (2 - t) });
       });
       map.on('error', e => console.warn('3D xarita:', e && e.error && e.error.message));
     });
@@ -325,12 +327,22 @@
     const step = () => { const t = (performance.now() - t0) / 2500; if (t >= 1) { map.jumpTo({ center: c0, bearing: b0 }); return; } const a = (1 - t) * 0.00025; map.jumpTo({ center: [c0.lng + a * Math.sin(t * 90), c0.lat + a * Math.cos(t * 73)], bearing: b0 + (1 - t) * 1.2 * Math.sin(t * 60) }); requestAnimationFrame(step); };
     requestAnimationFrame(step);
   }
-  function setHazard(list) { data.hz = list && list.length ? list : null; refresh(); hzMarkers(); }
+  function setHazard(list) {
+    data.hz = list && list.length ? list : null; refresh(); hzMarkers();
+    // Yoʻllar koʻrsatilganda binolar shaffofroq — yoʻl va oqim binolar ortida yoʻqolmasin
+    const routes = data.hz && data.hz.some(a => a.kind === 'line' && !a.style);
+    if (map && map.getLayer('bld')) map.setPaintProperty('bld', 'fill-extrusion-opacity', routes ? 0.5 : 0.92);
+  }
   // Hamma belgilar koʻrinadigan qilib
+  // Natijaga uchish; 3D hali ochilmagan boʻlsa — ochilganda uchadi (kirish animatsiyasi bekor qilinadi)
+  let pendingFit = null, mapReady = false;
   function fitTo(pts) {
-    if (!map || !pts.length) return;
+    if (!pts || !pts.length) return;
+    if (!map || !mapReady) { pendingFit = pts; return; }
     let s = 90, w = 180, n = -90, e = -180; pts.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
-    try { map.fitBounds([[w, s], [e, n]], { padding: 60, pitch: 45, duration: 900, maxZoom: 16 }); } catch (err) { /* eski versiya */ }
+    map.stop();
+    try { map.fitBounds([[w, s], [e, n]], { padding: 70, pitch: 50, bearing: map.getBearing(), duration: 1200, maxZoom: 16 }); }
+    catch (err) { try { map.fitBounds([[w, s], [e, n]], { padding: 70, duration: 1200, maxZoom: 16 }); } catch (e2) { /* */ } }
   }
   function setBase(k) {
     if (!BASE[k]) return;
@@ -350,6 +362,9 @@
       const src = map.getCanvas(), k = Math.min(1, (maxW || 640) / src.width), c = document.createElement('canvas');
       c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
       c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+      // Jonli qatlam (evakuatsiya yoʻllari, oqim) ham rasmga tushadi — AI rasm shu asosda chiziladi
+      const fx = NX.fx && NX.fx.active() && NX.fx.canvas();
+      if (fx && fx.width) c.getContext('2d').drawImage(fx, 0, 0, c.width, c.height);
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }

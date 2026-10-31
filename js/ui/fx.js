@@ -17,13 +17,19 @@
     cv = document.createElement('canvas'); cv.className = 'fx-layer'; cv.setAttribute('aria-hidden', 'true');
     wrap.appendChild(cv); g = cv.getContext('2d');
   }
-  const proj = (lat, lon, r) => { const p = NX.view.llToPx && NX.view.llToPx(lat, lon); return p ? [p[0] - r.left, p[1] - r.top] : null; };
+  // 3D egizak ochiq boʻlsa — 3D kamera proyeksiyasi (qiyalik, burilish bilan): yoʻllar va oqim binolar ustida koʻrinadi
+  let in3d = false;
+  const proj = (lat, lon, r) => {
+    if (in3d) { const m = NX.map3d.map(); if (!m) return null; const q = m.project([lon, lat]); return [q.x, q.y]; }
+    const p = NX.view.llToPx && NX.view.llToPx(lat, lon); return p ? [p[0] - r.left, p[1] - r.top] : null;
+  };
 
   // Proyeksiya keshi: xarita oʻzgarmasa qayta hisoblanmaydi
   function project(r) {
     const a = proj(data.ref[0], data.ref[1], r), b = proj(data.ref[0] + 0.01, data.ref[1] + 0.01, r);
     if (!a || !b) return null;
-    const key = a.map(Math.round).join() + ':' + b.map(Math.round).join() + ':' + r.width + 'x' + r.height;
+    const m3 = in3d && NX.map3d.map(), cam = m3 ? [m3.getZoom().toFixed(3), m3.getPitch().toFixed(1), m3.getBearing().toFixed(1)].join() : '';
+    const key = a.map(Math.round).join() + ':' + b.map(Math.round).join() + ':' + r.width + 'x' + r.height + ':' + in3d + cam;
     if (cache && cache.key === key) return cache;
     const P = (la, lo) => proj(la, lo, r);
     const mPerPx = 1113 / Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]) / Math.SQRT2);  // ~0.01° ≈ 1113 m (lat)
@@ -49,13 +55,16 @@
     if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px'; cache = null; }
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, r.width, r.height);
-    const hidden = document.hidden || wrap.classList.contains('twin-on');
+    const was = in3d;
+    in3d = wrap.classList.contains('twin-on');
+    if (was !== in3d) cache = null;
+    const hidden = document.hidden;
     const C = hidden ? null : project(r);
     if (C) {
       const T = (performance.now() - t0) / 1000;
       // 1) Xavfli hudud — haqiqiy binolar kataklari, nafas olayotgan qizil
       const breathe = 0.75 + 0.25 * Math.sin(T * 2.2);
-      C.zones.forEach(z => {
+      if (!in3d) C.zones.forEach(z => {
         const s = Math.max(2.5, C.cellPx * 1.12);
         g.shadowColor = z.color; g.shadowBlur = 6;
         z.cells.forEach(c => { g.fillStyle = rgba(z.color, (0.22 + 0.45 * c[2]) * breathe); g.fillRect(c[0] - s / 2, c[1] - s / 2, s, s); });
@@ -68,7 +77,7 @@
         g.strokeStyle = rgba('#f97316', 0.55 * (1 - ph)); g.lineWidth = 3 * (1 - ph) + 1; g.beginPath(); g.arc(C.epi[0], C.epi[1], rad, 0, Math.PI * 2); g.stroke();
       }
       // 2b) Koʻchalardagi suv: yorugʻ yoyilish + chuqurlik rangidagi oʻzak + oqim yoʻnalishida yaltirash
-      if (C.water.length) {
+      if (C.water.length && !in3d) {
         const zw = Math.max(1, Math.min(2.4, C.cellPx / 10));
         g.lineCap = 'round';
         [[0.10, 0.3, '#7dd3fc'], [0.3, 0.6, '#2563eb'], [0.6, 9, '#1e3a8a']].forEach(([lo, hi, col]) => {
@@ -158,5 +167,5 @@
   // Suv simulyatsiyasi vaqt boʻyicha: har kadrda koʻchalardagi suv yangilanadi
   function setWater(list) { if (!data) return; data.water = list || []; cache = null; }
   function clear() { data = null; cache = null; if (cv) { g.clearRect(0, 0, cv.width, cv.height); cv.hidden = true; } if (raf) { cancelAnimationFrame(raf); raf = 0; } }
-  NX.fx = { show, clear, setWater, active: () => !!data, kind: () => data && data.kind };
+  NX.fx = { canvas: () => cv, show, clear, setWater, active: () => !!data, kind: () => data && data.kind };
 })();
