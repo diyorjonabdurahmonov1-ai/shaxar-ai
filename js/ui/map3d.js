@@ -167,7 +167,7 @@
     hzMarks.forEach(m => m.remove()); hzMarks = [];
     if (!map || !window.maplibregl.Marker) return;
     (data.hz || []).forEach((a, i) => {
-      if (a.dash || a.kind === 'water' || a.style === 'blocked') return;
+      if (a.dash || a.kind === 'water' || a.kind === 'line') return;   // yoʻllar — chiziq va oqim; belgilar faqat joylar va zonalarga
       const el = document.createElement('div');
       el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
       const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
@@ -235,6 +235,11 @@
         const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
         setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
         map.addLayer({ id: 'hz-blocked', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'blocked'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ef4444', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7], 'line-opacity': 0.9, 'line-blur': 1 } });
+        // Odamlar oqimi — yoʻllar boʻylab harakatlanuvchi nuqtalar (3D da yerga yopishgan)
+        map.addSource('hz-dots', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        map.addLayer({ id: 'hz-dots-glow', type: 'circle', source: 'hz-dots', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3, 17, 9], 'circle-color': ['get', 'col'], 'circle-opacity': 0.35, 'circle-blur': 1, 'circle-pitch-alignment': 'map' } });
+        map.addLayer({ id: 'hz-dots', type: 'circle', source: 'hz-dots', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 17, 4], 'circle-color': '#ffffff', 'circle-pitch-alignment': 'map' } });
+        setInterval(dotsTick, 70);
         map.addLayer({ id: 'hz-alt', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'alt'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 17, 5], 'line-dasharray': [2, 1.5] } });
         hzMarkers();
         map.on('click', 'bld', e => {
@@ -327,8 +332,38 @@
     const step = () => { const t = (performance.now() - t0) / 2500; if (t >= 1) { map.jumpTo({ center: c0, bearing: b0 }); return; } const a = (1 - t) * 0.00025; map.jumpTo({ center: [c0.lng + a * Math.sin(t * 90), c0.lat + a * Math.cos(t * 73)], bearing: b0 + (1 - t) * 1.2 * Math.sin(t * 60) }); requestAnimationFrame(step); };
     requestAnimationFrame(step);
   }
+  // Oqim nuqtalari: har yoʻl uchun metrda kumulyativ uzunlik; har kadrda nuqtalar yoʻl boʻylab siljiydi
+  let dotRoutes = [], dotT0 = performance.now();
+  function prepDots() {
+    dotRoutes = (data.hz || []).filter(a => a.kind === 'line' && a.path && a.path.length > 1 && !a.style && !a.dash).map(a => {
+      const p = a.path, cum = [0];
+      for (let i = 1; i < p.length; i++) { const k = 111320 * Math.cos(p[i][0] * Math.PI / 180); cum.push(cum[i - 1] + Math.hypot((p[i][1] - p[i - 1][1]) * k, (p[i][0] - p[i - 1][0]) * 111320)); }
+      return { p, cum, L: cum[cum.length - 1], n: Math.max(5, Math.min(24, Math.round((a.ppl || 300) / 150))), col: a.color || '#22c55e' };
+    }).filter(r => r.L > 20);
+    // Koʻp yoʻl (butun shahar) — jami ~1500 nuqta
+    const per = Math.max(2, Math.floor(1500 / Math.max(1, dotRoutes.length)));
+    dotRoutes.forEach(r => { r.n = Math.min(r.n, per); });
+    dotT0 = performance.now();
+  }
+  function dotsTick() {
+    if (!map || !map.getSource('hz-dots') || document.hidden) return;
+    const host = document.getElementById('map3d');
+    if (!host || host.hidden) return;
+    if (!dotRoutes.length) { if (dotsTick.had) { map.getSource('hz-dots').setData({ type: 'FeatureCollection', features: [] }); dotsTick.had = false; } return; }
+    const T = (performance.now() - dotT0) / 1000, f = [];
+    dotRoutes.forEach(r => {
+      for (let k = 0; k < r.n; k++) {
+        const d = (T * 14 + (k / r.n) * r.L) % r.L;     // ~14 m/s — koʻrinishi uchun tezlashtirilgan
+        let i = 1; while (i < r.cum.length && r.cum[i] < d) i++;
+        const a = r.p[i - 1], b = r.p[Math.min(i, r.p.length - 1)], s = (r.cum[i] - r.cum[i - 1]) || 1, t = Math.min(1, (d - r.cum[i - 1]) / s);
+        f.push({ type: 'Feature', properties: { col: r.col }, geometry: { type: 'Point', coordinates: [a[1] + (b[1] - a[1]) * t, a[0] + (b[0] - a[0]) * t] } });
+      }
+    });
+    map.getSource('hz-dots').setData({ type: 'FeatureCollection', features: f });
+    dotsTick.had = true;
+  }
   function setHazard(list) {
-    data.hz = list && list.length ? list : null; refresh(); hzMarkers();
+    data.hz = list && list.length ? list : null; refresh(); hzMarkers(); prepDots();
     // Yoʻllar koʻrsatilganda binolar shaffofroq — yoʻl va oqim binolar ortida yoʻqolmasin
     const routes = data.hz && data.hz.some(a => a.kind === 'line' && !a.style);
     if (map && map.getLayer('bld')) map.setPaintProperty('bld', 'fill-extrusion-opacity', routes ? 0.5 : 0.92);

@@ -205,7 +205,8 @@
     const blds = (NX.buildings.get() || []).filter(b => inP(b.c[0], b.c[1]));
     const RES = /^(house|detached|residential|apartments|yes|terrace|semidetached_house|dormitory)$/;
     const resid = blds.filter(b => RES.test(b.kind));
-    const pop = resid.length ? Math.round(resid.reduce((t, b) => t + (b.area * b.levels * 0.8) / 25, 0)) : Math.round(st.areaHa * 120);
+    const K = NX.hazard ? NX.hazard.calibrate(NX.buildings.get()) : 1;   // butun shahar aholisiga moslash
+    const pop = resid.length ? Math.round(resid.reduce((t, b) => t + (b.area * b.levels * 0.8) / 25, 0) * K) : Math.round(st.areaHa * 120);
     // Qamrov: hudud ichidagi turar joylar (boʻlmasa — tarmoq nuqtalari) necha foizi meʼyoriy radiusda
     let homes = resid.map(b => G.xy(b.c[0], b.c[1]));
     if (homes.length < 5) { const xy = poly.map(p => G.xy(p[0], p[1])); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; xy.forEach(p => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }); homes = []; for (let x = x0 + 20; x < x1; x += 40) for (let y = y0 + 20; y < y1; y += 40) { const ll = G.ll(x, y); if (inP(ll[0], ll[1])) homes.push([x, y]); } }

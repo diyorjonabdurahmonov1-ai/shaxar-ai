@@ -22,6 +22,7 @@
     // Qoʻshimcha belgilar — bir xil hodisa uchun nimani koʻrsatish kerakligi
     blocked: new RegExp(`to${A}sil|yopilib|yopiladi|vayrona|bloklan|o${A}tib\\s*bo${A}lmay|o${A}ta\\s*olma|o${A}tolma|kira\\s*olma`, 'i'),
     critical: new RegExp(`maktab|shifoxona|bog${A}cha|kasalxona|poliklinika`, 'i'),
+    city: new RegExp(`butun\\s*shahar|shahar\\s*bo${A}yicha|barcha\\s*(aholi|odam|mahalla|hudud)|hamma\\s*(aholi|odam|mahalla)|to${A}liq\\s*reja|shahar\\s*aholisi`, 'i'),
     rescue: new RegExp(`baland\\s*(joy|nuqta)|eng\\s*baland|olib\\s*chiq|chiqarib|xavfsiz\\s*joy|qayerga\\s*(bor|ket|qoch)`, 'i'),
   };
   const HAZARD = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac'];
@@ -29,7 +30,7 @@
   function intent(q) {
     const t = String(q || '');
     const main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
-    return { main, hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t) };
+    return { main, hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t) };
   }
 
   // Katalog: [savol, kutilgan tur]
@@ -42,6 +43,7 @@
       ['7 magnitudali zilzila boʻlsa nechta bino ogʻir shikastlanadi?', 'quake'],
       ['Zilzilada belgilangan hududdan eng xavfsiz yoʻl qaysi? Rasmini chiz', 'quake'],
       ['Zilzila boʻlsa odamlar qayerga borishi kerak, qaysi yoʻldan?', 'quake'],
+      ['Zilzilada butun shahar aholisini evakuatsiya qilish rejasi', 'quake'],
       ['Zilzilada qaysi koʻchalar vayronalar bilan toʻsilib qolishi mumkin, zaxira yoʻl qaysi?', 'quake'],
       ['Yer qimirlasa qaysi mahallalar eng koʻp zarar koʻradi?', 'quake'],
       ['Zilziladan keyin qutqaruvchilar qaysi koʻchalardan oʻta olmaydi?', 'quake'],

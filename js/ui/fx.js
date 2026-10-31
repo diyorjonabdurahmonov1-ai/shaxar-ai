@@ -37,7 +37,7 @@
     const water = data.water.map(w => { const a = P(w.a[0], w.a[1]), b = P(w.b[0], w.b[1]); return a && b ? [a[0], a[1], b[0], b[1], w.d] : null; }).filter(Boolean);
     const routes = data.routes.map(rt => { const pts = rt.path.map(q => P(q[0], q[1])); const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return Object.assign({}, rt, { pts, cum, L: cum[cum.length - 1] }); });
     const points = data.points.map(p => Object.assign({}, p, { p: P(p.lat, p.lon) }));
-    cache = { key, zones, water, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
+    cache = { key, per: Math.max(2, Math.floor(2000 / Math.max(1, routes.length))), zones, water, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
     return cache;
   }
   function at(rt, d) {
@@ -58,7 +58,8 @@
     const was = in3d;
     in3d = wrap.classList.contains('twin-on');
     if (was !== in3d) cache = null;
-    const hidden = document.hidden;
+    // 3D egizakda bu qatlam chizilmaydi — u yerda yoʻllar va oqim 3D xaritaning oʻzida (yerga yopishgan holda) chiziladi
+    const hidden = document.hidden || in3d;
     const C = hidden ? null : project(r);
     if (C) {
       const T = (performance.now() - t0) / 1000;
@@ -125,7 +126,7 @@
         // Yoʻnalish oʻqlari (chevron) — har 70 px, siljib boradi
         if (!rt.dash) for (let d = (T * 40) % 70; d < rt.L; d += 70) { const q = at(rt, d); if (q.length < 3) continue; g.save(); g.translate(q[0], q[1]); g.rotate(q[2]); g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-4, -4); g.lineTo(1, 0); g.lineTo(-4, 4); g.stroke(); g.restore(); }
         // Odamlar oqimi — zarrachalar (soni odamlar soniga mos)
-        const n = rt.dash ? 4 : Math.max(6, Math.min(36, Math.round((rt.ppl || 300) / 120))), v = rt.dash ? 18 : 55;
+        const n = Math.min(C.per, rt.dash ? 4 : Math.max(6, Math.min(36, Math.round((rt.ppl || 300) / 120)))), v = rt.dash ? 18 : 55;
         for (let k = 0; k < n; k++) {
           const d = ((T * v + (k / n) * rt.L) % rt.L), q = at(rt, d);
           g.fillStyle = '#ffffff'; g.shadowColor = rt.color; g.shadowBlur = 10;

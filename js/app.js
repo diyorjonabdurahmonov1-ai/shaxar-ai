@@ -401,7 +401,7 @@
       const fs = NX.ai.detectStreets ? NX.ai.detectStreets(q, S.model)[0] : null, st = fs && fs.s;
       const target = S.area ? S.area.st.center : st && st.center ? st.center : null;
       H = NX.hazard.responders({ net, svc, kind: svcKind, target, targetName: S.area ? 'belgilangan hudud' : st ? st.name : null });
-    } else if (kind === 'quake') H = NX.hazard.quake({ net, blds, os, I: NX.hazard.intensity(q).I, extraOrigins: ex, mahalla: NX.intent(q).mahalla, area });
+    } else if (kind === 'quake') H = NX.hazard.quake({ net, blds, os, I: NX.hazard.intensity(q).I, extraOrigins: ex, mahalla: NX.intent(q).mahalla, area, all: !!(opts && opts.all) });
     else {
       const wet = [];
       if (fl && fl.frames) fl.segs.forEach((sg, i) => { let m = 0; fl.frames.forEach(f => { if (f.d[i] > m) m = f.d[i]; }); if (m >= 0.05) wet.push({ lat: sg.mid[0], lon: sg.mid[1], d: m }); });
@@ -512,7 +512,9 @@
       // Zilzila: savolga qarab — zarar zonalari (doim), maktab/shifoxonalar, toʻsiladigan koʻchalar, evakuatsiya yoʻllari
       const show = quakeQ ? { routes: it.evac, blocked: it.blocked || it.evac, critical: it.critical || (!it.evac && !it.blocked) } : { routes: true, blocked: true, critical: false };
       C.busy = 'Tahlil'; renderKeepScroll();
-      try { H = await hazardRun('quake', q, null, Object.assign({}, opts, { show })); } catch (e) { console.warn('xavf xaritasi:', e); }
+      // Evakuatsiya: hudud/mahalla aytilmasa — butun shahar rejasi (barcha turar joylar)
+      const all = it.city || (show.routes && !it.mahalla);
+      try { H = await hazardRun('quake', q, null, Object.assign({}, opts, { show, all })); } catch (e) { console.warn('xavf xaritasi:', e); }
       if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H); }
     } else if (rainQ) {
       // Suv toshqini: “qaysi koʻchani suv bosadi” — koʻchalardagi suv (jonli); “qayerga olib chiqamiz / baland joy” — qoʻshimcha yoʻllar
