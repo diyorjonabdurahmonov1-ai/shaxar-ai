@@ -885,7 +885,26 @@ async function clickStreet(page, name) {
   ok('“Nima qursam foydali”: yetishmaydigan xizmatlar (meʼyoriy radius, qamrov), dom hisobi qayta qilinmaydi, xaritada', nd.n === 9 && nd.pop > 0 && nd.school && nd.school.nomi === 'Sinov maktabi' && nd.flats === 500 && nd.acts.length > 0 && !nd.acts.some(t => /🏢/.test(t)), JSON.stringify(nd));
   // Bosh reja va UNESCO: hudud tekshiruvi (rasmiy fayl yoʻq — taxminiy muhofaza zonasi), xaritada koʻrsatish
   const pl = await p9.evaluate(() => { const P = NX.state.area.plan; return P && { u: P.unesco && P.unesco.manba, near: P.unesco && (P.unesco.eng_yaqin_yodgorlik || P.unesco.nomi), rules: P.qoidalar.length, box: !!document.querySelector('[data-act=plan-show]') }; });
-  ok('Bosh reja: hudud UNESCO muhofazasi va bosh reja 2045 qoidalari bilan tekshiriladi, panelda va AI maʼlumotida', pl && /TAXMINIY|OpenStreetMap/.test(pl.u) && pl.near && pl.rules > 0 && pl.box, JSON.stringify(pl));
+  ok('Bosh reja: hudud UNESCO muhofazasi va bosh reja 2045 qoidalari bilan tekshiriladi, panelda va AI maʼlumotida', pl && /119-son/.test(pl.u) && pl.near && pl.rules > 0 && pl.box, JSON.stringify(pl));
+  // Rasmiy muhofaza zonalari (VM 119-son 9-ilova) va bosh reja talablari — nuqtalar boʻyicha
+  const mpz = await p9.evaluate(async () => {
+    const M = NX.masterplan, c = (lat, lon, o) => M.check(Object.assign({ center: [lat, lon], poly: null }, o));
+    const reg = await c(39.6547, 66.9757, { build: true, floors: 5 }), afr = await c(39.6684, 66.9906, { build: true }), buf = await c(39.6747, 67.0054, { build: true, floors: 3 });
+    const far = await c(39.6780, 66.9340, { build: true, floors: 12 }), view = await c(39.6547, 66.9757, { build: false });
+    const gj = await M.geo(), ha = k => M.ZONES[k].ha;
+    return {
+      zones: [M.zoneAt(39.6547, 66.9757), M.zoneAt(39.6627, 66.9878), M.zoneAt(39.6543, 66.9619), M.zoneAt(39.6747, 67.0054), M.zoneAt(39.6780, 66.9340)],
+      reg: [reg.unesco.zona, reg.ziddiyatlar.some(t => /UNESCO asosiy hududida/.test(t)), reg.qoidalar.some(t => /PQ-219/.test(t))],
+      afr: [afr.unesco.zona, afr.ziddiyatlar.some(t => /taqiqlanadi/.test(t))],
+      buf: [buf.unesco.zona, buf.unesco.bufer_zonada, buf.ziddiyatlar.length, buf.qoidalar.some(t => /bufer zonasida qurilish taqiqlanmagan/.test(t))],
+      far: [far.unesco.zona, far.unesco.chegaragacha_m > 300, far.ziddiyatlar.length, far.qoidalar.some(t => /6–9 qavatli/.test(t))],
+      view: view.ziddiyatlar.length,
+      core: Math.round(ha('temur') + ha('yevropa') + ha('afrosiyob')), gj: gj.features.map(f => f.properties.tur + ':' + f.geometry.coordinates.length).join(','),
+      plan: [M.PLAN.aholi.y2045, M.PLAN.maydon_ga.y2045, M.PLAN.maks_qavat_rejada, M.PLAN.eski_shahar_kochalari.length],
+    };
+  });
+  ok('Muhofaza zonalari rasmiy xaritadan: Registon — Temuriylar qismi, Shohi Zinda — Afrosiyob, Mustaqillik maydoni — Yevropa qismi, rasadxona — bufer, vokzal — tashqarida; asosiy hudud ≈ UNESCO 1123 ga', mpz.zones.join() === 'temur,afrosiyob,yevropa,bufer,' && Math.abs(mpz.core - 1123) < 40 && mpz.gj === 'bufer:4,temur:1,yevropa:1,afrosiyob:1', JSON.stringify(mpz));
+  ok('Muhofaza rejimi: asosiy hududda qurilish — ziddiyat (UNESCO kelishuvi), Afrosiyobda — taqiqlanadi, bufer — cheklov (ziddiyat emas), tashqarida 12 qavat — bosh reja qavatlilik ogohlantirishi, faqat koʻrish — ziddiyatsiz', mpz.reg.join() === 'temur,true,true' && mpz.afr.join() === 'afrosiyob,true' && mpz.buf.join() === 'bufer,true,0,true' && mpz.far.join() === ',true,0,true' && mpz.view === 0 && mpz.plan.join() === '1209000,28415,9,13', JSON.stringify(mpz));
   await p9.click('[data-act=plan-show]'); await p9.waitForTimeout(800);
   ok('Muhofaza zonalari xaritada', await p9.evaluate(() => Object.values(NX.map.leaflet()._layers).some(l => l.feature && l.feature.properties && l.feature.properties.zona === 'muhofaza')));
   // Hudud chatida favqulodda savol — FAQAT shu hudud uchun reja (shahar boʻyicha tayyor javob emas), jonli simulyatsiya xaritada

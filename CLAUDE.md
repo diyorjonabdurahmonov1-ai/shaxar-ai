@@ -14,7 +14,7 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - `js/analysis/hazard.js` — zilzila zonalari (bino shaklida, 40 m kataklar), evakuatsiya (Dijkstra, sigʻim boʻyicha taqsimot, zaxira yoʻl, vaqt; hudud / har bir mahalla / butun shahar `cityPlan`), suv toshqinida baland joylar, yongʻin/tez yordam qamrovi, `waterItems`, `reportItems` (OAV real hodisalari), `summary` (AI ishlamasa ham toʻliq javob). Aholi 560 mingga kalibrlangan.
 - `js/analysis/twin.js` — relyef (AWS Terrarium), `ground()` (SRTM→yer sathi filtri), `flood2d` (LISFLOOD-FP worker `js/sim/flood2d.js`), `CURB=0.15` (yoʻl chetidan oshgan suv = koʻchani bosgan), koʻchalar (`roadsStatic` → `data/roads-samarqand.json`).
 - `js/analysis/area.js` — hudud statistikasi, nomzod joylar, `needs` (xizmatlar qamrovi meʼyor boʻyicha).
-- `js/data/masterplan.js` — Bosh reja 2045 (loyiha) koʻrsatkichlari, zona qoidalari, UNESCO zonasi (OSM yoki taxminiy), `check()` — hudud tahlilida va AI’da.
+- `js/data/masterplan.js` — Bosh reja 2045 (loyiha 8969: 2-versiya zonalari/UMN/QMN, 3-versiya yakuniy koʻrsatkichlari), UNESCO muhofaza zonalari RASMIY chegarasi (VM 119-son 9-ilova xaritasidan raqamlashtirilgan: Temuriylar qismi, Yevropa qismi, Afrosiyob, bufer), `zoneAt()`, `check()` — hudud tahlilida va AI’da. Qaror lex.uz’da chiqsa — matnini solishtirish.
 - `js/data/buildings.js` — `data/buildings-samarqand.json` (Overture: OSM + Microsoft, ~123 ming bino).
 - `js/ui/map3d.js` — MapLibre 3D: “Raqamli egizak” uslubi, derazalar, realistik suv (tekstura), yomgʻir, zilzila silkinishi, hazard qatlamlari va oqim nuqtalari (`hz-dots`).
 - `js/ui/fx.js` — 2D xaritadagi jonli simulyatsiya canvas’i (3D da oʻchadi). `js/ui/backdrop.js` — orqa fon animatsiyasi.
@@ -41,7 +41,7 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - Maxfiy infratuzilma maʼlumotlari ulanishidan oldin sayt Cloudflare Access yoki davlat serveri orqasiga oʻtishi kerak.
 
 ## Ochiq ishlar
-- Bosh reja 2045 qaror loyihasi (regulation.adliya.uz, loyiha 8969) va lex.uz’dagi qarorlar matnini toʻliq oʻqib, zonalar jadvali, balandlik cheklovlari, UNESCO bufer zona qoidalarini `js/data/masterplan.js` ga aniq kiritish (oldingi sessiyada tarmoq bloklangan edi).
+- Bosh reja: qaror lex.uz’da eʼlon qilinsa — yakuniy matnni `PLAN` bilan solishtirish; zonalar boʻyicha UMN/QMN va qavat cheklovlari faqat Shaharsozlik kadastri GAT’ida (hokimiyatdan GIS fayl soʻralsin). Bufer zonadagi aniq balandlik raqamlari ochiq hujjatlarda yoʻq (qoʻriqlanadigan tegra loyihasida — Madaniy meros agentligidan soʻralsin).
 - Hokimiyatdan soʻraladigan maʼlumotlar: bosh reja GIS fayli, kadastr (bino yili/materiali), mahalla chegaralari, kanalizatsiya/ariqlar, FVV yigʻilish joylari va stansiyalar.
 - Oʻt oʻchirish qismlari Overture’da yoʻq — Overpass orqali; tayyor faylga qoʻshish kerak.
 - Worker oxirgi versiyasini foydalanuvchi deploy qilishi kerak (`masterplan` qatlami qoʻshilgan).

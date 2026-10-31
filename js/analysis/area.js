@@ -128,7 +128,8 @@
     const jn = st.problems.filter(p => p.type === 'junction').length, sc = st.problems.filter(p => p.type === 'school').length;
     if (jn) { cons.push(`Hududda ${jn} ta svetoforsiz katta chorraha bor — yangi mashinalar shu yerlardan oʻtadi.`); todo.push('Svetoforsiz chorrahalarda oqimni sanash va svetofor qoʻyish.'); }
     if (sc) { cons.push(`${sc} ta maktab/bogʻcha oldida xavfsiz oʻtish yoʻq — bolalar soni ortadi.`); todo.push('Maktab oldiga koʻtarilgan piyoda oʻtish joyi va 30 km/soat belgisi.'); }
-    if (b.floors >= 5 && st.distCenter < 2000) cons.push(`Tarixiy markazga (Registon) ${fmt.km(st.distCenter)} — UNESCO himoya hududida qavatlar soniga cheklov boʻlishi mumkin. Madaniy meros boshqarmasidan tekshirish kerak.`);
+    const hz = NX.masterplan && st.center ? NX.masterplan.zoneAt(st.center[0], st.center[1]) : null;
+    if (hz) cons.push(`Hudud ${NX.masterplan.ZONES[hz].qisqa}da (VM 119-son qarori 9-ilova) — ${hz === 'afrosiyob' ? 'kapital qurilish taqiqlanadi' : hz === 'bufer' ? 'bino balandligi, oʻlchami va koʻrinishi Madaniy meros agentligi bilan kelishiladi' : 'loyiha Madaniy meros agentligi va UNESCO bilan majburiy kelishiladi, merosga taʼsirni baholash kerak'}.`);
     const future = [];
     if (fut) {
       future.push(`5 yildan keyin (shahar oqimi +15%) yoʻlda yurish vaqti ${fmt.signed(fut.ttChangePct, 1)}% oʻzgaradi.`);
