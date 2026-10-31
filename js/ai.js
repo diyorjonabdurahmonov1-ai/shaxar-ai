@@ -520,6 +520,7 @@ Qoidalar:
 - Keyin: **Xavfli joylar** (koʻcha — chuqurlik, uzunlik), **Odamlar va binolar** (nechta bino, qaysi maktab/shifoxona), **Hozir nima qilish kerak** (ariq va kollektorlarni tozalash, nasoslar, ogohlantirish, yoʻl yopish — qayerda), **Uzoq muddatli yechim**.
 - Bir nechta stsenariy berilgan boʻlsa — farqini raqamlar bilan solishtir.
 - “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
+- “real_hodisalar_oav” berilgan boʻlsa (Samarqandda haqiqatda suv bosgan koʻchalar, OAV): **Real hodisalar bilan solishtirish** — har biri uchun bir qator: koʻcha, sana, model ham koʻrsatdimi. Model koʻrsatmagan joyda sabab odatda ariq/kanal tiqilishi ekanini ayt (xaritada 📰 H belgilar).
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
 - Zilzila soʻralsa: “xavf_xaritasi” dagi zonalar va raqamlar asosida javob ber; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt. Raqam oʻylab topma.
 - “xavf_xaritasi” berilgan boʻlsa — bu koʻcha tarmogʻida hisoblangan va XARITADA CHIZILGAN natija. Javobni shunga qur va id lar bilan ayt (Z1, R1, S1, H1 — xaritadagi belgilar shu nomda):

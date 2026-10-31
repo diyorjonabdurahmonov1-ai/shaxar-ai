@@ -334,7 +334,10 @@
     NX.map3d.setMode('flood');
     // Shu paytda yomgʻir yogʻyaptimi (vaqt shkalasi boʻyicha) — 3D da tomchilar shu paytda
     const tNow = R.frames[T.dynFrame] ? R.frames[T.dynFrame].t : 0, mmNow = (R.rain || []).reduce((a, x) => a + (tNow >= x.t0 && tNow < x.t1 ? x.mmh : 0), 0);
-    NX.map3d.set({ scen: { mode: 'street', segs: NX.twin.frameSegs(R, T.dynFrame), wetIds: R.wetIds }, rainMm: mmNow });
+    const fsegs = NX.twin.frameSegs(R, T.dynFrame);
+    NX.map3d.set({ scen: { mode: 'street', segs: fsegs, wetIds: R.wetIds }, rainMm: mmNow });
+    // 2D xaritada ham — suv shu paytdagi holatda
+    if (NX.fx.active() && NX.fx.kind() === 'water') NX.fx.setWater(fsegs.map(x => ({ a: [x.c[0][1], x.c[0][0]], b: [x.c[1][1], x.c[1][0]], d: x.d >= 0.02 ? x.d : 0.03 })));
     if (fly && R.streets[0] && R.streets[0].at) NX.map3d.flyTo(R.streets[0].at[0], R.streets[0].at[1], 15.3);
     const el = panel.querySelector('#dynInfo'); if (el) el.outerHTML = V.dynInfo(S); const rg = panel.querySelector('[data-input=twin-t]'); if (rg && +rg.value !== T.dynFrame) rg.value = T.dynFrame;
   }
@@ -344,7 +347,7 @@
     if (dynTimer) { clearInterval(dynTimer); dynTimer = null; T.playing = false; renderKeepScroll(); return; }
     if (!T.dyn) return;
     T.playing = true; if (T.dynFrame >= T.dyn.frames.length - 1) T.dynFrame = 0; renderKeepScroll();
-    dynTimer = setInterval(() => { if (T.dynFrame >= T.dyn.frames.length - 1 || S.tab !== 'twin') { clearInterval(dynTimer); dynTimer = null; T.playing = false; renderKeepScroll(); return; } twinShowFrame(T.dynFrame + 1); }, 700);
+    dynTimer = setInterval(() => { if (T.dynFrame >= T.dyn.frames.length - 1 || (S.tab !== 'twin' && !NX.fx.active())) { clearInterval(dynTimer); dynTimer = null; T.playing = false; renderKeepScroll(); return; } twinShowFrame(T.dynFrame + 1); }, 700);
   }
   const dynFacts = R => ({
     model: '2D fizik model (LISFLOOD-FP, 40 m katak, vaqt boʻyicha)', yomgir: R.label, kanalizatsiya_mm_soat: R.drain,
@@ -413,6 +416,8 @@
   // Natijani xaritaga chiqarish: 3D, 2D (jonli qatlam + bosiladigan belgilar), boshqa chizmalar xira
   function showHazard(H) {
     const T = twinState();
+    // Boshqa hodisa natijasi — oʻynab turgan suv simulyatsiyasi toʻxtaydi (rejimni qaytarib olmasin)
+    if (!/water|flood/.test(H.kind) && dynTimer) { clearInterval(dynTimer); dynTimer = null; T.playing = false; }
     H.items.forEach(a => { a.fx = true; });
     T.hz = H;
     NX.map3d.setHazard(H.items);
@@ -478,7 +483,7 @@
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
       R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
       // Simulyatsiya: boshidan — yomgʻir yogʻadi, suv koʻtariladi, keyin kamayadi (3D egizakda)
-      if (R && S.tab === 'twin') setTimeout(() => { const T1 = twinState(); if (T1.dyn === R && !T1.playing) { twinShowFrame(0); twinPlay(); } }, 900);
+      if (R) setTimeout(() => { const T1 = twinState(); if (T1.dyn === R && !T1.playing && (!T1.hz || /water|flood/.test(T1.hz.kind))) { twinShowFrame(0); twinPlay(); } }, 900);
       extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
       // Kichik yomgʻir: kanalizatsiya ishlasa suv qolmaydi — ariqlar tiqilgan holat ham hisoblanadi (xaritada shu koʻrsatiladi)
       if (R && R.peak.km < 0.5 && mm <= 30) {
@@ -512,6 +517,8 @@
     } else if (rainQ) {
       // Suv toshqini: “qaysi koʻchani suv bosadi” — koʻchalardagi suv (jonli); “qayerga olib chiqamiz / baland joy” — qoʻshimcha yoʻllar
       const W = R || sc0, wItems = W ? NX.hazard.waterItems(W, twinState().buildings) : [];
+      // Ochiq manbalardagi real hodisalar — xaritada va model bilan solishtirish
+      try { const rp = await NX.hazard.reportItems(twinState().roads, W); wItems.push(...rp.items); extra.real_hodisalar_oav = rp.facts; } catch (e) { /* */ }
       if (it.evac) {
         try { H = await hazardRun('flood', q, W, Object.assign({}, opts, { extraItems: wItems })); } catch (e) { console.warn('xavf xaritasi:', e); }
         if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }

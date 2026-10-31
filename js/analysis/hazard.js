@@ -497,14 +497,43 @@
   function waterItems(R, blds) {
     const out = [], streets = (R.streets || []).slice(0, 8);
     let segs = [];
-    if (R.frames) { const pk = R.frames.indexOf(R.peak); segs = R.segs.map((sg, i) => ({ a: [sg.c[0][1], sg.c[0][0]], b: [sg.c[1][1], sg.c[1][0]], d: Math.min(1.2, R.frames.reduce((m, f) => Math.max(m, f.d[i]), 0)), w: sg.w, now: pk >= 0 ? R.frames[pk].d[i] : 0 })); }
+    if (R.frames) segs = R.segs.map((sg, i) => { const d = Math.min(1.2, R.frames.reduce((m, f) => Math.max(m, f.d[i]), 0)), r = R.frames.reduce((m, f) => Math.max(m, f.r ? f.r[i] : 0), 0); return { a: [sg.c[0][1], sg.c[0][0]], b: [sg.c[1][1], sg.c[1][0]], d: d >= 0.02 ? d : r >= 0.03 ? 0.03 : 0, w: sg.w }; });
     else if (R.segs) segs = R.segs.map(sg => ({ a: [sg.c[0][1], sg.c[0][0]], b: [sg.c[1][1], sg.c[1][0]], d: Math.min(1.2, sg.d), w: sg.w }));
-    segs = segs.filter(x => x.d >= 0.08).sort((p, q) => q.d - p.d).slice(0, 7000);
+    segs = segs.filter(x => x.d >= 0.02).sort((p, q) => q.d - p.d).slice(0, 9000);
     if (segs.length) out.push({ kind: 'water', id: 'suv', segs, lat: segs[0].a[0], lon: segs[0].a[1], title: '💧 Suv', note: '' });
     streets.forEach((x, i) => x.at && out.push({ kind: 'point', id: 'W' + (i + 1), lat: x.at[0], lon: x.at[1], color: '#2563eb', title: `💧 W${i + 1}: ${x.name} — ${Math.round(Math.min(1.2, x.max) * 100)} sm${x.max > 1.2 ? '+' : ''}`, note: `${NX.fmt.int(x.len)} m koʻchada 10 sm dan chuqur suv.` }));
     const wet = R.wetIds ? (blds || []).filter(b => R.wetIds.has(b.id) && CRIT.test(b.kind)).slice(0, 6) : [];
     wet.forEach((b, i) => out.push({ kind: 'point', id: 'K' + (i + 1), lat: b.c[0], lon: b.c[1], color: '#e11d48', title: `🏫 ${b.name || KIND_UZ[b.kind] || 'bino'} — suv yetadi`, note: 'Bino oldida 20 sm dan chuqur suv toʻplanadi.' }));
     return out;
+  }
+
+  // Real hodisalar (OAV xabarlari): koʻcha nomi boʻyicha xaritada topiladi va model natijasi bilan solishtiriladi
+  let repP = null;
+  const reports = () => (repP = repP || fetch('data/flood-reports.json').then(r => (r.ok ? r.json() : { events: [] })).catch(() => ({ events: [] })));
+  // Solishtirish uchun: kichik harf, tutuq belgisiz, “koʻchasi/mavzesi…” siz, boʻshliqsiz; oʻ/u, gʻ/g farqsiz
+  const normName = t => String(t || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/o‘|oʻ/g, 'o').replace(/g‘|gʻ/g, 'g').replace(/[-–]/g, ' ').replace(/\s+(koʻ?chasi|kochasi|mavzesi|massivi|mikrotumani|mahallasi|shoh\s+kochasi|yoʻli|yoli)\b.*$/, '').replace(/\s+/g, '').replace(/^sogd/, 'sugd').trim();
+  async function reportItems(roads, R) {
+    const rep = await reports(), out = [], facts = [];
+    let places = [];
+    try { places = (await openSpaces()).places || []; } catch (e) { places = []; }
+    const byName = new Map();
+    (roads || []).forEach(w => { const k = normName(w.name); if (k.length < 4) return; (byName.get(k) || byName.set(k, []).get(k)).push(w); });
+    const modelMax = new Map(); (R && R.streets || []).forEach(x => { const k = normName(x.name); modelMax.set(k, Math.max(modelMax.get(k) || 0, x.max)); });
+    let n = 0;
+    (rep.events || []).forEach(ev => ev.streets.forEach(st => {
+      const k = normName(st), keys = [...byName.keys()].filter(x => x === k || (k.length >= 5 && (x.startsWith(k) || k.startsWith(x))));
+      const ws = keys.flatMap(x => byName.get(x));
+      const mm = keys.reduce((m, x) => Math.max(m, modelMax.get(x) || 0), 0);
+      // Koʻcha topilmasa — mahalla/mavze nomi (masalan Sugʻdiyona) — atrofidagi 600 m koʻchalar
+      if (!ws.length) { const pl = places.find(p => normName(p.name).startsWith(k)); if (pl) { const [px, py] = G.xy(pl.c[0], pl.c[1]); (roads || []).forEach(w => { const m0 = w.ll[Math.floor(w.ll.length / 2)], [x, y] = G.xy(m0[0], m0[1]); if (Math.hypot(x - px, y - py) < 600) { ws.push(w); const kk = normName(w.name); if (kk && !keys.includes(kk)) keys.push(kk); } }); } }
+      const mm2 = keys.reduce((m, x) => Math.max(m, modelMax.get(x) || 0), 0);
+      const f = { koʻcha: st, sana: ev.date, yomgir: ev.rain, sabab: ev.cause, manba: ev.src, model_natijasi: !ws.length ? 'xaritada topilmadi' : mm2 >= 0.1 ? `model ham suv koʻrsatdi — ${Math.round(mm2 * 100)} sm gacha` : mm >= 0.1 ? `model ham suv koʻrsatdi — ${Math.round(mm * 100)} sm gacha` : 'model bu koʻchada suv toʻplanishini koʻrsatmadi (ariq/kanal tiqilishi modelda yoʻq)' };
+      facts.push(f);
+      if (!ws.length) return;
+      const w = ws.reduce((b, x) => (x.ll.length > b.ll.length ? x : b), ws[0]), m = w.ll[Math.floor(w.ll.length / 2)];
+      out.push({ kind: 'point', id: 'H' + (++n), lat: m[0], lon: m[1], color: '#f59e0b', title: `📰 Real hodisa: ${st} (${ev.date})`, note: `${ev.rain}. ${ev.cause}. ${f.model_natijasi}.` });
+    }));
+    return { items: out, facts };
   }
 
   // AI ishlamasa ham toʻliq javob — hisob natijasidan matn (zilzila / suv / xizmatlar)
@@ -532,5 +561,5 @@
     return L.join('\n');
   }
 
-  NX.hazard = { summary, waterItems, intensity, openSpaces, services, responders, SVC, quake, flood, items, facts, vclass, heavy, _search: search };
+  NX.hazard = { summary, waterItems, reportItems, intensity, openSpaces, services, responders, SVC, quake, flood, items, facts, vclass, heavy, _search: search };
 })();

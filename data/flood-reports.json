@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "note": "Samarqand shahrida kuchli yomgʻirda suv bosgani haqida ommaviy axborot vositalari xabarlari (ochiq manbalar). Model natijasini real hodisalar bilan solishtirish uchun.",
+  "events": [
+    { "date": "2026-05-23", "rain": "28.6 mm 45 daqiqada (meteostansiya)", "streets": ["Chuquryoʻl", "Namozgoh"], "cause": "Namozgoh koʻchasida Maroqand ariq-kanali chiqindi bilan toʻsilib, suv yoʻlga toshgan; 20 dan ortiq suv tortish mashinasi jalb qilingan", "src": "https://www.gazeta.uz/oz/2026/05/23/samarkand/", "src2": "https://yuz.uz/uz/news/samarqandda-kuchli-yomgir-oqibatida-ayrim-hududlarni-suv-bosdi" },
+    { "date": "2022-03-15", "rain": "tungi kuchli yomgʻir", "streets": ["Registon", "Sugʻdiyona"], "cause": "koʻchalarda suv toʻplangan", "src": "https://kun.uz/news/2022/03/15/foto-kuchli-yomgir-tufayli-samarqand-kochalari-suvga-toldi" },
+    { "date": "2021-03-28", "rain": "jala", "streets": ["Buyuk Ipak Yoʻli", "Afrosiyob", "Muqimiy"], "cause": "ariqlar suvni sigʻdira olmagan, kollektorlar qurilish chiqindisi bilan tiqilgan (hokimlik)", "src": "https://vzglyad.uz/2021/03/28/nekotorye-uliczy-samarkanda-zatopleny-iz-za-prolivnyh-dozhdej-video", "src2": "https://fergana.agency/news/106234/" },
+    { "date": "2020-04-10", "rain": "kuchli yomgʻir", "streets": [], "cause": "past joydagi mahallada suv uylarga kirgan, har yili takrorlanadi", "src": "https://kun.uz/news/2020/04/10/beshigigacha-suv-bocgan-samarqandliklar-yordam-kutishmoqda" }
+  ]
+}

@@ -90,13 +90,15 @@
   // Koʻchalardagi suv — chiziqlar (oqim yoʻnalishida), chuqurlik: d (m)
   function waterGeo() {
     if (mode !== 'flood' || !data.scen || data.scen.mode !== 'street') return { type: 'FeatureCollection', features: [] };
-    return { type: 'FeatureCollection', features: data.scen.segs.map(s => ({ type: 'Feature', properties: { d: s.d, w: s.w }, geometry: { type: 'LineString', coordinates: s.c } })) };
+    // Chiziq: koʻchani bosgan suv (d) yoki ariq/chetdagi sayoz oqim (r) — oqim yoʻnalishida
+    return { type: 'FeatureCollection', features: data.scen.segs.map(s => ({ type: 'Feature', properties: { d: s.d >= 0.02 ? s.d : 0.02, w: s.w }, geometry: { type: 'LineString', coordinates: s.c } })) };
   }
   // Hajmli suv: har koʻcha boʻlagi — kengligi koʻcha + yoyilish, balandligi chuqurlikka mos (koʻrinishi uchun ×1.6, kamida 0.35 m)
   function waterVolGeo() {
     if (mode !== 'flood' || !data.scen || data.scen.mode !== 'street') return { type: 'FeatureCollection', features: [] };
     const f = [];
     data.scen.segs.forEach(s => {
+      if (s.d < 0.05) return;            // sayoz oqim — faqat chiziq (oqim yoʻnalishi bilan), hajm emas
       const [a, b] = s.c, lat = (a[1] + b[1]) / 2, kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320;
       const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, L = Math.hypot(dx, dy);
       if (L < 1) return;

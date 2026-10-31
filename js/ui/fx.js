@@ -155,6 +155,8 @@
     cv.hidden = false;
     if (!raf) raf = requestAnimationFrame(frame);
   }
+  // Suv simulyatsiyasi vaqt boʻyicha: har kadrda koʻchalardagi suv yangilanadi
+  function setWater(list) { if (!data) return; data.water = list || []; cache = null; }
   function clear() { data = null; cache = null; if (cv) { g.clearRect(0, 0, cv.width, cv.height); cv.hidden = true; } if (raf) { cancelAnimationFrame(raf); raf = 0; } }
-  NX.fx = { show, clear, active: () => !!data };
+  NX.fx = { show, clear, setWater, active: () => !!data, kind: () => data && data.kind };
 })();

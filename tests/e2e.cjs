@@ -60,7 +60,7 @@ async function setupRoutes(ctx, opts = {}) {
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(isRoutes ? FX.routes : FX.streets) });
   });
   // Relyef: sintetik — markazdan janubi-sharqda botiq joy; quyosh arxivi; soatlik yogʻin
-  await ctx.route(/elevation-tiles-prod\/terrarium/, route => { const m = route.request().url().match(/terrarium\/(\d+)\/(\d+)\/(\d+)\.png/); route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: terrTile(+m[1], +m[2], +m[3]) }); });
+  if (!opts.realTerrain) await ctx.route(/elevation-tiles-prod\/terrarium/, route => { const m = route.request().url().match(/terrarium\/(\d+)\/(\d+)\/(\d+)\.png/); route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: terrTile(+m[1], +m[2], +m[3]) }); });
   await ctx.route(/archive-api\.open-meteo\.com/, route => {
     if (!/temperature_2m_mean/.test(route.request().url())) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ daily: { time: [], shortwave_radiation_sum: Array(365).fill(18) } }) });
     // Sintetik iqlim (faqat test): isish 0.3°C/10 yil, yogʻin ~1 mm/kun, har yili bitta kuchli kun
@@ -637,6 +637,7 @@ async function clickStreet(page, name) {
   await p7.waitForFunction(() => /yuklanmadi/.test(document.getElementById('panoBox').textContent), null, { timeout: 10000 });
   ok('Yandex ishlamasa panorama oʻrniga Yandex havolasi taklif qilinadi', /yandex\.uz\/maps/.test(await p7.getAttribute('#panoLink', 'href')));
 
+  for (const c of browser.contexts()) await c.close();
   // ---------- 8. Real surat bilan tekshiruv: Mapillary + AI (surat, internet, rasm) ----------
   const ctx8 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await setupRoutes(ctx8);

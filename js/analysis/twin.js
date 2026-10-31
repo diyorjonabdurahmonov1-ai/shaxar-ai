@@ -225,8 +225,21 @@
     return out;
   }
   // rain: [{ t0, t1 (soniya), mmh }]; drainMm — soatiga kanalizatsiya/ariqlar olib ketadigan
-  async function flood2d(D, roadList, rain, opt, onProgress) {
+  // Yer sathi modeli (DTM): SRTM — sirt modeli (binolar, daraxtlar ham bor). Morfologik “ochish” (3×3 min, soʻng 3×3 max)
+  // ~80 m dan tor boʻrtiqlarni (bino, daraxt qatori) olib tashlaydi; soʻng yengil silliqlash. Natijada koʻcha qiyaligi uzluksiz boʻladi,
+  // binolar orasida soxta “chuqur” va “toʻsiq” qolmaydi — suv qiyalikdan pastga oqib, haqiqiy past joyda toʻplanadi.
+  function ground(D) {
+    if (D._ground) return D._ground;
+    const { nx, ny } = D, z0 = D.z, N = nx * ny, a = new Float32Array(N), b = new Float32Array(N), c = new Float32Array(N);
+    const pass = (src, dst, f) => { for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let v = src[j * nx + i]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; v = f(v, src[jj * nx + ii]); } dst[j * nx + i] = v; } };
+    pass(z0, a, Math.min); pass(a, b, Math.max);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let s = b[j * nx + i] * 4, w = 4; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue; s += b[jj * nx + ii]; w++; } c[j * nx + i] = s / w; }
+    D._ground = Object.assign({}, D, { z: c, _ground: null, src: (D.src || '') + ' → yer sathi (bino/daraxt filtri)' });
+    return D._ground;
+  }
+  async function flood2d(D0, roadList, rain, opt, onProgress) {
     const o = Object.assign({ drainMm: 10, infilMm: 8, after: 2 * 3600, snapMin: 10 }, opt || {});
+    const D = o.raw ? D0 : ground(D0);
     // SRTM’dagi soxta chuqurlar (bino, daraxt, koʻprik izlari) — 5 m dan sayozlari (SRTM — sirt modeli, binolar orasi “chuqur” chiqadi) toʻldiriladi; chuqurroqlari (karyer, jar) qoladi
     const Fh = hydro(D).F;
     const N = D.nx * D.ny, z = Float32Array.from(D.z, (v, k) => (Fh[k] - v < 5 ? Fh[k] : v)), nArr = new Float32Array(N).fill(0.05), loss = new Float32Array(N).fill(o.infilMm / 1000 / 3600);
@@ -239,7 +252,7 @@
       const a = w.ll[i - 1], b = w.ll[i], [ax, ay] = G.xy(a[0], a[1]), [bx, by] = G.xy(b[0], b[1]), len = Math.hypot(bx - ax, by - ay), st = Math.max(1, Math.round(len / 15)), cells = new Set();
       for (let t = 0; t <= st; t++) { const ll = G.ll(ax + (bx - ax) * t / st, ay + (by - ay) * t / st), k = cellOf(ll[0], ll[1]); if (k >= 0) cells.add(k); }
       if (!cells.size) continue;
-      cells.forEach(k => { if (!roadCell[k]) { roadCell[k] = 1; z[k] -= 0.15; } nArr[k] = 0.016; loss[k] = o.drainMm / 1000 / 3600; });
+      cells.forEach(k => { if (!roadCell[k]) { roadCell[k] = 1; z[k] -= 0.2; } nArr[k] = 0.016; loss[k] = o.drainMm / 1000 / 3600; });
       const za = zAt(D, a[0], a[1]), zb = zAt(D, b[0], b[1]);
       segs.push({ c: za >= zb ? [[a[1], a[0]], [b[1], b[0]]] : [[b[1], b[0]], [a[1], a[0]]], cells: [...cells], name: w.name, len, w: ROAD_W[w.hw] || 8, mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
     } });
@@ -248,10 +261,11 @@
     // Har bir vaqt qadamida har bir koʻcha segmentidagi eng katta chuqurlik
     const frames = res.snaps.map(sn => {
       const m = new Map(); for (let i = 0; i < sn.idx.length; i++) m.set(sn.idx[i], sn.d[i]);
-      const d = new Float32Array(segs.length);
-      segs.forEach((sg, i) => { let x = 0; sg.cells.forEach(k => { const v = m.get(k) || 0; if (v > x) x = v; }); d[i] = x; });
+      // r — ariq/yoʻl chetidagi suv (koʻcha 20 sm “oʻyilgan”); d — yoʻl chetidan (15 sm) oshgan suv = koʻchani suv bosgani
+      const d = new Float32Array(segs.length), r = new Float32Array(segs.length);
+      segs.forEach((sg, i) => { let x = 0; sg.cells.forEach(k => { const v = m.get(k) || 0; if (v > x) x = v; }); r[i] = x; d[i] = Math.max(0, x - CURB); });
       const km = segs.reduce((t2, sg, i) => t2 + (d[i] >= 0.1 ? sg.len : 0), 0) / 1000;
-      return { t: sn.t, d, km: +km.toFixed(1) };
+      return { t: sn.t, d, r, km: +km.toFixed(1) };
     });
     // Koʻchalar boʻyicha: eng chuqur va qachon
     const byName = new Map();
@@ -270,14 +284,16 @@
     const hmax = res.hmax, wetB = (NX.buildings.get() || []).filter(b => { const k = cellOf(b.c[0], b.c[1]); return k >= 0 && hmax[k] >= 0.2; });
     return { mode: 'dynamic', rain, drain: o.drainMm, segs, frames, streets, peak, steps: res.steps, buildings: wetB.length, wetIds: new Set(wetB.map(b => b.id)), critical: wetB.filter(b => /school|kindergarten|hospital|clinic/.test(b.kind)).map(b => b.name || ({ school: 'maktab', kindergarten: 'bogʻcha', hospital: 'shifoxona', clinic: 'poliklinika' })[b.kind]).slice(0, 10) };
   }
-  // Vaqt qadami → xarita uchun koʻcha segmentlari (≥ 5 sm)
+  // Vaqt qadami → xarita uchun koʻcha segmentlari (≥ 1 sm — sayoz oqim ham)
   function frameSegs(R, fi) {
     const f = R.frames[Math.max(0, Math.min(R.frames.length - 1, fi))], out = [];
-    R.segs.forEach((sg, i) => { if (f.d[i] >= 0.05) out.push({ c: sg.c, d: +Math.min(1.5, f.d[i]).toFixed(2), w: sg.w }); });
+    // 1 sm dan — qiyalikdagi sayoz oqim ham (pastga oqayotgan suv yoʻli uzilmasin)
+    R.segs.forEach((sg, i) => { const r = f.r ? f.r[i] : f.d[i]; if (f.d[i] >= 0.01 || r >= 0.03) out.push({ c: sg.c, d: +Math.min(1.2, f.d[i]).toFixed(3), r: +r.toFixed(3), w: sg.w }); });
     return out;
   }
 
   // ---------- Koʻchalar boʻylab suv (shahar suvi asosan koʻchalar orqali oqadi) ----------
+  const CURB = 0.15;   // yoʻl cheti (bordyur) balandligi, m — undan pastdagi suv ariq/chetda oqadi, koʻchani bosmaydi
   const ROAD_W = { trunk: 22, primary: 20, secondary: 16, tertiary: 12, unclassified: 9, residential: 8, living_street: 6 };
   // Butun shahar koʻchalari — 3×3 = 9 kichik qism; har qism alohida saqlanadi; kelgan qismlar darhol ishlatiladi, kelmaganlari keyin qayta soʻraladi.
   // “out body” — tugun raqamlari bilan (tarmoq uchun shart). Hech biri kelmasa ham — markaz koʻchalari (sayt modeli) ishlatiladi.
@@ -468,5 +484,5 @@
     return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
   }
 
-  NX.twin = { roadsFromModel, climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { ground, roadsFromModel, climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
 })();
