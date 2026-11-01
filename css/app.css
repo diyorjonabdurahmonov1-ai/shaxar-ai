@@ -868,3 +868,10 @@ html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-d
 @keyframes auPulse { 50% { box-shadow: 0 0 4px color-mix(in srgb, var(--c) 20%, transparent); } }
 .hz-list .locrow { display: flex; gap: 6px; align-items: center; }
 .hz-list .locrow .loc { flex: 1; }
+/* Popup: shu nuqtaning boshqa suratlari (masofa bilan) */
+.pp-alt { display: flex; gap: 4px; margin-top: 5px; }
+.pp-alt button { position: relative; flex: 1; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: none; cursor: pointer; }
+.pp-alt button.on { border-color: #22d3ee; }
+.pp-alt img { width: 100%; height: 38px; object-fit: cover; display: block; }
+.pp-alt i { position: absolute; right: 2px; bottom: 1px; font: 600 .62rem system-ui; color: #fff; text-shadow: 0 0 3px #000; font-style: normal; }
+.warn-text { color: #fbbf24; }

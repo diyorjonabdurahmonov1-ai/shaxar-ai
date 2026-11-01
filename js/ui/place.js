@@ -24,18 +24,39 @@
   }
 
   const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyun', 'iyul', 'avg', 'sen', 'okt', 'noy', 'dek'];
-  const cache = new Map();
+  const cache = new Map(), used = new Map();   // used: surat id → qaysi nuqtada koʻrsatilgan (bir surat bir nechta belgiga qoʻyilmasin)
+  // Kamera aynan shu nuqtaga qarab turibdimi: suratdan nuqtagacha yoʻnalish va kamera burchagi farqi
+  function facing(p, lat, lon) {
+    if (p.ca == null || p.d < 6) return 0;
+    const [x0, y0] = NX.geo.xy(p.lat, p.lon), [x1, y1] = NX.geo.xy(lat, lon);
+    const brg = (Math.atan2(x1 - x0, y1 - y0) * 180 / Math.PI + 360) % 360;
+    return Math.abs(((brg - p.ca + 540) % 360) - 180);
+  }
+  // Nuqta uchun suratlar: masofa + kamera yoʻnalishi; yangilik — kichik ustunlik (eski suratdan 5 m gacha)
+  function rankFor(list, lat, lon) {
+    const now = Date.now();
+    return list.map(p => { const f = facing(p, lat, lon), age = p.date ? (now - p.date) / (365 * 86400e3) : 5; return Object.assign({}, p, { f, sc: p.d + (f > 100 ? 30 : f > 60 ? 12 : 0) + Math.min(5, age) }); }).sort((x, y) => x.sc - y.sc);
+  }
   async function fill(el) {
     el.dataset.done = '1';
-    const lat = +el.dataset.lat, lon = +el.dataset.lon, k = lat.toFixed(4) + ',' + lon.toFixed(4);
+    const lat = +el.dataset.lat, lon = +el.dataset.lon, k = lat.toFixed(5) + ',' + lon.toFixed(5);
     if (!NX.mly || !NX.mly.available()) { el.innerHTML = '<span class="small muted">Ochiq koʻcha surati ulanmagan — panoramani bosing.</span>'; return; }
     try {
       let list = cache.get(k);
-      if (!list) { list = await NX.mly.photos(lat, lon, 60); if (!list.length) list = await NX.mly.photos(lat, lon, 160); cache.set(k, list); }
-      const p = list[0];
-      if (!p) { el.innerHTML = '<span class="small muted">Bu joyda ochiq koʻcha surati yoʻq — 🌐 panoramani bosing.</span>'; return; }
-      const d = p.date ? new Date(p.date) : null;
-      el.innerHTML = `<a href="${NX.mly.link(p.id)}" target="_blank" rel="noopener"><img src="${p.url}" alt="Real surat" loading="lazy"></a><div class="small muted">Real surat (Mapillary)${d ? ` · ${d.getFullYear()}-yil ${MON[d.getMonth()]}` : ''} · ${Math.round(p.d)} m${list.length > 1 ? ` · yana ${list.length - 1} ta` : ''}</div>`;
+      if (!list) { list = await NX.mly.photos(lat, lon, 35); if (list.length < 2) list = await NX.mly.photos(lat, lon, 80); list = rankFor(list, lat, lon); cache.set(k, list); }
+      if (!list.length) { el.innerHTML = '<span class="small muted">Aynan shu nuqtada ochiq koʻcha surati yoʻq — 🌐 panoramani bosing.</span>'; return; }
+      // Boshqa belgida koʻrsatilgan surat — imkon boʻlsa boshqasi (60 m ichida)
+      let i = list.findIndex(p => { const u = used.get(p.id); return (!u || u === k) && p.d <= 60; });
+      if (i < 0) i = 0;
+      used.set(list[i].id, k);
+      const show = j => {
+        const p = list[j], d = p.date ? new Date(p.date) : null;
+        const far = p.d > 40 ? `<div class="small warn-text">⚠️ Eng yaqin surat ${Math.round(p.d)} m uzoqda — muammo aynan koʻrinmasligi mumkin, panoramada tekshiring.</div>` : '';
+        const dir = p.f != null && p.d >= 6 ? (p.f <= 60 ? ' · 🎯 nuqtaga qaragan' : ' · ↪ boshqa tomonga qaragan') : '';
+        el.innerHTML = `<a href="${NX.mly.link(p.id)}" target="_blank" rel="noopener"><img src="${p.url}" alt="Shu nuqtaning real surati" loading="lazy"></a><div class="small muted">📍 Shu nuqtadan ${Math.round(p.d)} m${dir}${d ? ` · ${d.getFullYear()}-yil ${MON[d.getMonth()]}` : ''} · Mapillary</div>${far}${list.length > 1 ? `<div class="pp-alt">${list.slice(0, 4).map((q, n) => `<button type="button" class="${n === j ? 'on' : ''}" data-n="${n}" title="${Math.round(q.d)} m"><img src="${q.url}" alt="" loading="lazy"><i>${Math.round(q.d)} m</i></button>`).join('')}</div>` : ''}`;
+        el.querySelectorAll('.pp-alt button').forEach(b => { b.onclick = e => { e.preventDefault(); e.stopPropagation(); show(+b.dataset.n); }; });
+      };
+      show(i);
     } catch (e) { el.innerHTML = `<span class="small muted">Surat olinmadi (${NX.esc(e.message)}).</span>`; }
   }
   // Popup/balloon ochilganda paydo boʻlgan surat joylari avtomatik toʻldiriladi

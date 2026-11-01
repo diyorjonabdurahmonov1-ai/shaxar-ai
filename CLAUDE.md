@@ -27,7 +27,7 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - `data/*.json` — tayyor fayllar (binolar, koʻchalar, ochiq joylar/xizmatlar, OAV toshqin xabarlari).
 
 ## Testlar
-- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 182/182. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
+- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 183/183. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
 - `node tests/real-data.cjs` — haqiqiy relyef/koʻchalar/binolar bilan qoʻlda tekshiruv (internet kerak).
 - Har oʻzgarishdan keyin testlarni yurgizing; vizual ishlarda skrinshot olib koʻring.
 

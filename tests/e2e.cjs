@@ -780,6 +780,15 @@ async function roadBlock(browser) {
   const gone = await p8.evaluate(keys => keys.every(k => !NX.state.model.problems.some(p => p.key === k)), rv.keys);
   ok('Avtomatik (tugmasiz): Mapillary va AI suratda svetofor koʻrgan joylar olib tashlanadi', rv.fixed > 0 && gone && rv.by.includes('Mapillary') && rv.by.includes('AI') && rv.left > 0 && pc.posts > 0, JSON.stringify(rv.by) + ' qoldi: ' + rv.left);
   ok('Olib tashlangan joylar xaritada yashil belgi boʻlib qolmaydi', (await p8.$$('.leaflet-marker-icon.fixmk')).length === 0);
+  // Har bir belgi — aynan shu nuqtaning surati: eng yaqin va nuqtaga qaragan; bir surat ikki belgiga qoʻyilmaydi
+  const pts = await p8.evaluate(async () => {
+    const mk = (la, lo) => { const d = document.createElement('div'); d.className = 'ppop-photo'; d.dataset.lat = la; d.dataset.lon = lo; d.style.display = 'none'; document.body.appendChild(d); return d; };
+    const a = mk(39.65500, 66.97000), b = mk(39.65520, 66.97000);
+    for (let i = 0; i < 50 && !(a.querySelector('img') && b.querySelector('img')); i++) await NX.sleep(100);
+    const r = { a: (a.querySelector('img') || {}).src, b: (b.querySelector('img') || {}).src, aTxt: a.textContent, alt: a.querySelectorAll('.pp-alt button').length };
+    a.remove(); b.remove(); return r;
+  });
+  ok('Belgi surati: aynan shu nuqta (eng yaqin, nuqtaga qaragan, masofa yozilgan), ikki belgida bir xil surat emas', pts.a && pts.b && pts.a !== pts.b && /t0\.jpg/.test(pts.a) && /Shu nuqtadan \d+ m/.test(pts.aTxt) && /nuqtaga qaragan/.test(pts.aTxt) && pts.alt >= 2, JSON.stringify(pts));
   ok('Tekshiruv kartasida soʻrovchi tugma yoʻq', !(await p8.$('#reviewCard [data-act=review-ai]')) && /olib tashlandi/.test(await p8.textContent('#reviewCard')));
   const jCard = '.prob:has-text("Svetoforsiz chorraha")';
   await p8.click(`${jCard} [data-act=verify] >> nth=0`);
