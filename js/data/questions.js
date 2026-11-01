@@ -15,6 +15,8 @@
     needs: /nima\s*qur|nima\s*quril|nima\s*qo[ʻ'‘`]?y|nima\s*och|nima\s*yetishma|yetishmay|qanday\s*obyekt|foydali|ehtiyoj/i,
     build: /(\d{2,5})\s*(ta\s*)?(xonadon|kvartira|honadon)|(\d{1,2})\s*-?\s*(qavat|etaj)|\bdom\b|uy-joy|turar\s*joy\s*qur/i,
     traffic: /prop|probk|tirban|tiqil|tig[ʻ'‘`]?iz|navbat|oqim|bir\s*tomon|yops|svetofor|polosa|yo[ʻ'‘`]?lak|chorraha|bekat|avtobus|marshrut/i,
+    // Koʻcha holati: avtomobil (qoplama, tezlik, turargoh), piyoda (trotuar, oʻtish joyi), nogironlar (pandus, bordyur, qiyalik, taktil plitka)
+    access: new RegExp(`trotuar|piyoda|nogiron|aravacha|ko${A}zi\\s*ojiz|ojizlar|imkoniyati\\s*cheklangan|pandus|bordyur|bordur|taktil|zinapoya|o${A}tish\\s*joy|zebra|avtoturargoh|turargoh|parkovka|to${A}xtash\\s*joy|tezlik\\s*(cheklov|chegara|belgi|me${A}yor)|qoplama|asfalt|o${A}nqir|chuqurlar|yamoq|(ko${A}cha|yo${A}l)(lar|si|i)?(ning)?\\s*holat|keksa(lar)?\\s*uchun\\s*(yo${A}l|ko${A}cha|yurish|qulay)|yurish\\s*(qulay|mumkin)|yurib\\s*bo${A}lmay|ko${A}cha\\s*audit|haydovchi(lar)?\\s*uchun|mashina(lar)?\\s*uchun\\s*qulay|avtomobil(lar)?\\s*uchun|qulay(mi|lik)|keksalar\\s*uchun\\s*(yo${A}l|ko${A}cha)|bolalar\\s*uchun\\s*xavfsiz`, 'i'),
     // Yangi koʻcha / yoʻl loyihasi yoki mavjud koʻchani oʻzgartirish — xaritada chiziladi va tekshiriladi
     road: new RegExp(`yangi\\s*(ko${A}cha|yo${A}l|ko${A}prik|tunnel|magistral|aylanma|estakada|tramvay\\s*yo${A}l|velo)|(ko${A}cha|yo${A}l)(|ni|si|sini|lar|larni)\\s+(\\S+\\s+){0,3}(och|qur|o${A}tkaz|chiz|uzaytir|kengaytir|toraytir|tutashtir|qo${A}sh|bog${A}la)|ko${A}prik|tunnel|estakada|yer\\s*osti\\s*o${A}tish|velo\\s*yo${A}l|velosiped\\s*yo${A}l|piyodalar\\s*ko${A}chasi(ga)?\\s*aylantir|ko${A}chani\\s*chiz|yo${A}lni\\s*chiz|koʻcha\\s*loyiha|yo${A}l\\s*loyiha`, 'i'),
     // Bosh reja, UNESCO, ruxsat, zonalar — xaritada zonalar va joy tekshiruvi
@@ -34,8 +36,11 @@
   // Asosiy tur (birinchi mos kelgani) + qoʻshimcha belgilar
   function intent(q) {
     const t = String(q || '');
-    const main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'road', 'plan', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
-    return { main, hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t) };
+    let main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'road', 'plan', 'access', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
+    // “dom qurilsa avtoturargoh yetadimi” — qurilish hisobi
+    if (main === 'access' && R.build.test(t) && !/trotuar|piyoda|nogiron|pandus/i.test(t)) main = 'build';
+    const fm = [['acc', /nogiron|aravacha|ojiz|pandus|bord[yu]*r|taktil|zinapoya|imkoniyati|keksa/i], ['ped', /piyoda|trotuar|o[ʻ'‘’`]?tish\s*joy|zebra|bolalar/i], ['car', /avtomobil|mashina|haydovchi|qoplama|asfalt|tezlik|turargoh|parkovka|o[ʻ'‘’`]?nqir|chuqurlar|yamoq|transport/i]].filter(x => x[1].test(t)).map(x => x[0]);
+    return { main, focus: fm.length === 1 ? fm[0] : 'all', hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t) };
   }
 
   // Katalog: [savol, kutilgan tur]
@@ -190,13 +195,13 @@
       ['Registon koʻchasini bir tomonlama qilsak nima boʻladi?', 'traffic'],
       ['Qaysi chorrahaga svetofor kerak?', 'traffic'],
       ['Qayerga yangi avtobus bekati kerak?', 'traffic'],
-      ['Qaysi chorrahalarda piyodalar oʻtish yoʻlagi kam?', 'traffic'],
+      ['Qaysi chorrahalarda piyodalar oʻtish yoʻlagi kam?', 'access'],
       ['Ertalab tigʻiz soatda qayerda navbat hosil boʻladi?', 'traffic'],
       ['Ertalab 8 da qaysi chorrahalarda tirbandlik boʻladi?', 'traffic'],
       ['Universitet xiyobonini bir tomonlama qilsak nima boʻladi?', 'traffic'],
       ['Qaysi koʻchada avtobus uchun alohida polosa kerak?', 'traffic'],
       ['Svetofor vaqtini oʻzgartirsak tirbandlik kamayadimi?', 'traffic'],
-      ['Maktablar oldida piyodalar oʻtish joylari va svetoforlar yetarlimi?', 'traffic'],
+      ['Maktablar oldida piyodalar oʻtish joylari va svetoforlar yetarlimi?', 'access'],
       ['Qaysi marshrut avtobuslari eng koʻp tirbandlikda qoladi?', 'traffic'],
       ['Turistlar 20% koʻpaysa Registon atrofida tirbandlik qanday boʻladi?', 'traffic'],
       ['Dagbitskiy koʻchasini yopsak mashinalar qayerga oʻtadi?', 'traffic'],
@@ -206,7 +211,7 @@
       ['Qaysi chorrahani aylanma harakatga oʻtkazish kerak?', 'traffic'],
       ['Tor koʻchalarda bir tomonlama harakat qilsak oqim yaxshilanadimi?', 'traffic'],
       ['Bayram kunlari markazda tirbandlikni qanday kamaytiramiz?', 'traffic'],
-      ['Qaysi koʻchalarda piyodalar uchun yoʻlak yoʻq?', 'traffic'],
+      ['Qaysi koʻchalarda piyodalar uchun yoʻlak yoʻq?', 'access'],
       ['Registon koʻchasida svetoforlarni muvofiqlashtirsak nima boʻladi?', 'traffic'],
       ['Avtobus bekatlari orasidagi masofa qayerda juda uzun?', 'traffic'],
       ['Yuk mashinalari qatnovini cheklasak oqim qanday oʻzgaradi?', 'traffic'],
@@ -255,6 +260,26 @@
       ['Kelgusi 10 yilda iqlim qanday oʻzgarishi kutilmoqda?', 'climate'],
       ['Haroratning oshishi aholi salomatligiga qanday xavf tugʻdiradi?', 'climate'],
       ['Isish tufayli qaysi koʻchalarga daraxt ekish kerak?', 'climate'],
+    ] },
+    { g: '🚸 Koʻcha holati: avtomobil, piyoda, nogironlar', q: [
+      ['Registon koʻchasi nogironlar uchun qulaymi?', 'access'],
+      ['Qaysi koʻchalarda trotuar yoʻq yoki yetarli emas?', 'access'],
+      ['Aravachada yuradigan odam Universitet xiyobonidan oʻta oladimi?', 'access'],
+      ['Shohizinda koʻchasida piyodalar uchun oʻtish joylari yetarlimi?', 'access'],
+      ['Qaysi koʻchalarda asfalt qoplamasi yoʻq?', 'access'],
+      ['Maktab oldida zebra yoʻq koʻchalar qaysi?', 'access'],
+      ['Koʻzi ojizlar uchun taktil plitka qayerda bor?', 'access'],
+      ['Qaysi koʻchalar juda qiya — aravacha uchun qiyin?', 'access'],
+      ['Bu hududda koʻchalar holati qanday?', 'access'],
+      ['Dagbitskiy koʻchasi avtomobillar uchun qanday holatda?', 'access'],
+      ['Qayerda pandus kerak?', 'access'],
+      ['Bekatlar yonida piyoda oʻtish joyi bormi?', 'access'],
+      ['Toshkent koʻchasida tezlik cheklovi qancha va xavfsizmi?', 'access'],
+      ['Qaysi koʻchalarda bordyur baland, pastlatish kerak?', 'access'],
+      ['Shahar boʻyicha piyodalar uchun eng noqulay koʻchalar qaysi?', 'access'],
+      ['Gagarin koʻchasining holatini tekshir', 'access'],
+      ['Keksalar uchun yurish qulay boʻlmagan koʻchalar qaysi?', 'access'],
+      ['Avtoturargoh yetishmaydigan koʻchalar qaysi?', 'access'],
     ] },
     { g: '☀️ Quyosh energiyasi', q: [
       ['Qaysi binolar tomiga quyosh paneli qoʻyish foydali?', 'solar'],

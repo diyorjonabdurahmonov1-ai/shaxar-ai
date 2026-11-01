@@ -108,6 +108,14 @@
           g.shadowBlur = 0;
           return;
         }
+        if (rt.style === 'seg') {
+          // Koʻcha auditi: balliga qarab rangli koʻcha + ustidan oʻtadigan “skaner” nuri (tekshirilmoqda effekti)
+          const pth = () => { g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
+          pth(); g.strokeStyle = 'rgba(2,6,16,0.6)'; g.lineWidth = 9 * rt.w; g.stroke();
+          pth(); g.strokeStyle = rgba(rt.color, 0.92); g.lineWidth = 5 * rt.w; g.shadowColor = rt.color; g.shadowBlur = 10 * rt.w; g.stroke(); g.shadowBlur = 0;
+          if (rt.L > 20) { g.setLineDash([18, Math.max(60, rt.L)]); g.lineDashOffset = -((T * 90) % (rt.L + 60)); pth(); g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2.2 * rt.w; g.stroke(); g.setLineDash([]); }
+          return;
+        }
         if (rt.style === 'blocked') {
           // Toʻsilishi mumkin koʻcha: qizil, miltillaydi, ustida “×” belgilar
           const a = 0.55 + 0.45 * Math.sin(T * 4);
@@ -154,7 +162,7 @@
     data = {
       kind,
       zones: list.filter(a => a.kind === 'zone'),
-      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style, v: a.v != null ? a.v : 1 }))),
+      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style, w: a.w != null ? a.w : 1, v: a.v != null ? a.v : 1 }))),
       water: list.filter(a => a.kind === 'water').flatMap(a => a.segs),
       points: list.filter(a => a.kind === 'point'),
       epi: epi || null,

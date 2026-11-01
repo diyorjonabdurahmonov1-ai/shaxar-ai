@@ -160,6 +160,7 @@
         a.cells.forEach(c => f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.25 + 0.5 * c[2] }, geometry: { type: 'Polygon', coordinates: [[[c[1] - dLon, c[0] - dLat], [c[1] + dLon, c[0] - dLat], [c[1] + dLon, c[0] + dLat], [c[1] - dLon, c[0] + dLat], [c[1] - dLon, c[0] - dLat]]] } }));
       } else if (a.kind === 'zone' && a.ring) f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.32 }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
       else if (a.kind === 'line' && a.paths) f.push({ type: 'Feature', properties: { t: a.style === 'blocked' ? 'blocked' : 'route', col: a.color }, geometry: { type: 'MultiLineString', coordinates: a.paths.map(p => p.map(q => [q[1], q[0]])) } });
+      else if (a.kind === 'line' && a.style === 'seg') f.push({ type: 'Feature', properties: { t: 'seg', col: a.color, w: a.w != null ? a.w : 1 }, geometry: { type: 'LineString', coordinates: a.path.map(p => [p[1], p[0]]) } });
       else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: a.dash ? 'alt' : 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
     });
     return { type: 'FeatureCollection', features: f };
@@ -236,6 +237,8 @@
         const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
         setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
         map.addLayer({ id: 'hz-dot', type: 'circle', source: 'hz', filter: ['==', ['get', 't'], 'dot'], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 6], 'circle-color': ['get', 'col'], 'circle-stroke-color': '#fff7ed', 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
+        map.addLayer({ id: 'hz-seg-glow', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'seg'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', 7, ['get', 'w']], 17, ['*', 18, ['get', 'w']]], 'line-opacity': 0.35, 'line-blur': 4 } });
+        map.addLayer({ id: 'hz-seg', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'seg'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', 2.5, ['get', 'w']], 17, ['*', 7, ['get', 'w']]], 'line-opacity': 0.95 } });
         map.addLayer({ id: 'hz-blocked', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'blocked'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ef4444', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7], 'line-opacity': 0.9, 'line-blur': 1 } });
         // Odamlar oqimi — yoʻllar boʻylab harakatlanuvchi nuqtalar (3D da yerga yopishgan)
         map.addSource('hz-dots', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -367,7 +370,7 @@
   function setHazard(list) {
     data.hz = list && list.length ? list : null; refresh(); hzMarkers(); prepDots();
     // Yoʻllar koʻrsatilganda binolar shaffofroq — yoʻl va oqim binolar ortida yoʻqolmasin
-    const routes = data.hz && data.hz.some(a => a.kind === 'line' && !a.style);
+    const routes = data.hz && data.hz.some(a => a.kind === 'line' && (!a.style || a.style === 'seg'));
     if (map && map.getLayer('bld')) map.setPaintProperty('bld', 'fill-extrusion-opacity', routes ? 0.5 : 0.92);
   }
   // Hamma belgilar koʻrinadigan qilib

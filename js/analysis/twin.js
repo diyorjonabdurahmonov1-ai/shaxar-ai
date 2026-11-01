@@ -323,7 +323,7 @@
       const ll = [[+(lat0 + y / S).toFixed(6), +(lon0 + x / S).toFixed(6)]];
       for (let k = 4; k < a.length; k += 2) { x += a[k]; y += a[k + 1]; ll.push([+(lat0 + y / S).toFixed(6), +(lon0 + x / S).toFixed(6)]); }
       // Tugunlar — koordinata boʻyicha (Overture boʻlaklari chorrahalarda boʻlingan, uchlari bir xil)
-      return { id: 'o' + i, hw: d.hw[a[0]], name: d.names[a[1]] || '', nodes: ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)), ll };
+      return { id: 'o' + i, hw: d.hw[a[0]], name: d.names[a[1]] || '', nodes: ll.map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)), ll, sp: d.sp ? d.sp[i] : 0, sf: d.sf ? d.sf[i] : 0 };
     });
     if (list.length < 1000) throw new Error('fayl toʻliq emas');
     list.complete = true; list.parts = 9; list.src = d.src;

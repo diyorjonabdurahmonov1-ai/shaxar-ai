@@ -522,6 +522,50 @@
     showHazard(H);
     return H;
   }
+  // Koʻcha auditi: 🚗 avtomobil, 🚶 piyoda, ♿ nogironlar. Savolda koʻcha boʻlsa — shu koʻcha (OSM + relyef + Overpass + Mapillary suratlari + AI koʻrik);
+  // boʻlmasa — belgilangan hudud yoki butun shahar asosiy koʻchalari reytingi (eng muammolilari xaritada raqam bilan)
+  async function auditRun(q, opts) {
+    opts = opts || {};
+    const T = twinState(), busy = opts.busy || (() => {});
+    T.d40 = T.d40 || await NX.twin.grid40();
+    const roads = T.roads && T.roads.length ? T.roads : NX.twin.roadsFromModel(S.model);
+    const D = NX.twin.ground(T.d40), blds = T.buildings || NX.buildings.get() || [], it = NX.intent(q);
+    const areaScope = S.area && (opts.area || /shu\s*(yer|joy|hudud|mahalla)|bu\s*(yer|joy|hudud|mahalla)|belgila/i.test(q));
+    let name = opts.name || null, missed = null;
+    if (!name) {
+      // Avval koʻcha tarmogʻi nomlari (audit shu tarmoqda), soʻng sayt modeli (oʻxshash yozilish)
+      const qn = ' ' + NX.audit.coreName(q).replace(/[^a-z0-9ʻ ]/g, ' ') + ' ';
+      let best = '';
+      new Set(roads.map(w => w.name).filter(Boolean)).forEach(nm => { const c = NX.audit.coreName(nm); if (c.length >= 4 && c.length > NX.audit.coreName(best).length && qn.includes(' ' + c)) best = nm; });
+      if (best) name = best;
+      else { const fs = NX.ai.detectStreets(q, S.model)[0]; if (fs) name = fs.s.name; }
+    }
+    if (!name && S.street != null && S.model.streets[S.street] && /(bu|shu|ushbu|tanlangan)\s*(ko[ʻ'‘`]?cha|yo[ʻ'‘`]?l)/i.test(q)) name = S.model.streets[S.street].name;
+    if (name && !(areaScope && !opts.name && /hudud|mahalla/i.test(q))) {
+      busy(`${name}: trotuar, oʻtish joylari, qiyalik tekshirilmoqda`);
+      const A = await NX.audit.audit({ name, roads, D, M: S.model, blds });
+      if (!A.notFound) {
+        busy(`${A.name}: real koʻcha suratlari tahlil qilinmoqda`);
+        let ml = null, vis = null;
+        try { ml = await Promise.race([NX.audit.mapillary(A), NX.sleep(30000).then(() => null)]); } catch (e) { ml = null; }
+        if (ml && ml.photos.length && NX.ai.available()) { try { vis = await Promise.race([NX.ai.streetVision(ml.photos, A), NX.sleep(60000).then(() => null)]); } catch (e) { vis = null; } }
+        const H = { kind: 'audit', A, focus: it.focus, items: NX.audit.items(A), facts: NX.audit.facts(A, ml, vis), svg: NX.audit.svg(A), local: NX.audit.summary(A, ml, NX.audit.visLines(vis)) };
+        H.facts.savol_yonalishi = NX.audit.FOCUS_UZ[it.focus];
+        if (ml && ml.photos.length) H.photos = ml.photos.map(p => ({ url: p.url, link: p.link, date: p.date, d: p.d }));
+        showHazard(H);
+        return H;
+      }
+      missed = name;
+    }
+    busy(areaScope ? 'Hudud koʻchalari tekshirilmoqda (🚗 🚶 ♿)' : 'Shahar koʻchalari tekshirilmoqda (🚗 🚶 ♿)');
+    const Rk = await NX.audit.rank({ roads, D, M: S.model, blds, poly: areaScope ? S.area.st.poly : null, focus: it.focus });
+    if (!Rk.n) return null;
+    const H = { kind: 'audit-rank', Rk, items: NX.audit.rankItems(Rk), facts: NX.audit.rankFacts(Rk), local: NX.audit.rankSummary(Rk) };
+    if (missed) { H.facts.soralgan_koʻcha = `“${missed}” koʻcha tarmogʻida topilmadi — umumiy reyting berildi`; H.local = `“${missed}” koʻchasi xaritada topilmadi.\n\n` + H.local; }
+    showHazard(H);
+    return H;
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-audit-street]'); if (b) { e.preventDefault(); const nm = b.dataset.auditStreet; if (S.tab !== 'twin' && S.tab !== 'ai') setTab('twin'); (S.tab === 'ai' ? chatSend : twinAsk)(`${nm} avtomobil, piyoda va nogironlar uchun qanday holatda?`); } });
   function fixAsk(name) {
     if (S.tab !== 'twin') setTab('twin');
     twinAsk(`${name} ${/koʻcha|ko'cha|yoʻl/i.test(name) ? '' : 'koʻchasida '}suv toʻplanishi muammosini qanday hal qilamiz?`, { name });
@@ -530,8 +574,17 @@
   function fixLegend(H) {
     const wrap = $('.map-wrap'); if (!wrap) return;
     let el = wrap.querySelector('.fix-legend');
-    if (!H || H.kind !== 'fix') { if (el) el.remove(); return; }
+    if (!H || !/^(fix|audit)/.test(H.kind)) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.className = 'fix-legend'; wrap.appendChild(el); }
+    if (H.kind === 'audit' || H.kind === 'audit-rank') {
+      const sc = H.kind === 'audit' ? H.A.scores : null, row = (c, t, s2) => `<div class="fl-row"><i style="background:${c}">${s2 || ''}</i><span><small>${t}</small></span></div>`;
+      el.innerHTML = (H.kind === 'audit'
+        ? `<b>🚸 ${NX.esc(H.A.name)}</b><div class="au-scores">${[['🚗', sc.car], ['🚶', sc.ped], ['♿', sc.acc]].map(([i, v]) => `<span style="--c:${NX.audit.scoreCol(v)}"><em>${i}</em>${v}</span>`).join('')}</div>` + row('#a855f7', 'yangi oʻtish joyi kerak', 'P') + row('#e2e8f0', 'mavjud oʻtish joyi (yashil — pastlatilgan bordyur)', '') + row('#fb923c', 'qiyalik > 5% (aravacha uchun qiyin)', '') + row('#ef4444', 'qiyalik > 8% · ⛔ zinapoya', 'Z') + row('#f59e0b', 'maktab/bekat — oʻtish joyi yoʻq', '')
+        : `<b>🚸 ${H.Rk.area ? 'Hudud' : 'Shahar'} koʻchalari — ${NX.esc(NX.audit.FOCUS_UZ[H.Rk.focus])}</b>` + row('#ef4444', 'juda yomon (< 25)', '') + row('#f97316', 'yomon (25–45)', '') + row('#facc15', 'oʻrtacha (45–70)', '') + row('#22c55e', 'yaxshi (≥ 70)', '') + row('#475569', '1–10 — eng muammoli koʻchalar (bosing)', '#') + row('#a855f7', 'yangi oʻtish joyi kerak', 'P'))
+        + '<button type="button" class="fl-min" aria-label="Yigʻish">–</button>';
+      el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
+      return;
+    }
     const st = NX.drainfix.steps(H.X);
     el.innerHTML = `<b>🛠 ${NX.esc(H.X.name)} — yechim</b>${st.map(x => `<div class="fl-row"><i style="background:${x.col}">${x.n}</i><span><b>${NX.esc(x.nima)}</b><small>${NX.esc(x.qilish)} · ${NX.esc(x.olcham)}</small></span></div>`).join('')}<div class="fl-row"><i class="fl-cells"></i><span><small>moviy kataklar — suv yigʻish havzasi (${H.X.Aha} ga)</small></span></div><div class="fl-row"><i class="fl-ww"></i><span><small>〰 mavjud ariq/kanallar (OSM)</small></span></div><button type="button" class="fl-min" aria-label="Yigʻish">–</button>`;
     el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
@@ -564,9 +617,9 @@
     } finally { clearInterval(busyTick); }
     const n = q.toLowerCase();
     const mmM = n.match(/(\d+(?:[.,]\d+)?)\s*(mm|millimetr)/);
-    const rainQ = mmM || /yomg|jala|sel|toshqin|suv bos/.test(n) || NX.intent.R.flood.test(q);
-    const it = NX.intent(q);
-    const quakeQ = it.main === 'quake' || /zilzila|yer qimirla|silkin|seysm/.test(n);
+    const it = NX.intent(q), accQ = it.main === 'access';
+    const rainQ = !accQ && (mmM || /yomg|jala|sel|toshqin|suv bos/.test(n) || NX.intent.R.flood.test(q));
+    const quakeQ = !accQ && (it.main === 'quake' || /zilzila|yer qimirla|silkin|seysm/.test(n));
     const svcQ = ['fire', 'ambulance', 'police'].includes(it.main);
     // Evakuatsiya / xavfsiz yoʻl / baland joy / xavfli zona — natija xaritada chiziladi
     const evacQ = /evaku|avaku|xavfsiz|xafsiz|qoch|panoh|boshpana|yig[ʻ'‘`]?il|qutqar|baland|zarar|vayron|xavfli joy|qayer/.test(n);
@@ -606,7 +659,11 @@
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'binolar rangi: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
     // Xavf zonalari va evakuatsiya yoʻllari — koʻcha tarmogʻida hisoblanadi va xaritada chiziladi
     let H = null;
-    if (svcQ) {
+    if (accQ) {
+      C.busy = 'Koʻchalar tekshirilmoqda'; renderKeepScroll();
+      try { H = await auditRun(q, Object.assign({}, opts, { busy: t => { C.busy = t; renderKeepScroll(); } })); } catch (e) { console.warn('koʻcha auditi:', e); }
+      if (H) { extra[H.kind === 'audit' ? 'koʻcha_auditi' : 'koʻchalar_reytingi'] = H.facts; local = H.local; }
+    } else if (svcQ) {
       C.busy = 'Favqulodda xizmatlar yetib borish vaqti hisoblanmoqda'; renderKeepScroll();
       try { H = await hazardRun('svc', q, null, opts); } catch (e) { console.warn('xizmatlar:', e); }
       if (H) { extra.xizmatlar_xaritasi = H.facts; local = NX.hazard.summary(H); }
@@ -653,7 +710,7 @@
     const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
-    if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
+    if (!accQ && /rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
       C.busy = 'AI rasm chizmoqda (~1 daqiqa)'; renderKeepScroll();
       try { msg.img = await NX.ai.chatImage(q, twinFacts(extra), NX.map3d.snapshot(640)); } catch (e) { msg.imgErr = e.message; }
     }
@@ -1006,13 +1063,13 @@
     const prev = A.qa.slice(-2);
     A.qa.push({ role: 'user', text: q });
     const it = NX.intent(q);
-    if (it.hazard) {
-      // Zilzila / suv / yongʻin — shu hudud uchun ham yoʻl hisoblanadi (3D egizak hisobi)
+    if (it.hazard || it.main === 'access') {
+      // Zilzila / suv / yongʻin / koʻcha holati — shu hudud uchun ham yoʻl hisoblanadi (3D egizak hisobi)
       A.qaBusy = 'Favqulodda vaziyat hisoblanmoqda — natija xaritada…'; renderKeepScroll();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && A.qaBusy) { A.qaBusy = tc.busy + '…'; renderKeepScroll(); } }, 1200);
       let m = null;
       try { m = await twinAsk(q, { area: true }); } finally { clearInterval(tick); }
-      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
+      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
       A.qaBusy = null; renderKeepScroll();
       return;
     }
@@ -1616,7 +1673,7 @@
     if (!q || S.chat.busy || !S.model) return;
     const it = NX.intent(q);
     // Favqulodda vaziyat (zilzila, suv, yongʻin, evakuatsiya) — 3D egizak hisobi; natija shu xaritada ham chiziladi
-    if (it.hazard || it.main === 'climate' || it.main === 'solar') {
+    if (it.hazard || it.main === 'climate' || it.main === 'solar' || it.main === 'access') {
       S.chat.msgs.push({ role: 'user', text: q });
       S.chat.busy = 'Hisoblanmoqda (relyef, binolar, koʻcha tarmogʻi)…'; renderChat();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && S.chat.busy) { S.chat.busy = tc.busy + '…'; renderChat(); } }, 1200);

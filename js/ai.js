@@ -539,12 +539,27 @@ Qoidalar:
 - Savol “belgilangan hudud” haqida, lekin “savol_doirasi” FAQAT belgilangan hudud EMAS boʻlsa (hudud chizilmagan): qayta soʻrama — barcha zonalar uchun rejani ber, eng xavflisidan (Z1) boshla; oxirida bir gap: “Boshqa hudud uchun xaritada ✏️ Hudud belgilang.”
 - ENG MUHIM: aynan berilgan savolga javob ber. Oldingi javobni takrorlama — har savol uchun yangi hisob berilgan, faqat shuni ishlat.
 - “savol_doirasi” = “FAQAT belgilangan hudud” boʻlsa: javob FAQAT shu hudud haqida. 1-qator: hududda nechta odam, nechta bino xavf ostida. Keyin har bir uy guruhi (A1, A2…) uchun: “A1 (~400 kishi) → R1: X → Y koʻchalari, 350 m, ~5 daq. → S1 (nomi, sigʻimi); zaxira R1z”. Butun shahar zonalarini (boshqa Z lar) yozma.
+- “koʻcha_auditi” berilgan boʻlsa (bitta koʻcha: avtomobil, piyoda, nogironlar): 1-qator — koʻcha, uzunlik va uchta ball (🚗/🚶/♿ /100). Savol qaysi yoʻnalish haqida boʻlsa (masalan faqat nogironlar) — shu boʻlimni birinchi va batafsil yoz, qolganlarini 1–2 qatorda. Boʻlimlar: **🚗 Avtomobil** (tezlik, qoplama, svetofor, turargoh), **🚶 Piyoda** (trotuar, oʻtish joylari soni va eng katta oraliq — meʼyor bilan, maktab/bekat oldida oʻtish joyi), **♿ Nogironlar** (qiyalik %, bordyur, taktil plitka, zinapoya). “ai_suratlar_tahlili” boʻlsa — **📷 Real suratlarda** boʻlimi: suratda nima koʻringanini ayt (trotuar, chuqurlar, mashina trotuarda) va OSM bilan farq qilsa — ayt. **Nima qilish kerak** — “yechimlar” dan, aniq joy va oʻlcham bilan; xaritadagi ➕ P1… yangi oʻtish joylari, ⛔ Z zinapoya, toʻq sariq/qizil — qiya qismlar. “maʼlumot yoʻq” ni “yoʻq” deb yozma — “ochiq maʼlumotda belgilanmagan, joyida tekshirish kerak” de.
+- “koʻchalar_reytingi” berilgan boʻlsa (shahar yoki hudud koʻchalari): 1-qator — nechta koʻcha, oʻrtacha ball, eng yomoni. **Eng muammoli koʻchalar** — 1…10 (xaritadagi raqamlar): koʻcha — ball — asosiy muammo. **Umumiy muammolar** (jami raqamlar). **Nima qilish kerak** — birinchi navbatda qaysi koʻchalarda nima (oʻtish joyi, pandus, qoplama). Oxirida: batafsil tekshiruv uchun koʻcha nomini yozish mumkinligini ayt.
 - Kod bloki, ASCII sxema ishlatma — oddiy matn va roʻyxat.
 - Maʼlumot qayerdan olinganini, qanday hisoblanganini, manbalar roʻyxatini matnda yozma (ular alohida koʻrsatiladi). Faqat natija va tavsiya.
   • Hisob taxminiy ekanini bir marta ayt (bino materiali/yili yoʻq — qurilish inspeksiyasi va kadastrdan olinsa aniqlashadi). Raqamlarni faqat JSON’dan ol.
 - Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv; qizil kataklar — xavfli zonalar; yashil chiziqlar — evakuatsiya yoʻllari; yashil belgilar — yigʻilish/baland joylar).
 - JSON kalit nomlarini, texnik soʻzlarni yozma. Cheklovlarni faqat bir gapda ayt (relyef ~30 m, kanalizatsiya sigʻimi taxminiy).
 - Oʻzbek tilida (lotin), aniq va londa.`;
+  // Koʻcha auditi: real koʻcha suratlari (Mapillary) — trotuar, qoplama, pandus, oʻtish joyi, toʻsiqlar (JSON)
+  const STREET_VISION = `Senga bitta koʻchaning turli joylaridan olingan real suratlar (Mapillary, 1–4 ta) beriladi. Avtomobil, piyoda va nogironligi bor odamlar (aravacha, koʻzi ojiz) nuqtai nazaridan baholang.
+Faqat JSON qaytar: {"trotuar":"bor|yoq|qisman|noaniq","trotuar_holati":"yaxshi|oʻrtacha|yomon|noaniq","qoplama":"yaxshi|chuqurlar bor|yomon|noaniq","pandus_pastlatilgan_bordyur":"bor|yoq|noaniq","zebra":"bor|yoq|noaniq","toʻsiqlar":"trotuarda mashina, ustun, savdo, daraxt, zinapoya — koʻringanini yoz yoki yoʻq","kuzatuvlar":["har biri oʻzbekcha 1 qisqa gap: n-suratda nima koʻrindi"]}
+Faqat aniq koʻringan narsani yoz; koʻrinmasa — “noaniq”. Taxmin qilma.`;
+  async function streetVision(photos, A) {
+    if (!photos || !photos.length) return null;
+    if (!(await proxyReady())) return null;
+    const imgs = photos.slice(0, proxyV >= 4 || userKey() ? 4 : 2).map(x => ({ type: 'image_url', image_url: { url: x.url, detail: 'low' } }));
+    const messages = [{ role: 'system', content: STREET_VISION }, { role: 'user', content: [{ type: 'text', text: `Koʻcha: ${A.name}, ${A.L} m, ${A.hw}. Suratlar: ${photos.slice(0, imgs.length).map((p, i) => `${i + 1}) ${p.date ? new Date(p.date).toISOString().slice(0, 10) : '?'}`).join('; ')}` }].concat(imgs) }];
+    const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiLight, 'streetvision');
+    const m = r.text.match(/\{[\s\S]*\}/);
+    try { return m ? JSON.parse(m[0]) : null; } catch (e) { return null; }
+  }
   async function twinAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
@@ -637,5 +652,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();
