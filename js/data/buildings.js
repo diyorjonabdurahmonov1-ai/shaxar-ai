@@ -41,7 +41,7 @@
 
   // Butun shahar binolari — tayyor fayl (Overture Maps: OpenStreetMap + Microsoft ML Buildings, ~123 ming bino).
   // OSM’da chizilmagan uylar ham bor (Microsoft sunʼiy yoʻldosh suratlaridan aniqlagan). Overpass’ga bogʻliq emas, tez.
-  const STATIC_URL = 'data/buildings-samarqand.json';
+  const STATIC_URL = 'data/buildings-samarqand.json?v=2';   // v2: ichki hovlilar (teshiklar)
   // Qavat nomaʼlum boʻlsa: kichik uy — 1, oʻrtacha — 2, katta bino — 3 qavat (taxminiy)
   const byArea = A => (A < 180 ? 1 : A < 1200 ? 2 : 3);
   function decodeStatic(doc) {
@@ -58,7 +58,12 @@
       A /= 2;
       if (Math.abs(A) < 8) return;
       const known = lv0 > 0 && lv0 <= 30, levels = known ? lv0 : (kind !== 'yes' && DEF_LEVELS[kind]) || byArea(Math.abs(A));
-      out.push({ id: i + 1, ring, kind, name, levels, est: !known, height: levels * 3.2, area: Math.abs(A), c: G.ll(cx / (6 * A), cy / (6 * A)), roof: '', ml: a[3] === 1 });
+      // Ichki hovli (perimetr binolar): teshik halqalari — 3D da usti ochiq, maydondan ayiriladi
+      const holes = (doc.h && doc.h[i] || []).map(h => { let hx = h[0], hy = h[1]; const r = [[+(lon0 + hx / S).toFixed(6), +(lat0 + hy / S).toFixed(6)]]; for (let k = 2; k < h.length; k += 2) { hx += h[k]; hy += h[k + 1]; r.push([+(lon0 + hx / S).toFixed(6), +(lat0 + hy / S).toFixed(6)]); } r.push(r[0]); return r; });
+      let hA = 0; holes.forEach(r => { const q = r.map(c => G.xy(c[1], c[0])); let a2 = 0; for (let p = 0, t = q.length - 1; p < q.length; t = p++) a2 += q[t][0] * q[p][1] - q[p][0] * q[t][1]; hA += Math.abs(a2 / 2); });
+      const o = { id: i + 1, ring, kind, name, levels, est: !known, height: levels * 3.2, area: Math.max(8, Math.abs(A) - hA), c: G.ll(cx / (6 * A), cy / (6 * A)), roof: '', ml: a[3] === 1 };
+      if (holes.length) o.holes = holes;
+      out.push(o);
     });
     return out;
   }

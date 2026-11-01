@@ -20,14 +20,14 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - `js/analysis/streetaudit.js` — koʻcha auditi (🚗 avtomobil / 🚶 piyoda / ♿ nogironlar): savolda koʻcha boʻlsa — shu koʻcha har 20 m da: tezlik/qoplama (`roads-samarqand.json` v2: `sp`, `sf`), trotuar va oʻtish joylari (`data/walk-samarqand.json` — Overture footway/sidewalk/crosswalk/steps), bordyur/taktil plitka/svetofor/turargoh (Overpass, brauzerda), qiyalik (relyef, ≥120 m oraliq), maktab/bekat oldida oʻtish joyi, yangi oʻtish joylari (P), Mapillary aniqlashlari + `NX.ai.streetVision` (suratlar AI koʻrigi), ballar, koʻndalang kesim SVG. Koʻcha boʻlmasa — `rank()` shahar asosiy koʻchalari yoki belgilangan hudud reytingi (eng yomon 10 tasi raqamli, “🔍 Batafsil”). Intent `access` (+ `focus` car/ped/acc), `auditRun` (app.js), fx/3D `style:'seg'`, legend `.au-scores`. “Maʼlumot yoʻq” ≠ “yoʻq”.
 - `js/ui/place.js` — xaritadagi belgi popup’i: izoh, koʻcha nomi, Mapillary real surati, Yandex panorama; rasmlar lightbox.
 - `js/data/buildings.js` — `data/buildings-samarqand.json` (Overture: OSM + Microsoft, ~123 ming bino).
-- `js/ui/map3d.js` — MapLibre 3D: “Raqamli egizak” uslubi, derazalar, realistik suv (tekstura), yomgʻir, zilzila silkinishi, hazard qatlamlari va oqim nuqtalari (`hz-dots`).
+- `js/ui/map3d.js` — MapLibre 3D: fon — Esri raster (har biri oʻz `maxzoom`i: sat 18, street 17, twin 16 — undan yuqorida Esri Samarqand uchun “Map data not yet available” beradi) + OpenFreeMap vektor (`omt`: koʻchalar, suv, bogʻlar, nomlar — har zoomda tiniq; testda rad etiladi), binolar ichki hovlilari (`buildings-samarqand.json` v2 `h` — teshiklar), tarixiy obidalar oltin (`lm`), bino konturlari nuri (`bld-foot`), “Raqamli egizak” uslubi, derazalar, realistik suv (tekstura), yomgʻir, zilzila silkinishi, hazard qatlamlari va oqim nuqtalari (`hz-dots`).
 - `js/ui/fx.js` — 2D xaritadagi jonli simulyatsiya canvas’i (3D da oʻchadi). `js/ui/backdrop.js` — orqa fon animatsiyasi.
 - `js/ai.js` — AI promptlari (SYSTEM, TWIN, AREA, DEEP…), `callOpenAI` Worker orqali.
 - `worker/ai-proxy.js` — Cloudflare Worker `cityjam-ai` (foydalanuvchi oʻzi deploy qiladi).
 - `data/*.json` — tayyor fayllar (binolar, koʻchalar, ochiq joylar/xizmatlar, OAV toshqin xabarlari).
 
 ## Testlar
-- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 183/183. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
+- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 184/184. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
 - `node tests/real-data.cjs` — haqiqiy relyef/koʻchalar/binolar bilan qoʻlda tekshiruv (internet kerak).
 - Har oʻzgarishdan keyin testlarni yurgizing; vizual ishlarda skrinshot olib koʻring.
 

@@ -98,6 +98,8 @@ async function setupRoutes(ctx, opts = {}) {
     if (b.model === 'gpt-5.4-mini' || /^gpt-6/.test(b.model || '')) return route.fulfill({ status: 404, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: { code: 'model_not_found', message: 'The model does not exist' } }) });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '**Hozirgi holat**\nSinov javobi.\n\n**Nima boʻladi**\n…\n\n**Xavflar**\n…\n\n**Eng yaxshi yechim**\n1. …' } }] }) });
   });
+  // Vektor fon (OpenFreeMap) — testda tarmoqsiz: rad etiladi, raster fon qoladi
+  await ctx.route(/openfreemap\.org/, route => (/\/planet$/.test(route.request().url()) ? route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ tiles: ['https://tiles.openfreemap.org/t/{z}/{x}/{y}.pbf'], maxzoom: 14 }) }) : route.abort('failed')));
   await ctx.route(/yandex\.uz\/map-widget/, route => route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Yandex</body></html>' }));
   await ctx.route(/tile\.openstreetmap\.org|arcgisonline/, route => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG }));
 }
@@ -1067,7 +1069,9 @@ async function roadBlock(browser) {
   const tm = await p11.evaluate(() => { const t = performance.now(); NX.map3d.setMode('quake'); NX.map3d.setMode('height'); return Math.round(performance.now() - t); });
   ok('Rejim almashishi tez (binolar qayta chizilmaydi)', tm < 300, tm + ' ms');
   await p11.click('[data-act=twin-base][data-base=sat]');
-  ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none' && !NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-pattern') && NX.map3d.map().getLayoutProperty('bld-roof', 'visibility') === 'none'));
+  const hv = await p11.evaluate(() => { const m = NX.map3d.map(), f = m.getSource('bld')._data.features, b = NX.state.twin.buildings.filter(x => x.holes); return { holes: b.length, feat: f.filter(x => x.geometry.coordinates.length > 1).length, area: b.length && b.every(x => x.area > 0), lm: f.filter(x => x.properties.lm).length, streetMax: m.getSource('base-street').maxzoom, satMax: m.getSource('base-sat').maxzoom, vec: ['v-major', 'v-water', 'v-street-name'].every(id => m.getLayer(id)), foot: !!m.getLayer('bld-foot') }; });
+  ok('3D aniqligi: ichki hovlili binolar usti ochiq (teshiklar), tarixiy obidalar ajratilgan, fon plitalari “Map data not available”siz, vektor koʻchalar/nomlar', hv.holes > 100 && hv.feat === hv.holes && hv.area && hv.lm > 10 && hv.streetMax === 17 && hv.satMax === 18 && hv.vec && hv.foot, JSON.stringify(hv));
+  ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none' && !NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-pattern') && NX.map3d.map().getLayoutProperty('bld-roof', 'visibility') === 'none' && NX.map3d.map().getLayoutProperty('base-sat', 'visibility') === 'visible' && NX.map3d.map().getLayoutProperty('base-twin', 'visibility') === 'none' && NX.map3d.map().getLayoutProperty('v-major', 'visibility') === 'none'));
   if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.evaluate(() => NX.map3d.map().jumpTo({ zoom: 16.8, pitch: 68 })); await p11.waitForTimeout(4000); await p11.screenshot({ path: process.env.SHOT11 }); }
   ok('Konsolda xato yoʻq (butun shahar binolari)', e11.length === 0, e11.join(' || '));
   await ctx11.close();

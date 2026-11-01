@@ -649,12 +649,10 @@
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     // Ochiq manbalar: Samarqanddagi oʻtgan toshqinlar / zilzilalar haqida yangiliklar — model natijasini real hodisalar bilan solishtirish uchun
+    // Internet qidiruvi hisob bilan PARALLEL ketadi (ketma-ket kutilmaydi) — natija AI’ga yetib kelsa qoʻshiladi
+    let webP = null;
     if ((rainQ || quakeQ) && NX.ai.available()) {
-      C.busy = 'Internetdan oʻtgan hodisalar qidirilmoqda'; renderKeepScroll();
-      try {
-        const w = await Promise.race([NX.ai.webSearchQ(rainQ ? 'Samarqand shahrida kuchli yomgʻir, sel va suv toshqini: qaysi koʻcha va mahallalarni suv bosgan (yangiliklar, FVV, hokimiyat xabarlari, oxirgi 10 yil)' : 'Samarqand zilzila xavfi: seysmik zona, oʻtgan zilzilalar, binolar mustahkamligi boʻyicha rasmiy maʼlumotlar', ''), NX.sleep(45000).then(() => null)]);
-        if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) };
-      } catch (e) { /* qidiruv ishlamadi */ }
+      webP = Promise.race([NX.ai.webSearchQ(rainQ ? 'Samarqand shahrida kuchli yomgʻir, sel va suv toshqini: qaysi koʻcha va mahallalarni suv bosgan (yangiliklar, FVV, hokimiyat xabarlari, oxirgi 10 yil)' : 'Samarqand zilzila xavfi: seysmik zona, oʻtgan zilzilalar, binolar mustahkamligi boʻyicha rasmiy maʼlumotlar', '').catch(() => null), NX.sleep(40000).then(() => null)]);
     }
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'binolar rangi: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
     // Xavf zonalari va evakuatsiya yoʻllari — koʻcha tarmogʻida hisoblanadi va xaritada chiziladi
@@ -695,6 +693,10 @@
         if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
       } else if (wItems.length) H = showHazard({ kind: 'water', items: wItems });
     }
+    if (webP) {
+      C.busy = 'Oʻtgan hodisalar maʼlumoti qoʻshilmoqda'; renderKeepScroll();
+      try { const w = await Promise.race([webP, NX.sleep(12000).then(() => null)]); if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) }; } catch (e) { /* qidiruv ishlamadi */ }
+    }
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
     // Bir xil savol (shu hudud, shu hisob) — bir xil javob: AI javobi 24 soat saqlanadi; “qayta” deyilsa — yangidan
@@ -703,7 +705,8 @@
     if (!/qayta|yangidan/.test(n)) { try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.ts < 86400e3) cached = c.r; } catch (e) { cached = null; } }
     if (cached) r = cached;
     else {
-      try { r = NX.ai.available() ? await NX.ai.twinAsk(q, twinFacts(extra), prev) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
+      // AI 80 s ichida javob bermasa — tayyor hisob natijasi koʻrsatiladi (cheksiz “Tahlil qilinmoqda” boʻlmasin)
+      try { r = NX.ai.available() ? await Promise.race([NX.ai.twinAsk(q, twinFacts(extra), prev), NX.sleep(80000).then(() => { throw new Error('AI javobi kechikdi — hisob natijasi'); })]) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
       catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
       if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src } })); } catch (e) { /* */ } }
     }
