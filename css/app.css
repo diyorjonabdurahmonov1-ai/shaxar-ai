@@ -789,3 +789,46 @@ html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-d
 .ask-help details.ask-g { margin: 4px 0; border-radius: 10px; padding: 2px 6px; background: rgba(148, 163, 184, .06); }
 .ask-help details.ask-g > summary { cursor: pointer; padding: 6px 2px; list-style-position: inside; }
 .ask-help details.ask-g[open] > summary { border-bottom: 1px dashed rgba(148, 163, 184, .25); margin-bottom: 4px; }
+/* Xaritadagi belgi: real surat va panorama */
+.ppop.place p { margin: 4px 0; }
+.place-st { font-size: .82rem; color: #0f766e; margin: 4px 0; font-weight: 600; }
+.ppop-photo { margin: 6px 0; min-height: 22px; }
+.ppop-photo img { width: 100%; border-radius: 8px; display: block; max-height: 190px; object-fit: cover; }
+.place-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+/* ---------- Chat: oxirgi savol-javob ochiq, eskilari yigʻilgan ---------- */
+.qa-old { margin: 4px 0; border: 1px solid rgba(148, 163, 184, .18); border-radius: 10px; background: rgba(2, 6, 16, .35); }
+.qa-old > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 7px 10px; font-size: .84rem; color: #cbd5e1; }
+.qa-old > summary::-webkit-details-marker { display: none; }
+.qa-old > summary .qa-hint { font-size: .72rem; color: #64748b; white-space: nowrap; }
+.qa-old[open] > summary .qa-hint::after { content: ' ▲'; }
+.qa-old > .chat-msg { padding: 0 8px; opacity: .85; }
+.qa-old .qa-q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-msg.ai.qa-new > .bubble { animation: qa-glow 2.4s ease-out 1; box-shadow: 0 0 0 1px rgba(45, 212, 191, .55), 0 0 24px rgba(45, 212, 191, .25); }
+@keyframes qa-glow { 0% { box-shadow: 0 0 0 2px rgba(94, 234, 212, .9), 0 0 40px rgba(45, 212, 191, .6); } 100% { box-shadow: 0 0 0 1px rgba(45, 212, 191, .55), 0 0 24px rgba(45, 212, 191, .25); } }
+.chat-msg.user.qa-cur > .bubble { box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+/* ---------- Xarita belgilari (AI tavsiyalari): qora shisha, yorugʻ raqam ---------- */
+.ann { background: rgba(3, 7, 16, .86) !important; border: 1.5px solid #a78bfa !important; color: #f1f5f9 !important; box-shadow: 0 0 14px rgba(167, 139, 250, .55), 0 3px 10px rgba(0, 0, 0, .45) !important; backdrop-filter: blur(3px); }
+.ann .ann-n { background: linear-gradient(135deg, #a78bfa, #22d3ee) !important; color: #0b1020 !important; font-weight: 800; }
+.ann:hover { transform: translate(-50%, -50%) scale(1.12); transition: transform .15s; }
+/* ---------- Rasm va suratlar: chiroyli ramka, bosilsa katta ---------- */
+.vgen, .ppop-photo img, .road-photos img { cursor: zoom-in; }
+.vgen { border-radius: 14px; overflow: hidden; border: 1px solid rgba(94, 234, 212, .3); box-shadow: 0 8px 30px rgba(0, 0, 0, .45); background: #020617; }
+.vgen img { display: block; width: 100%; transition: transform .4s; }
+.vgen:hover img { transform: scale(1.03); }
+.vgen figcaption { padding: 8px 10px; font-size: .8rem; background: linear-gradient(180deg, rgba(2, 6, 16, .2), rgba(2, 6, 16, .9)); }
+.lightbox { position: fixed; inset: 0; z-index: 5000; background: rgba(2, 6, 16, .88); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 24px; animation: lb-in .2s ease-out; }
+.lightbox[hidden] { display: none; }
+.lightbox figure { margin: 0; max-width: min(1200px, 96vw); }
+.lightbox img { max-width: 100%; max-height: 82vh; border-radius: 14px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); display: block; margin: 0 auto; }
+.lightbox figcaption { color: #cbd5e1; text-align: center; margin-top: 10px; font-size: .9rem; }
+.lightbox figcaption a { color: #5eead4; }
+.lb-x { position: absolute; top: 18px; right: 18px; width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(148, 163, 184, .4); background: rgba(15, 23, 42, .8); color: #fff; font-size: 18px; cursor: pointer; }
+@keyframes lb-in { from { opacity: 0; } to { opacity: 1; } }
+/* Xarita popup — qora shisha (sayt uslubida) */
+.leaflet-popup-content-wrapper { background: rgba(8, 14, 28, .94); color: #e2e8f0; border: 1px solid rgba(94, 234, 212, .3); border-radius: 14px; box-shadow: 0 10px 34px rgba(0, 0, 0, .5), 0 0 18px rgba(45, 212, 191, .15); backdrop-filter: blur(6px); }
+.leaflet-popup-tip { background: rgba(8, 14, 28, .94); border: 1px solid rgba(94, 234, 212, .3); }
+.leaflet-popup-content { color: #e2e8f0; }
+.leaflet-popup-content .muted, .leaflet-popup-content .small.muted { color: #94a3b8; }
+.leaflet-container a.leaflet-popup-close-button { color: #94a3b8; }
+.place-st { color: #5eead4; }
+.place-btns .btn { background: rgba(45, 212, 191, .14); color: #ccfbf1; border: 1px solid rgba(45, 212, 191, .4); }

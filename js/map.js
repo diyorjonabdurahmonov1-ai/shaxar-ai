@@ -388,18 +388,18 @@
       // Favqulodda vaziyat natijasi: chiziq va hudud — jonli qatlamda (NX.fx); bu yerda faqat bosiladigan ixcham belgi
       if (a.fx) {
         if (a.kind === 'line' || a.kind === 'water') return;
-        L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+        L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
         return;
       }
       if (a.kind === 'zone') L.polygon(a.ring, { renderer, color: a.color, weight: 2, fillColor: a.color, fillOpacity: 0.3, interactive: false }).addTo(L_.ann);
       if (a.kind === 'line' && a.path) {
         L.polyline(a.path, { renderer, color: '#ffffff', weight: 9, opacity: 0.85, interactive: false }).addTo(L_.ann);
         L.polyline(a.path, { renderer, color: a.color || '#16a34a', weight: a.dash ? 4 : 5, dashArray: a.dash ? '9 7' : null, opacity: 0.95, interactive: false }).addTo(L_.ann);
-        if (!a.dash) L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+        if (!a.dash) L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a.kind === 'line' && !a.path ? Object.assign({}, a, { lat: (a.from[0] + a.to[0]) / 2, lon: (a.from[1] + a.to[1]) / 2 }) : a, i + 1), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
       } else if (a.kind === 'line') {
         L.polyline([a.from, a.to], { renderer, color: '#7c3aed', weight: 6, dashArray: '10 8', opacity: 0.95, interactive: false }).addTo(L_.ann);
-        L.marker([(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
-      } else L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }), riseOnHover: true }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(`<b>${i + 1}. ${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>`).addTo(L_.ann);
+        L.marker([(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }) }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a.kind === 'line' && !a.path ? Object.assign({}, a, { lat: (a.from[0] + a.to[0]) / 2, lon: (a.from[1] + a.to[1]) / 2 }) : a, i + 1), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
+      } else L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann', html: label, iconSize: null }), riseOnHover: true }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a.kind === 'line' && !a.path ? Object.assign({}, a, { lat: (a.from[0] + a.to[0]) / 2, lon: (a.from[1] + a.to[1]) / 2 }) : a, i + 1), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
     });
   }
 

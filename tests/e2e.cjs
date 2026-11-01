@@ -247,6 +247,8 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 6, null, { timeout: 240000 });
   const hf = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, r: H.routes.length, up: H.routes.map(r => r.up), t: H.targets.length, high: H.high.length, f3: NX.map3d.map().getSource('hz')._data.features.length }; });
   ok('Suv toshqini: suvli koʻchadan quruq va baland joyga yoʻl, eng baland joylar xaritada', hf.kind === 'flood' && hf.r > 0 && hf.t > 0 && hf.high > 0 && hf.f3 > 0 && hf.up.every(u => u >= 0), JSON.stringify(hf));
+  const qa = await page.evaluate(() => ({ old: document.querySelectorAll('#twinChat .qa-old').length, cur: document.querySelectorAll('#twinChat .chat-msg.qa-cur').length, winY: window.scrollY }));
+  ok('Chat: faqat oxirgi savol-javob ochiq, eskilari yigʻilgan; sahifa (xarita) aylantirilmaydi', qa.old >= 1 && qa.cur >= 2 && qa.winY === 0, JSON.stringify(qa));
   // Savollar katalogi: har bir savol toʻgʻri hisobga yoʻnaltiriladi
   const cat = await page.evaluate(() => NX.QUESTIONS.flatMap(g => g.q).map(([q, k]) => ({ q, k, got: NX.intent(q).main })).filter(x => x.got !== x.k));
   ok('Savollar katalogi (30+ savol): har biri oʻz hisobiga yoʻnaltiriladi; “Nimalarni soʻrash mumkin” roʻyxati chatda', cat.length === 0 && (await page.evaluate(() => NX.QUESTIONS.flatMap(g => g.q).length)) >= 30 && !!(await page.$('#twinChat .ask-help')), JSON.stringify(cat));
@@ -930,6 +932,9 @@ async function roadBlock(browser) {
   await p9.click('.tabs [data-tab=map]');
   const anns = await p9.evaluate(() => [...document.querySelectorAll('.leaflet-marker-icon.ann')].map(x => x.textContent));
   if (process.env.SHOT13) await p9.screenshot({ path: process.env.SHOT13 });
+  await p9.evaluate(() => { const l = Object.values(NX.map.leaflet()._layers).find(x => x.getPopup && x.getPopup() && x._icon && x._icon.classList.contains('ann')); l.openPopup(); }); await p9.waitForTimeout(600);
+  const pp = await p9.evaluate(() => { const el = document.querySelector('.leaflet-popup .ppop.place'); return el && { photo: !!el.querySelector('.ppop-photo[data-done]'), pano: !!el.querySelector('[data-pano]'), text: el.textContent.slice(0, 120) }; });
+  ok('Xaritadagi belgini bossa: izoh, koʻcha nomi, real surat joyi va panorama tugmasi', pp && pp.photo && pp.pano, JSON.stringify(pp));
   ok('Qurilish natijasi xaritada belgilanadi: bino, yuklanadigan koʻchalar, bekat, maktab', anns.length >= 3 && anns.some(t => /🏢/.test(t)) && anns.some(t => /🚏/.test(t)) && anns.some(t => /🏫/.test(t)), anns.join(' | '));
   ok('Bino safarlari mahalla koʻchalariga ham tarqaladi (bir nechta chiqish)', await p9.evaluate(() => NX.state.area.res.sim.deltas.length / 2 >= 6), await p9.evaluate(() => String(NX.state.area.res.sim.deltas.length / 2)));
   if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }

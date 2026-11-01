@@ -119,6 +119,48 @@
     panel.innerHTML = html;
     Object.keys(typed).forEach(k => { const t = panel.querySelector(`textarea[name="${k}"]`); if (t && !t.value && !t.disabled) { t.value = typed[k][0]; if (k === focusName) { t.focus(); t.setSelectionRange(typed[k][1], typed[k][1]); } } });
     if (open.size) panel.querySelectorAll('details > summary').forEach(x => { if (open.has(x.textContent)) x.parentElement.open = true; });
+    enhanceChats(panel);
+  }
+
+  // ---------- Chatlar: faqat oxirgi savol-javob ochiq, eskilari yigʻiladi; yangi javob kelganda panel uning boshiga oʻtadi ----------
+  // Sahifa (window) aylantirilmaydi — xarita va chizma joyida qoladi.
+  const chatSeen = new Map(), chatOpen = new Set();
+  function enhanceChats(root) {
+    root.querySelectorAll('.chat-log').forEach(log => {
+      const box = log.closest('section') || log, id = box.id || 'chat';
+      const items = [...log.children].filter(x => x.classList.contains('chat-msg'));
+      const users = items.filter(x => x.classList.contains('user'));
+      if (users.length) {
+        // Savol-javob guruhlari: har bir savol + undan keyingi javoblar
+        const groups = []; let cur = null;
+        items.forEach(x => { if (x.classList.contains('user')) { cur = [x]; groups.push(cur); } else if (cur) cur.push(x); });
+        groups.slice(0, -1).forEach(g => {
+          const q = g[0].textContent.trim(), d = document.createElement('details');
+          d.className = 'qa-old'; d.open = chatOpen.has(id + '|' + q);
+          d.innerHTML = `<summary><span class="qa-q">❓ ${NX.esc(q.length > 90 ? q.slice(0, 88) + '…' : q)}</span><span class="qa-hint">oldingi javob</span></summary>`;
+          d.addEventListener('toggle', () => { if (d.open) chatOpen.add(id + '|' + q); else chatOpen.delete(id + '|' + q); });
+          log.insertBefore(d, g[0]); g.forEach(x => d.appendChild(x));
+        });
+        const last = groups[groups.length - 1];
+        last.forEach(x => x.classList.add('qa-cur'));
+        const ans = last.filter(x => x.classList.contains('ai') && !x.querySelector('.think'));
+        const sig = users.length + ':' + ans.length;
+        if (chatSeen.has(id) && chatSeen.get(id) !== sig && ans.length) {
+          // Yangi javob: yonib turadi, panel savol boshiga aylanadi
+          ans[ans.length - 1].classList.add('qa-new');
+          requestAnimationFrame(() => scrollPanelTo(last[0]));
+        } else if (chatSeen.get(id) !== sig && last.some(x => x.querySelector('.think'))) requestAnimationFrame(() => scrollPanelTo(last[0]));
+        chatSeen.set(id, sig);
+      }
+    });
+  }
+  // Faqat panelni aylantirish (telefon rejimida — sahifani, xarita oʻrniga panelga)
+  function scrollPanelTo(el) {
+    if (!el || !el.isConnected) return;
+    const mobile = window.matchMedia('(max-width: 820px)').matches;
+    if (mobile) { const y = el.getBoundingClientRect().top + window.scrollY - 120; window.scrollTo({ top: y, behavior: 'smooth' }); return; }
+    const pr = panel.getBoundingClientRect(), er = el.getBoundingClientRect();
+    panel.scrollTo({ top: panel.scrollTop + er.top - pr.top - 12, behavior: 'smooth' });
   }
 
   // Panelda hozir koʻrsatilayotgan koʻcha (Xarita yoki Bashorat boʻlimida)
@@ -669,7 +711,7 @@
     RD.qaBusy = null; renderRoadKeep();
     if (S.chatRoadMirror) { S.chatRoadMirror = false; S.chat.msgs.push(Object.assign({}, msg, { roadLink: true })); S.chat.busy = null; renderChat(); }
   }
-  function renderRoadKeep() { if (S.tab === 'map' && S.road) { renderKeepScroll(); const c = $('#roadChat'); if (c) c.scrollIntoView({ block: 'end' }); } else if (S.tab === 'ai') renderChat(); }
+  function renderRoadKeep() { if (S.tab === 'map' && S.road) renderKeepScroll(); else if (S.tab === 'ai') renderChat(); }
 
   // ---------- Bosh reja / UNESCO savoli: joy (koʻcha, hudud) yoki butun shahar — javob va xaritada zonalar ----------
   async function planAsk(q, prevMsgs) {
@@ -983,7 +1025,7 @@
     if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
     A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;
-    if (S.tab === 'map' && S.area === A) { renderKeepScroll(); const c = $('#areaChat'); if (c) c.scrollIntoView({ block: 'end' }); }
+    if (S.tab === 'map' && S.area === A) renderKeepScroll();
   }
 
   // ---------- Muammoni real surat bilan tekshirish ----------
@@ -1492,8 +1534,9 @@
     if (S.tab !== 'ai') return;
     swap('#chat', V.aiChat(S));
     const chat = $('#chat');
+    if (chat) enhanceChats(chat.parentElement || chat);
     if (!chat) return;
-    if (window.matchMedia('(max-width: 820px)').matches) { const f = chat.querySelector('.chat-form'); if (f) f.scrollIntoView({ block: 'nearest' }); }
+    // (aylantirish — enhanceChats: yangi javob boshiga, faqat panel)
     else panel.scrollTop = panel.scrollHeight;
   }
   function simSummary(last) {
