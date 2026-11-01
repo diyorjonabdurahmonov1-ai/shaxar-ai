@@ -39,9 +39,9 @@
     return out;
   }
 
-  // Butun shahar binolari — tayyor fayl (Overture Maps: OpenStreetMap + Microsoft ML Buildings, ~123 ming bino).
+  // Butun shahar binolari — tayyor fayl (Overture Maps: OpenStreetMap + Microsoft ML Buildings + Microsoft 2026 qoʻshimcha, ~136 ming bino).
   // OSM’da chizilmagan uylar ham bor (Microsoft sunʼiy yoʻldosh suratlaridan aniqlagan). Overpass’ga bogʻliq emas, tez.
-  const STATIC_URL = 'data/buildings-samarqand.json?v=2';   // v2: ichki hovlilar (teshiklar)
+  const STATIC_URL = 'data/buildings-samarqand.json?v=3';   // v2: ichki hovlilar, v3: Microsoft 2026 qoʻshimcha uylar
   // Qavat nomaʼlum boʻlsa: kichik uy — 1, oʻrtacha — 2, katta bino — 3 qavat (taxminiy)
   const byArea = A => (A < 180 ? 1 : A < 1200 ? 2 : 3);
   function decodeStatic(doc) {
@@ -99,10 +99,12 @@
     loading = (async () => {
       // 1) Butun shahar fayli (brauzer keshida; har ochilishda ~1 soniyada oʻqiladi)
       try {
-        onStep && onStep('Shahar binolari yuklanmoqda (~123 ming bino)');
+        onStep && onStep('Shahar binolari yuklanmoqda (~136 ming bino)');
         const st = await loadStatic();
         staticBox = NX.twin ? NX.twin.CITY : null; srcName = st.src;
-        return (list = st.list);
+        list = st.list;
+        setTimeout(() => document.dispatchEvent(new Event('nx:buildings')), 0);   // maktablar tasdigʻi qayta tekshiriladi
+        return list;
       } catch (e) { console.warn('Binolar fayli:', e.message); }
       // 2) Zaxira — OpenStreetMap (Overpass), markaz
       const hit = await NX.bigStore.get('buildings:v1');

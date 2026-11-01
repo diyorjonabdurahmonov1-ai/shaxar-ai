@@ -43,6 +43,14 @@
       if (!list.length) { msg(box, 'Bu joyda surat yoʻq. Yaqinroqdagi koʻchani tanlab koʻring.'); return; }
       box.innerHTML = '';
       player = new ymaps.panorama.Player(box, list[0], { direction: 'auto', controls: ['zoomControl'], suppressMapOpenBlock: true });
+      // Kamera aynan shu nuqtaga qaratiladi; panorama uzoqroq boʻlsa — masofa ogohlantirish bilan yoziladi
+      try { player.lookAt([lat, lon]); } catch (e) { /* eski API */ }
+      try {
+        const pos = list[0].getPosition(), [ax, ay] = NX.geo.xy(lat, lon), [bx, by] = NX.geo.xy(pos[0], pos[1]), d = Math.round(Math.hypot(ax - bx, ay - by));
+        const tag = document.createElement('div'); tag.className = 'pano-dist' + (d > 50 ? ' far' : '');
+        tag.textContent = d > 50 ? `⚠️ Eng yaqin panorama nuqtadan ${d} m uzoqda — aynan bu joy koʻrinmasligi mumkin` : `📍 Panorama nuqtadan ${d} m, kamera shu joyga qaratilgan`;
+        box.appendChild(tag);
+      } catch (e) { /* */ }
     } catch (e) {
       msg(box, 'Surat ochilmadi. “Yandex’da ochish” havolasini bosing.');
     }

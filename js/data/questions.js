@@ -30,6 +30,8 @@
     critical: new RegExp(`maktab|shifoxona|bog${A}cha|kasalxona|poliklinika`, 'i'),
     city: new RegExp(`butun\\s*shahar|shahar\\s*bo${A}yicha|barcha\\s*(aholi|odam|mahalla|hudud)|hamma\\s*(aholi|odam|mahalla)|to${A}liq\\s*reja|shahar\\s*aholisi`, 'i'),
     fix: new RegExp(`hal\\s*qil|yechim|bartaraf|tuzat|oldini\\s*ol|nima\\s*qilish\\s*kerak|qanday\\s*qilsak|muammosini|chorasi`, 'i'),
+    // Qutqaruv mashinalari: tez yordam, oʻt oʻchirish, FVV — “ularga qaysi yoʻl”
+    resp: new RegExp(`tez\\s*yordam|ambulans|skoraya|qutqaruv|qutqaruvchi|o${A}t\\s*o${A}chir|yong${A}in\\s*mashina|fvv\\s*mashina|maxsus\\s*(mashina|texnika)|shifoxona(ga)?\\s*(olib|yo${A}l)`, 'i'),
     rescue: new RegExp(`baland\\s*(joy|nuqta)|eng\\s*baland|olib\\s*chiq|chiqarib|xavfsiz\\s*joy|qayerga\\s*(bor|ket|qoch)`, 'i'),
   };
   const HAZARD = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac'];
@@ -40,7 +42,7 @@
     // “dom qurilsa avtoturargoh yetadimi” — qurilish hisobi
     if (main === 'access' && R.build.test(t) && !/trotuar|piyoda|nogiron|pandus/i.test(t)) main = 'build';
     const fm = [['acc', /nogiron|aravacha|ojiz|pandus|bord[yu]*r|taktil|zinapoya|imkoniyati|keksa/i], ['ped', /piyoda|trotuar|o[ʻ'‘’`]?tish\s*joy|zebra|bolalar/i], ['car', /avtomobil|mashina|haydovchi|qoplama|asfalt|tezlik|turargoh|parkovka|o[ʻ'‘’`]?nqir|chuqurlar|yamoq|transport/i]].filter(x => x[1].test(t)).map(x => x[0]);
-    return { main, focus: fm.length === 1 ? fm[0] : 'all', hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t) };
+    return { main, focus: fm.length === 1 ? fm[0] : 'all', hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t), resp: R.resp.test(t) };
   }
 
   // Katalog: [savol, kutilgan tur]

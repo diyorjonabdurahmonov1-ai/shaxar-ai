@@ -465,6 +465,15 @@
       H = NX.hazard.flood({ net, blds, os, wet, streets: fl ? fl.streets : [], extraOrigins: ex.map(e => ({ name: e.name, c: e.c, d: 0 })), area });
     }
     if (opts && opts.show) H.show = opts.show;
+    // Savolda tez yordam / oʻt oʻchirish / qutqaruv boʻlsa — stansiyadan har bir xavfli zonaga mashina yoʻli (toʻsiladigan koʻchalarni chetlab)
+    if (kind === 'quake' && NX.intent(q).resp && H.zones && H.zones.length) {
+      let svc = null;
+      try { svc = await Promise.race([NX.hazard.services(), NX.sleep(25000).then(() => null)]); } catch (e) { svc = null; }
+      if (svc) {
+        const kinds = /tez\s*yordam|ambulans|skoraya|shifoxona/i.test(q) && !/o[ʻ'‘`]?t\s*o[ʻ'‘`]?chir|yong[ʻ'‘`]?in|qutqaruv|fvv/i.test(q) ? ['ambulance'] : /o[ʻ'‘`]?t\s*o[ʻ'‘`]?chir|yong[ʻ'‘`]?in/i.test(q) && !/tez\s*yordam/i.test(q) ? ['fire'] : ['ambulance', 'fire'];
+        H.rescue = NX.hazard.rescueRoutes({ net, svc, kinds, targets: H.zones.slice(0, areaScope ? 1 : 4).map(z => ({ id: z.id, name: z.name || '', c: z.c })) });
+      }
+    }
     H.items = ((opts && opts.extraItems) || []).concat(NX.hazard.items(H));
     H.facts = NX.hazard.facts(H);
     return showHazard(H);
@@ -574,6 +583,23 @@
   function fixLegend(H) {
     const wrap = $('.map-wrap'); if (!wrap) return;
     let el = wrap.querySelector('.fix-legend');
+    // Favqulodda natija: qaysi chiziq nima va qayoqqa harakat — faqat xaritada bor narsalar
+    if (H && /^(quake|flood|svc)$/.test(H.kind)) {
+      const has = f => H.items.some(f), rows = [];
+      const row = (sw, t) => rows.push(`<div class="fl-row"><i class="fl-sw">${sw}</i><span><small>${t}</small></span></div>`);
+      if (has(a => a.kind === 'zone')) row('<b style="background:#dc2626"></b>', 'xavfli hudud (Z) — rang qanchalik toʻq, shuncha xavfli');
+      if (has(a => a.kind === 'line' && !a.style && !a.dash)) row('<b class="sw-walk"></b>', '🚶 piyoda evakuatsiya (R): ○ boshlanish → ➤ oʻqlar yoʻnalishida → 🏁 yigʻilish joyi');
+      if (has(a => a.dash)) row('<b class="sw-alt"></b>', '↪ zaxira yoʻl — asosiy yoʻl toʻsilsa');
+      if (has(a => a.style === 'rescue' && a.svc !== 'fire')) row('<b class="sw-amb"></b>', '🚑 tez yordam (TY): shifoxonadan → zonaga');
+      if (has(a => a.style === 'rescue' && a.svc === 'fire')) row('<b class="sw-fire"></b>', '🚒 oʻt oʻchirish (OT): qismdan → zonaga');
+      if (has(a => a.style === 'blocked')) row('<b class="sw-blk"></b>', '⛔ toʻsilishi mumkin koʻcha — yurmang, mashina kirmaydi');
+      if (has(a => a.kind === 'water')) row('<b style="background:#2563eb"></b>', 'suv bosgan koʻcha (toʻq — chuqur)');
+      if (rows.length < 2) { if (el) el.remove(); return; }
+      if (!el) { el = document.createElement('div'); el.className = 'fix-legend'; wrap.appendChild(el); }
+      el.innerHTML = `<b>🧭 Xaritada nima va qayoqqa</b>${rows.join('')}<button type="button" class="fl-min" aria-label="Yigʻish">–</button>`;
+      el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
+      return;
+    }
     if (!H || !/^(fix|audit)/.test(H.kind)) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('div'); el.className = 'fix-legend'; wrap.appendChild(el); }
     if (H.kind === 'audit' || H.kind === 'audit-rank') {
@@ -1539,6 +1565,8 @@
   }
 
   // ---------- Xaritani oʻrgatish: tuzatishlar ----------
+  // Binolar yuklanganda: OSM’da faqat nuqta boʻlgan maktablar yonida maktab binosi bormi — muammolar qayta baholanadi
+  document.addEventListener('nx:buildings', () => { if (S.model && S.model.schools && S.model.schools.some(o => o.ot === 'n' && !o.safe)) { NX.analysis.refresh(S.model); if (S.tab === 'problems') renderKeepScroll(); } });
   function rebuildModel() {
     if (!S.raw) return;
     const M = NX.analysis.build(S.raw, NX.fixes.asPoints());

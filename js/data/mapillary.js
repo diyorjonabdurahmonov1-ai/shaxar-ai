@@ -35,6 +35,16 @@
       return g ? { id: x.id, url: x.thumb_1024_url, date: x.captured_at, d: dist(lat, lon, g), lat: g[1], lon: g[0], ca: x.compass_angle } : null;
     }).filter(x => x && x.url).sort((a, b) => (a.d - b.d) - (b.date - a.date) / (365 * DAY) * 20);
   }
+  // Nuqta uchun eng mos suratlar: masofa + kamera yoʻnalishi (nuqtaga qaragan), yangilik — kichik ustunlik
+  function best(list, lat, lon) {
+    const [x1, y1] = NX.geo.xy(lat, lon), now = Date.now();
+    return list.map(p => {
+      let f = 0;
+      if (p.ca != null && p.d >= 6) { const [x0, y0] = NX.geo.xy(p.lat, p.lon), brg = (Math.atan2(x1 - x0, y1 - y0) * 180 / Math.PI + 360) % 360; f = Math.abs(((brg - p.ca + 540) % 360) - 180); }
+      const age = p.date ? (now - p.date) / (365 * DAY) : 5;
+      return Object.assign({}, p, { f, sc: p.d + (f > 100 ? 30 : f > 60 ? 12 : 0) + Math.min(5, age) });
+    }).sort((a, b) => a.sc - b.sc);
+  }
   async function features(lat, lon, r) {
     const list = await get('map_features', { bbox: bbox(lat, lon, r), limit: 500, fields: 'id,object_value,geometry,last_seen_at' });
     return list.map(x => ({ id: x.id, v: x.object_value, seen: x.last_seen_at, d: x.geometry ? dist(lat, lon, x.geometry.coordinates) : Infinity }));
@@ -52,10 +62,14 @@
   };
 
   async function check(p) {
-    const ck = 'mly2:' + p.key, hit = NX.store.get(ck, null);
+    const ck = 'mly3:' + p.key, hit = NX.store.get(ck, null);
     if (hit && Date.now() - hit.ts < DAY) return hit;
     const rule = RULE[p.type];
-    const [ph, ft] = await Promise.all([photos(p.lat, p.lon, rule ? Math.min(rule.r, 80) : 80), rule ? features(p.lat, p.lon, rule.r) : Promise.resolve([])]);
+    // Surat nuqtasi: maktab uchun — bolalar kesib oʻtadigan koʻcha ustidagi nuqta (p.view), aks holda muammo joyi.
+    // Saralash: masofa + kamera shu nuqtaga qaraganmi (hovli yoki ichki tor koʻcha surati emas)
+    const [vl, vo] = p.view || [p.lat, p.lon];
+    const [ph0, ft] = await Promise.all([photos(vl, vo, p.view ? 50 : rule ? Math.min(rule.r, 80) : 80), rule ? features(p.lat, p.lon, rule.r) : Promise.resolve([])]);
+    const ph = best(ph0, vl, vo);
     const sig = ft.filter(f => isSignal(f.v)), cro = ft.filter(f => isCrossing(f.v));
     const P = x => ({ id: x.id, url: x.url, date: x.date, when: when(x.date), d: Math.round(x.d), link: link(x.id) });
     const photo = ph[0] ? P(ph[0]) : null;
@@ -110,5 +124,5 @@
   const aiGet = (p, r) => NX.store.get(aiKey(p, r), null);
   const aiSet = (p, r, v) => NX.store.set(aiKey(p, r), v);
 
-  NX.mly = { token, available: () => !!token(), check, photos, views4, features, link, RULE, aiGet, aiSet };
+  NX.mly = { token, available: () => !!token(), check, photos, best, views4, features, link, RULE, aiGet, aiSet };
 })();

@@ -202,10 +202,21 @@
         a.cells.forEach(c => f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.25 + 0.5 * c[2] }, geometry: { type: 'Polygon', coordinates: [[[c[1] - dLon, c[0] - dLat], [c[1] + dLon, c[0] - dLat], [c[1] + dLon, c[0] + dLat], [c[1] - dLon, c[0] + dLat], [c[1] - dLon, c[0] - dLat]]] } }));
       } else if (a.kind === 'zone' && a.ring) f.push({ type: 'Feature', properties: { t: 'zone', col: a.color, o: 0.32 }, geometry: { type: 'Polygon', coordinates: [a.ring.map(p => [p[1], p[0]])] } });
       else if (a.kind === 'line' && a.paths) f.push({ type: 'Feature', properties: { t: a.style === 'blocked' ? 'blocked' : 'route', col: a.color }, geometry: { type: 'MultiLineString', coordinates: a.paths.map(p => p.map(q => [q[1], q[0]])) } });
+      else if (a.kind === 'line' && a.style === 'rescue') f.push({ type: 'Feature', properties: { t: 'rescue', col: a.color }, geometry: { type: 'LineString', coordinates: a.path.map(p => [p[1], p[0]]) } });
       else if (a.kind === 'line' && a.style === 'seg') f.push({ type: 'Feature', properties: { t: 'seg', col: a.color, w: a.w != null ? a.w : 1 }, geometry: { type: 'LineString', coordinates: a.path.map(p => [p[1], p[0]]) } });
       else if (a.kind === 'line') f.push({ type: 'Feature', properties: { t: a.dash ? 'alt' : 'route', col: a.color || '#16a34a' }, geometry: { type: 'LineString', coordinates: (a.path || [a.from, a.to]).map(p => [p[1], p[0]]) } });
     });
+    // Yoʻl boshlanishi (○) va manzili (●) — yoʻllar kam boʻlsa (yoʻnalish aniq boʻlsin)
+    const rl = (data.hz || []).filter(a => a.kind === 'line' && a.path && a.path.length > 1 && (!a.style || a.style === 'rescue') && !a.dash);
+    if (rl.length <= 20) rl.forEach(a => { const p0 = a.path[0], p1 = a.path[a.path.length - 1]; f.push({ type: 'Feature', properties: { t: 'rstart', col: a.color }, geometry: { type: 'Point', coordinates: [p0[1], p0[0]] } }); f.push({ type: 'Feature', properties: { t: 'rend', col: a.color }, geometry: { type: 'Point', coordinates: [p1[1], p1[0]] } }); });
     return { type: 'FeatureCollection', features: f };
+  }
+  // Yoʻnalish oʻqi (chiziq boʻylab takrorlanadi; chiziq yoʻnalishi = harakat yoʻnalishi)
+  function arrowImage(col) {
+    const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d');
+    g.fillStyle = col; g.strokeStyle = '#ffffff'; g.lineWidth = 2.5; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(28, 16); g.lineTo(8, 5); g.lineTo(13, 16); g.lineTo(8, 27); g.closePath(); g.fill(); g.stroke();
+    return g.getImageData(0, 0, 32, 32);
   }
   function hzMarkers() {
     hzMarks.forEach(m => m.remove()); hzMarks = [];
@@ -293,6 +304,14 @@
         map.addLayer({ id: 'hz-dots-glow', type: 'circle', source: 'hz-dots', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 3, 17, 9], 'circle-color': ['get', 'col'], 'circle-opacity': 0.35, 'circle-blur': 1, 'circle-pitch-alignment': 'map' } });
         map.addLayer({ id: 'hz-dots', type: 'circle', source: 'hz-dots', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 17, 4], 'circle-color': '#ffffff', 'circle-pitch-alignment': 'map' } });
         setInterval(dotsTick, 70);
+        // Qutqaruv mashinalari yoʻli: qalin rangli chiziq + oq shtrix (yoʻl chizigʻi kabi)
+        map.addLayer({ id: 'hz-rescue', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'rescue'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 4, 17, 11], 'line-opacity': 0.95 } });
+        map.addLayer({ id: 'hz-rescue-dash', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'rescue'], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 17, 3], 'line-dasharray': [2, 2] } });
+        // Yoʻnalish oʻqlari: piyoda yoʻllarida oq-yashil, mashina yoʻllarida oq-qizil
+        map.addImage('arr-walk', arrowImage('#16a34a')); map.addImage('arr-car', arrowImage('#e11d48')); map.addImage('arr-fire', arrowImage('#ea580c'));
+        map.addLayer({ id: 'hz-arrows', type: 'symbol', source: 'hz', filter: ['match', ['get', 't'], ['route', 'rescue'], true, false], layout: { 'symbol-placement': 'line', 'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 12, 60, 17, 110], 'icon-image': ['case', ['==', ['get', 't'], 'rescue'], ['case', ['==', ['get', 'col'], '#f97316'], 'arr-fire', 'arr-car'], 'arr-walk'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.45, 17, 0.8], 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
+        map.addLayer({ id: 'hz-rstart', type: 'circle', source: 'hz', filter: ['==', ['get', 't'], 'rstart'], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 4, 17, 9], 'circle-color': '#020617', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'map' } });
+        map.addLayer({ id: 'hz-rend', type: 'circle', source: 'hz', filter: ['==', ['get', 't'], 'rend'], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 6, 17, 13], 'circle-color': ['get', 'col'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'map' } });
         map.addLayer({ id: 'hz-alt', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'alt'], layout: { 'line-cap': 'butt', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2, 17, 5], 'line-dasharray': [2, 1.5] } });
         hzMarkers();
         addVector();
@@ -389,7 +408,7 @@
   // Oqim nuqtalari: har yoʻl uchun metrda kumulyativ uzunlik; har kadrda nuqtalar yoʻl boʻylab siljiydi
   let dotRoutes = [], dotT0 = performance.now();
   function prepDots() {
-    dotRoutes = (data.hz || []).filter(a => a.kind === 'line' && a.path && a.path.length > 1 && !a.style && !a.dash).map(a => {
+    dotRoutes = (data.hz || []).filter(a => a.kind === 'line' && a.path && a.path.length > 1 && (!a.style || a.style === 'rescue') && !a.dash).map(a => {
       const p = a.path, cum = [0];
       for (let i = 1; i < p.length; i++) { const k = 111320 * Math.cos(p[i][0] * Math.PI / 180); cum.push(cum[i - 1] + Math.hypot((p[i][1] - p[i - 1][1]) * k, (p[i][0] - p[i - 1][0]) * 111320)); }
       return { p, cum, L: cum[cum.length - 1], n: Math.max(5, Math.min(24, Math.round((a.ppl || 300) / 150))), col: a.color || '#22c55e' };
@@ -430,7 +449,8 @@
     if (!map || !mapReady) { pendingFit = pts; return; }
     let s = 90, w = 180, n = -90, e = -180; pts.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });
     map.stop();
-    try { map.fitBounds([[w, s], [e, n]], { padding: 70, pitch: 50, bearing: map.getBearing(), duration: 1200, maxZoom: 16 }); }
+    const W = map.getContainer().clientWidth, pad = W > 700 ? { top: 70, left: 60, bottom: 90, right: Math.min(360, W * 0.38) } : 50;   // oʻngda legenda — natija uning ostida qolmasin
+    try { map.fitBounds([[w, s], [e, n]], { padding: pad, pitch: 50, bearing: map.getBearing(), duration: 1200, maxZoom: 16 }); }
     catch (err) { try { map.fitBounds([[w, s], [e, n]], { padding: 70, duration: 1200, maxZoom: 16 }); } catch (e2) { /* */ } }
   }
   function setBase(k) {

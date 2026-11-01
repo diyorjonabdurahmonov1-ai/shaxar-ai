@@ -282,6 +282,13 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 14, null, { timeout: 180000 });
   const qb = await page.evaluate(() => { const H = NX.state.twin.hz; return { show: H.show, facts: Array.isArray(H.facts.vayronadan_toʻsilishi_mumkin_koʻchalar), routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
   ok('Zilzila “qaysi koʻchalardan oʻtib boʻlmaydi” — vayronadan toʻsiladigan koʻchalar hisobi', qb.show.blocked && qb.facts && qb.routes === 0, JSON.stringify(qb));
+  // Qutqaruv mashinalari: “tez yordam qaysi yoʻldan” — shifoxonadan zonaga yoʻl (toʻsiladigan koʻchalarni chetlab), yoʻnalish va legenda
+  const nRs = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.fill('#twinChat textarea[name=tq]', 'Zilziladan keyin tez yordam mashinalari xavfli joylarga qaysi yoʻldan boradi?');
+  await page.click('#twinChat form button.primary');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nRs, { timeout: 180000 });
+  const rs = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, rescue: H.items.filter(a => a.style === 'rescue').length, amb: (H.rescue || []).every(r => r.kind === 'ambulance'), facts: Array.isArray(H.facts.qutqaruv_yoʻllari), legend: /tez yordam/.test((document.querySelector('.fix-legend') || {}).textContent || ''), text: /Qutqaruv mashinalari/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text) || NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].src === 'ai' }; });
+  ok('Zilzila + tez yordam: shifoxonadan zonalarga mashina yoʻllari (TY), legendada nima va qayoqqa', rs.kind === 'quake' && rs.rescue >= 1 && rs.amb && rs.facts && rs.legend && rs.text, JSON.stringify(rs));
   // Suv toʻplanadigan koʻcha uchun yechim: roʻyxatdagi “🛠 Yechim” → havza, oqim, quvur/rezervuar, xaritada
   const nFix = await page.evaluate(() => NX.state.twinChat.msgs.length);
   await page.evaluate(() => { const T = NX.state.twin; T.dynFrame = T.dyn.frames.indexOf(T.dyn.peak); });

@@ -108,6 +108,19 @@
           g.shadowBlur = 0;
           return;
         }
+        if (rt.style === 'rescue') {
+          // Qutqaruv mashinasi: qorongʻi asos + rangli chiziq + oq “yoʻl chizigʻi” shtrixlari, katta oʻqlar va harakatlanuvchi 🚑/🚒
+          const pth = () => { g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
+          pth(); g.strokeStyle = 'rgba(2,6,16,0.7)'; g.lineWidth = 12; g.stroke();
+          pth(); g.strokeStyle = rgba(rt.color, 0.95); g.lineWidth = 7; g.shadowColor = rt.color; g.shadowBlur = 14; g.stroke(); g.shadowBlur = 0;
+          g.setLineDash([9, 9]); g.lineDashOffset = -T * 60; pth(); g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 2; g.stroke(); g.setLineDash([]);
+          if (rt.L < 10) return;
+          for (let d = 50; d < rt.L - 20; d += 110) { const q = at(rt, d); if (q.length < 3) continue; g.save(); g.translate(q[0], q[1]); g.rotate(q[2]); g.fillStyle = '#fff'; g.strokeStyle = rt.color; g.lineWidth = 1.5; g.beginPath(); g.moveTo(8, 0); g.lineTo(-5, -6); g.lineTo(-2, 0); g.lineTo(-5, 6); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          const q = at(rt, (T * 70) % rt.L); g.font = '18px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = '#000'; g.shadowBlur = 6; g.fillText(rt.svc === 'fire' ? '🚒' : '🚑', q[0], q[1] - 2); g.shadowBlur = 0;
+          // Manzil (zona) — pulsatsiyalanuvchi nishon
+          const e = rt.pts[rt.pts.length - 1], ph = (T * 0.9) % 1; g.strokeStyle = rgba(rt.color, 1 - ph); g.lineWidth = 3; g.beginPath(); g.arc(e[0], e[1], 6 + ph * 18, 0, Math.PI * 2); g.stroke();
+          return;
+        }
         if (rt.style === 'seg') {
           // Koʻcha auditi: balliga qarab rangli koʻcha + ustidan oʻtadigan “skaner” nuri (tekshirilmoqda effekti)
           const pth = () => { g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); };
@@ -133,6 +146,13 @@
         if (rt.L < 8) return;
         // Yoʻnalish oʻqlari (chevron) — har 70 px, siljib boradi
         if (!rt.dash) for (let d = (T * 40) % 70; d < rt.L; d += 70) { const q = at(rt, d); if (q.length < 3) continue; g.save(); g.translate(q[0], q[1]); g.rotate(q[2]); g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-4, -4); g.lineTo(1, 0); g.lineTo(-4, 4); g.stroke(); g.restore(); }
+        // Boshlanish (○ oq halqa — odamlar shu yerdan chiqadi) va manzil (oʻq uchi + 🏁 — yigʻilish joyi)
+        if (!rt.dash && !rt.many && rt.pts.length > 1) {
+          const s0 = rt.pts[0], e = at(rt, Math.max(0, rt.L - 1)), e1 = rt.pts[rt.pts.length - 1];
+          g.fillStyle = 'rgba(2,6,16,0.85)'; g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.beginPath(); g.arc(s0[0], s0[1], 6, 0, Math.PI * 2); g.fill(); g.stroke();
+          if (e.length >= 3) { g.save(); g.translate(e1[0], e1[1]); g.rotate(e[2]); g.fillStyle = rt.color; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(10, 0); g.lineTo(-7, -8); g.lineTo(-7, 8); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+          g.font = '15px system-ui'; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText('🏁', e1[0] + 2, e1[1] - 8);
+        }
         // Odamlar oqimi — zarrachalar (soni odamlar soniga mos)
         const n = Math.min(C.per, rt.dash ? 4 : Math.max(6, Math.min(36, Math.round((rt.ppl || 300) / 120)))), v = rt.dash ? 18 : 55;
         for (let k = 0; k < n; k++) {
@@ -162,7 +182,7 @@
     data = {
       kind,
       zones: list.filter(a => a.kind === 'zone'),
-      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style, w: a.w != null ? a.w : 1, v: a.v != null ? a.v : 1 }))),
+      routes: list.filter(a => a.kind === 'line' && (a.paths || (a.path && a.path.length > 1))).flatMap(a => (a.paths || [a.path]).map(p => ({ path: p, color: a.color || '#16a34a', dash: !!a.dash, ppl: a.ppl, style: a.style, svc: a.svc, many: list.filter(x => x.kind === 'line' && !x.style && !x.dash).length > 20, w: a.w != null ? a.w : 1, v: a.v != null ? a.v : 1 }))),
       water: list.filter(a => a.kind === 'water').flatMap(a => a.segs),
       points: list.filter(a => a.kind === 'point'),
       epi: epi || null,

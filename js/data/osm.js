@@ -99,8 +99,9 @@ out body geom(${a});`;
       const lon = el.lon != null ? el.lon : el.center && el.center.lon;
       if (lat == null) continue;
       const base = { id: el.id, lat: r6(lat), lon: r6(lon), name: t['name:uz'] || t.name || '' };
-      if (t.amenity === 'school') pts.push(Object.assign({ k: 'school' }, base));
-      else if (t.amenity === 'kindergarten') pts.push(Object.assign({ k: 'kindergarten' }, base));
+      // ot: OSM obyekt turi — nuqta (n) yoki bino/hudud (w/r); faqat nuqta boʻlsa maktab “tasdiqlanmagan” hisoblanadi
+      if (t.amenity === 'school') pts.push(Object.assign({ k: 'school', ot: el.type[0] }, base));
+      else if (t.amenity === 'kindergarten') pts.push(Object.assign({ k: 'kindergarten', ot: el.type[0] }, base));
       if (t.highway === 'traffic_signals') pts.push(Object.assign({ k: 'signal' }, base));
       if (t.highway === 'crossing' || (t.highway === 'traffic_signals' && t.crossing)) pts.push(Object.assign({ k: 'crossing', sig: t.crossing === 'traffic_signals' || t.highway === 'traffic_signals' ? 1 : 0 }, base));
       if (t.highway === 'crossing' && t.crossing === 'traffic_signals') pts.push(Object.assign({ k: 'signal' }, base));

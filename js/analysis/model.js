@@ -144,7 +144,7 @@
       if (seenPt.has(uid)) continue;
       seenPt.add(uid);
       const [x, y] = G.xy(p.lat, p.lon);
-      P[k].push({ id: p.id, kind: p.k, name: p.name, lat: p.lat, lon: p.lon, x, y, sig: p.sig, fix: p.fix });
+      P[k].push({ id: p.id, kind: p.k, name: p.name, lat: p.lat, lon: p.lon, x, y, sig: p.sig, fix: p.fix, ot: p.ot });
     }
     M.stops = P.stop; M.signals = P.signal; M.crossings = P.crossing; M.schools = P.school; M.prioritySigns = P.priority;
     M.stopGrid = stopGrid;
@@ -377,9 +377,25 @@
     const add = (type, o) => probs.push(Object.assign({ type, id: type + probs.length }, o));
     const nameOf = s => s.name || 'Nomsiz yoʻl';
 
+    // Maktab ishonchliligi: OSM’da bino/hudud sifatida chizilgan yoki yonida maktab binosi bor — tasdiqlangan;
+    // faqat nuqta (bino yoʻq) — “tasdiqlanmagan”: muammo past darajada, aniq ogohlantirish bilan (xaritada boʻlmasligi mumkin)
+    const blds = NX.buildings && NX.buildings.get ? NX.buildings.get() || [] : [];
+    const schoolBld = o => blds.some(b => /school|kindergarten|college/.test(b.kind) && Math.hypot(...G.xy(b.c[0], b.c[1]).map((v, i) => v - (i ? o.y : o.x))) < 80);
     M.schools.forEach(o => {
       if (o.safe) return;
-      add('school', { lat: o.lat, lon: o.lon, sev: 3, title: (o.kind === 'kindergarten' ? 'Bogʻcha' : 'Maktab') + (o.name ? ': ' + o.name : ''), detail: `${R.schoolSafe} m ichida piyoda oʻtish joyi yoki svetofor belgilanmagan.` });
+      const conf = o.ot && o.ot !== 'n' ? 'osm-hudud' : schoolBld(o) ? 'bino' : o.ot === 'n' ? 'nuqta' : 'nomaʼlum';
+      const kindUz = o.kind === 'kindergarten' ? 'Bogʻcha' : 'Maktab';
+      // Real surat va koʻrik — maktab nuqtasi emas, bolalar kesib oʻtadigan eng yaqin koʻcha (avval yirik koʻcha) ustidagi nuqta
+      let view = null, vd = Infinity, vName = '';
+      M.streetsNear(o.x, o.y, R.schoolToStreet).forEach((d, si) => {
+        const st = M.streets[si]; if (!st) return;
+        const pen = NX.HW[st.hw] && NX.HW[st.hw].rank >= NX.MAJOR_RANK ? 0 : 60;
+        st.ways.forEach(wi => { const ll = M.ways[wi].ll; for (let i = 1; i < ll.length; i++) { const [ax, ay] = G.xy(ll[i - 1][0], ll[i - 1][1]), [bx, by] = G.xy(ll[i][0], ll[i][1]), dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((o.x - ax) * dx + (o.y - ay) * dy) / l2)) : 0, px = ax + t * dx, py = ay + t * dy, dd = Math.hypot(o.x - px, o.y - py) + pen; if (dd < vd) { vd = dd; view = G.ll(px, py); vName = st.name || ''; } } });
+      });
+      const unconf = conf === 'nuqta';
+      add('school', { lat: o.lat, lon: o.lon, sev: unconf ? 1 : 3, conf, view: view ? [+view[0].toFixed(6), +view[1].toFixed(6)] : null, viewStreet: vName,
+        title: kindUz + (o.name ? ': ' + o.name : '') + (unconf ? ' (tasdiqlanmagan)' : ''),
+        detail: unconf ? `⚠️ ${kindUz} OpenStreetMap’da faqat nuqta bilan belgilangan — binosi chizilmagan va boshqa manbada tasdiqlanmadi (Yandex xaritada koʻrinmasligi mumkin). Joyida tekshiring; maktab boʻlmasa “Bu muammo emas” ni bosing. ${R.schoolSafe} m ichida piyoda oʻtish joyi ham belgilanmagan.` : `${R.schoolSafe} m ichida piyoda oʻtish joyi yoki svetofor belgilanmagan.` });
     });
     M.junctions.forEach(j => {
       if (j.signalised) return;
