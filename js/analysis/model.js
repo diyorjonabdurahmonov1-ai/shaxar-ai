@@ -16,19 +16,19 @@
   NX.PROBLEM = {
     school: {
       uz: 'Maktab/bogʻcha yonida xavfsiz oʻtish yoʻq', short: 'Maktab oldida xavf', icon: '🏫', color: '#7c3aed', weight: 100, cost: 80e6, unit: 'joy',
-      what: 'Maktab yoki bogʻchaning 150 m atrofida belgilangan piyoda oʻtish joyi ham, svetofor ham yoʻq. Bolalar yoʻlni xavfli joydan kesib oʻtadi.',
+      what: 'Ochiq xaritada (OSM) maktab yoki bogʻchaning 150 m atrofida piyoda oʻtish joyi ham, svetofor ham belgilanmagan — bolalar yoʻlni xavfsiz kesib oʻtolmasligi mumkin. Real suratda tekshiring.',
       fix: 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan), “Bolalar” belgisi va 30 km/soat tezlik cheklovi qoʻyish.',
       steps: ['Joyni koʻrish: bolalar yoʻlni qayerdan kesib oʻtadi (ertalab 7:30–8:30).', 'Kirish oldiga koʻtarilgan piyoda oʻtish joyi (“lejachiy” bilan) va zebra chizish.', '“Bolalar” (1.23) belgisi va 30 km/soat tezlik cheklovi; kechasi yoritish.', 'Agar yoʻl 4 polosali boʻlsa — tugmali piyoda svetofori.'],
     },
     priority: {
       uz: 'Ustuvorlik belgisi yoʻq chorraha', short: 'Ustuvorlik belgisi yoʻq', icon: '🔻', color: '#d97706', weight: 45, cost: 4e6, unit: 'chorraha',
-      what: 'Koʻchalar kesishadi, lekin qaysi yoʻl asosiy ekani belgilanmagan. Haydovchilar kim birinchi oʻtishini bilmaydi — toʻqnashuv xavfi. Bu yerga svetofor kerak emas.',
+      what: 'Koʻchalar kesishadi, lekin ochiq xaritada qaysi yoʻl asosiy ekani (belgilar) koʻrsatilmagan. Haydovchilar kim birinchi oʻtishini bilmaydi — toʻqnashuv xavfi. Bu yerga svetofor kerak emas.',
       fix: 'Asosiy koʻchaga “Asosiy yoʻl” (2.1), ulanadigan koʻchaga “Yoʻl bering” (2.4) belgisi; koʻrinish yomon boʻlsa — “STOP” (2.5) va toʻxtash chizigʻi.',
       steps: ['Asosiy koʻchada (rejada sariq romb) har ikki tomondan “Asosiy yoʻl” (2.1) belgisi.', 'Ulanadigan koʻcha chiqishida (rejada qizil uchburchak) “Yoʻl bering” (2.4) belgisi va toʻxtash chizigʻi.', 'Burchakda daraxt yoki devor koʻrinishni yopsa — “STOP” (2.5) va koʻzgu.', 'Svetofor kerak emas: bu kichik koʻcha chorrahasi.'],
     },
     junction: {
       uz: 'Svetoforsiz yirik chorraha', short: 'Svetoforsiz chorraha', icon: '🚦', color: '#dc2626', weight: 80, cost: 600e6, unit: 'chorraha',
-      what: 'Ikki katta koʻcha kesishadi, lekin svetofor yoʻq. Tigʻiz soatlarda tiqilinch va avariya xavfi yuqori.',
+      what: 'Ikki katta koʻcha kesishadi, ochiq xaritada svetofor belgilanmagan (real suratda tekshiriladi). Tigʻiz soatlarda tiqilinch va avariya xavfi yuqori.',
       fix: 'Avval chorrahada mashinalar sonini sanash. Oqim katta boʻlsa — svetofor yoki aylanma harakat (halqa) qurish.',
       steps: ['Tigʻiz soatda (8:00–9:00, 17:00–19:00) har yoʻnalishdan oʻtadigan mashinalarni sanash.', 'Oqim kichik boʻlsa — “Asosiy yoʻl / Yoʻl bering” belgilari va zebra yetarli.', 'Oqim katta boʻlsa — har bir yoʻnalishga svetofor, toʻxtash chizigʻi va piyoda oʻtish joyi (rejada sariq).', 'Joy keng boʻlsa — svetofor oʻrniga aylanma harakat (halqa) varianti.'],
     },
@@ -40,7 +40,7 @@
     },
     coverage: {
       uz: '400 m ichida bekat yoʻq hudud', short: 'Bekat uzoq', icon: '🚏', color: '#e11d48', weight: 50, cost: 35e6, unit: 'bekat',
-      what: 'Bu hududdan eng yaqin avtobus bekatigacha 400 m dan koʻp. Odamlar, ayniqsa keksalar, uzoq piyoda yurishga majbur.',
+      what: 'Ochiq xarita boʻyicha bu hududdan eng yaqin avtobus bekatigacha 400 m dan koʻp. Odamlar, ayniqsa keksalar, uzoq piyoda yurishga majbur.',
       fix: 'Hududga yangi bekat qoʻyish yoki yaqin avtobus yoʻnalishini shu yerdan oʻtkazish.',
       steps: ['Hududda odamlar qayerdan koʻp yuradi — aniqlash.', 'Eng yaqin avtobus yoʻnalishini shu yerdan oʻtkazish yoki yangi bekat qoʻyish.', 'Bekatga soyabon, oʻrindiq va piyoda yoʻlak.'],
     },
@@ -52,7 +52,7 @@
     },
     crossings: {
       uz: 'Piyoda oʻtish joylari kam (< 2 ta/km)', short: 'Oʻtish joyi kam', icon: '🚶', color: '#0284c7', weight: 30, cost: 20e6, unit: 'oʻtish joyi',
-      what: 'Katta koʻchada piyoda oʻtish joylari juda kam. Odamlar yoʻlni xohlagan joydan kesib oʻtadi.',
+      what: 'Katta koʻchada ochiq xaritada belgilangan piyoda oʻtish joylari (zebra, svetofor, chorraha) juda kam. Odamlar yoʻlni xohlagan joydan kesib oʻtadi.',
       fix: 'Har 300–500 m da “zebra”, belgi va yoritish qoʻyish.',
       steps: ['Odamlar koʻchani qayerdan koʻp kesib oʻtishini kuzatish.', 'Har 300–500 m da zebra, “Piyoda oʻtish joyi” belgisi va yoritish.', 'Keng koʻchada — oʻrtada piyoda “orolcha”.'],
     },
@@ -425,9 +425,11 @@
     }));
     M.streets.forEach(s => {
       if (s.rank < 5 || s.length < 300) return;
-      const n = new Set(s.crossings.concat(s.signals).map(o => Math.round(o.x / 15) + ',' + Math.round(o.y / 15))).size;
+      // Oʻtish imkoniyatlari: zebra + svetofor + boshqa yirik koʻcha bilan chorraha (odamlar chorrahada kesib oʻtadi)
+      const jx = M.junctions.filter(j => j.streets && j.streets.includes(s.id) && j.streets.some(t => t !== s.id && M.streets[t] && M.streets[t].rank >= NX.MAJOR_RANK));
+      const n = new Set(s.crossings.concat(s.signals, jx).map(o => Math.round(o.x / 15) + ',' + Math.round(o.y / 15))).size;
       const perKm = n / (s.length / 1000);
-      if (perKm < R.crossingsPerKm) add('crossings', { lat: s.center[0], lon: s.center[1], sev: perKm < 1 ? 2 : 1, title: nameOf(s), detail: `${NX.fmt.num(perKm, 1)} ta oʻtish joyi/km (${n} ta, ${NX.fmt.km(s.length)}).`, street: s.id, perKm });
+      if (perKm < R.crossingsPerKm) add('crossings', { lat: s.center[0], lon: s.center[1], sev: perKm < 1 ? 2 : 1, title: nameOf(s), detail: `${NX.fmt.num(perKm, 1)} ta oʻtish imkoniyati/km (zebra, svetofor va yirik chorrahalar — ${n} ta, ${NX.fmt.km(s.length)}). OSM’da chizilmagan zebralar boʻlishi mumkin — real suratda tekshiring.`, street: s.id, perKm });
     });
     // id — barqaror (qayta hisoblashda ham oʻzgarmaydi): tur va joy boʻyicha
     const seen = new Map();

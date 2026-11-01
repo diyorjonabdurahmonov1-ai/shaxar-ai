@@ -299,7 +299,11 @@
     }[p.type];
     const fixes = `<div class="fix-row">${fixBtn ? `<button type="button" class="btn sm primary" data-fix="${fixBtn[0]}" data-pid="${p.id}">${fixBtn[1]}</button>` : ''}<button type="button" class="btn sm" data-fix="dismiss" data-pid="${p.id}">❌ Bu muammo emas</button></div>
       <a class="osm-edit" href="${NX.fixes.osmEditUrl(p.lat, p.lon)}" target="_blank" rel="noopener">✏️ OpenStreetMap’da ham tuzatish</a>`;
-    return `<div class="ppop"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div><p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p><div class="fix-row">${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn sm')}</div><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
+    // Real surat (Mapillary) — muammo nuqtasining oʻzi (maktab uchun — yonidagi koʻcha), popup ochilganda avtomatik toʻldiriladi
+    const vw = p.view || [p.lat, p.lon];
+    return `<div class="ppop place"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div>${p.detail ? `<p class="${/⚠️/.test(p.detail) ? 'warn-text' : 'muted'} small">${NX.esc(p.detail)}</p>` : ''}<p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p>
+      <div class="ppop-photo" data-lat="${(+vw[0]).toFixed(6)}" data-lon="${(+vw[1]).toFixed(6)}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div>
+      <div class="fix-row">${NX.pano.btn(vw[0], vw[1], p.title, 'btn sm', '🌐 Panorama (Yandex)')}</div><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
   }
   function fixPopup(x) {
     const k = NX.fixes.KIND[x.kind];
@@ -318,7 +322,7 @@
         L.circle([p.lat, p.lon], { renderer, radius: Math.max(150, r), color: meta.color, weight: 1, dashArray: '4 4', fillOpacity: 0.08, interactive: false }).addTo(L_.problems);
       }
       const icon = L.divIcon({ className: 'pmk', html: `<span style="--c:${meta.color}">${meta.icon}</span>`, iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -16] });
-      const mk = L.marker([p.lat, p.lon], { icon, title: meta.short, riseOnHover: true }).bindPopup(popup, { maxWidth: 260, autoPanPaddingTopLeft: [10, 60] });
+      const mk = L.marker([p.lat, p.lon], { icon, title: meta.short, riseOnHover: true }).bindPopup(popup, { maxWidth: 300, autoPanPaddingTopLeft: [10, 60] });
       mk.addTo(L_.problems);
       probMarkers.set(p.id, mk);
     });

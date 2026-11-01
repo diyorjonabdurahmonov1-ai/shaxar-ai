@@ -227,7 +227,7 @@
     return {
       muammo: { koʻcha: X.name, chuqurlik_sm: Math.round(Math.min(1.2, X.depth) * 100), suvli_uzunlik_m: X.wetLen, toʻplanadigan_hajm_m3: X.vol, balandlik_m: X.zPit },
       sabab: { havza_ga: X.Aha, havza_eng_baland_m: X.zTop, oqim_toʻplanish_vaqti_daq: X.tc, yomgir_mm_soat: X.rain, eng_yuqori_oqim_m3s: X.Q, mavjud_tizim_oladi_m3s: X.Qex, qoʻshimcha_kerak_m3s: X.Qneed },
-      mavjud_ariqlar: { shu_koʻchada: X.streetDitch.length ? [...new Set(X.streetDitch.map(w => (w.kind + ' ' + (w.name || '')).trim()))] : 'shu koʻcha boʻyida ariq (OSM) yoʻq', atrofda: [...new Map(X.nearWW.map(w => [w.kind + '|' + w.name, { turi: w.kind, nomi: w.name, masofa_m: w.d }])).values()] },
+      mavjud_ariqlar: { shu_koʻchada: X.streetDitch.length ? [...new Set(X.streetDitch.map(w => (w.kind + ' ' + (w.name || '')).trim()))] : 'shu koʻcha boʻyida ariq ochiq xaritada (OSM) belgilanmagan — joyida tekshirish kerak', atrofda: [...new Map(X.nearWW.map(w => [w.kind + '|' + w.name, { turi: w.kind, nomi: w.name, masofa_m: w.d }])).values()] },
       chiqish_joyi: X.outlet ? { turi: X.outlet.kind, nomi: X.outlet.name, balandligi_m: Math.round(X.outlet.z), masofa_koʻcha_boʻylab_m: X.outlet.route.L, koʻchalar: X.outlet.route.streets } : 'yaqin atrofda pastroq ariq/kanal topilmadi',
       quvur: X.pipe, lotok: X.lotok, rezervuar: { hajm_m3: X.retV, maydon_m2: X.tankArea, joy: X.basinSite }, panjarali_quduqlar: X.inlets, koʻchma_nasoslar: X.pumpN,
       cheklovlar_bosh_reja_unesco: X.lim.length ? X.lim : ['muammo joyi va yoʻl UNESCO hududidan tashqarida'], zonalar: X.zones,
@@ -238,7 +238,7 @@
   }
   function summary(X) {
     const L = [`**${X.name}: ${Math.round(Math.min(1.2, X.depth) * 100)} sm suv, ~${F(X.vol)} m³.** ${X.Aha} ga havzadan ${X.rain} mm/soat yomgʻirda ${X.Q} m³/s oqim keladi; mavjud tizim ~${X.Qex} m³/s oladi — yana ${X.Qneed} m³/s sigʻim kerak.`];
-    L.push('', '**Sabab**', `- Koʻcha havzaning eng past joyida (${X.zPit} m; havzaning eng balandi ${X.zTop} m) — suv ~${X.tc} daqiqada shu yerga yigʻiladi.`, `- ${X.streetDitch.length ? `Koʻcha boʻyida ${X.streetDitch[0].kind} bor, lekin sigʻimi yetmaydi yoki tiqilgan.` : 'Koʻcha boʻyida ariq yoʻq (OpenStreetMap) — suv ketadigan yoʻl yoʻq.'}`);
+    L.push('', '**Sabab**', `- Koʻcha havzaning eng past joyida (${X.zPit} m; havzaning eng balandi ${X.zTop} m) — suv ~${X.tc} daqiqada shu yerga yigʻiladi.`, `- ${X.streetDitch.length ? `Koʻcha boʻyida ${X.streetDitch[0].kind} bor, lekin sigʻimi yetmaydi yoki tiqilgan.` : 'Koʻcha boʻyida ariq ochiq xaritada (OpenStreetMap) belgilanmagan — joyida tekshirish kerak; belgilangan suv chiqish yoʻli yoʻq.'}`);
     L.push('', '**Nima qilish kerak (xaritadagi raqamlar)**', ...steps(X).map(x => `- **${x.belgi} ${x.nima}** — ${x.qilish}; ${x.olcham}.`));
     const rej = X.opts.filter(o => !X.best.includes(o.id) && o.id !== 'P');
     if (rej.length) L.push('', '**Boshqa variantlar**', ...rej.map(o => `- ${o.nomi} — ${o.izoh}${o.samara ? '; ' + o.samara : ''} ${o.mos ? '' : '⛔'}`));

@@ -60,6 +60,7 @@ Qoidalar:
 - Faqat oʻzbek tilida (lotin yozuvi) yoz. Oddiy, qisqa, tushunarli yoz — ilmiy soʻz va formulalarsiz.
 - Foydalanuvchining SAVOLIGA AYNAN javob ber. Savolga aloqasi yoʻq narsani yozma.
 - Faqat berilgan JSON maʼlumotdan foydalan. Maʼlumotda yoʻq raqam, koʻcha yoki hodisani oʻylab topma.
+- Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, maktab, ariq) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi yoki svetofor taklif qilma.
   Kerakli maʼlumot boʻlmasa, “Bu haqda saytda maʼlumot yoʻq” deb ayt va saytning qaysi boʻlimida koʻrish mumkinligini qisqa ayt.
 - “real” (TomTom yoki Open-Meteo oʻlchovi) va “taxmin”ni (model hisobi) farqla: taxminni oʻlchov deb atama.
 - Odatda 2–6 gap yetarli. Roʻyxat kerak boʻlsa — qisqa nuqtalar bilan.
@@ -439,7 +440,8 @@ Keep the road geometry, widths and directions EXACTLY as in the plan. Show the p
 
   // ---------- Belgilangan hudud (mahalla) va qurilish ----------
   // Tavsiyani xaritada koʻrsatish: faqat berilgan REAL nomzod joylar (id) dan
-  const MAPRULE = `- “nomzod_joylar” berilgan boʻlsa — javobni ALBATTA xaritadagi belgilar bilan bogʻla. Agar tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
+  const MAPRULE = `- Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, maktab, ariq) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi, svetofor yoki bekat taklif qilma.
+- “nomzod_joylar” berilgan boʻlsa — javobni ALBATTA xaritadagi belgilar bilan bogʻla. Agar tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
 \`\`\`json
 {"belgilar":[{"id":"L2","nima":"Bogʻcha","izoh":"qisqa sabab"},{"id":"C1","nima":"Yangi yoʻl","izoh":"…"}]}
 \`\`\`
@@ -462,6 +464,7 @@ Qoidalar:
   **Qayerga** — “tavsiya_joy” dan: L id va maydoni bilan (xaritada shu raqam). Mos yer yoʻq boʻlsa — buni ochiq ayt va kichik obyekt (dorixona, doʻkon) uchun turar joy 1-qavati yoki pavilyonni tavsiya qil.
   **Yetarli boʻlganlar** — bir qatorda (qamrovi ≥ 80%).
   **Tekshirish kerak** — yer egaligi (kadastr), mavjud maktab/bogʻcha sigʻimi (taʼlim boʻlimi) — bir gapda.
+  Obyektlar roʻyxati ochiq xaritadan (OpenStreetMap): xaritada chizilmagan maktab, bogʻcha, dorixona boʻlishi mumkin — “yoʻq” dema, “ochiq xaritada belgilanmagan” de va tasdiqlashni tavsiya qil.
   Sport maydoni, park — mavjud obyekt, ularni “boʻsh yer” dema va ustiga qurishni tavsiya qilma.
 ${MAPRULE}`;
 
@@ -542,6 +545,7 @@ Qoidalar:
 - “savol_doirasi” = “FAQAT belgilangan hudud” boʻlsa: javob FAQAT shu hudud haqida. 1-qator: hududda nechta odam, nechta bino xavf ostida. Keyin har bir uy guruhi (A1, A2…) uchun: “A1 (~400 kishi) → R1: X → Y koʻchalari, 350 m, ~5 daq. → S1 (nomi, sigʻimi); zaxira R1z”. Butun shahar zonalarini (boshqa Z lar) yozma.
 - “koʻcha_auditi” berilgan boʻlsa (bitta koʻcha: avtomobil, piyoda, nogironlar): 1-qator — koʻcha, uzunlik va uchta ball (🚗/🚶/♿ /100). Savol qaysi yoʻnalish haqida boʻlsa (masalan faqat nogironlar) — shu boʻlimni birinchi va batafsil yoz, qolganlarini 1–2 qatorda. Boʻlimlar: **🚗 Avtomobil** (tezlik, qoplama, svetofor, turargoh), **🚶 Piyoda** (trotuar, oʻtish joylari soni va eng katta oraliq — meʼyor bilan, maktab/bekat oldida oʻtish joyi), **♿ Nogironlar** (qiyalik %, bordyur, taktil plitka, zinapoya). “ai_suratlar_tahlili” boʻlsa — **📷 Real suratlarda** boʻlimi: suratda nima koʻringanini ayt (trotuar, chuqurlar, mashina trotuarda) va OSM bilan farq qilsa — ayt. **Nima qilish kerak** — “yechimlar” dan, aniq joy va oʻlcham bilan; yangi oʻtish joylari (P) — “nomzod”, joyida tekshirish kerakligini ayt; svetoforli chorraha yoki mavjud zebra yonida yangi oʻtish joyi TAVSIYA QILMA; “suratlar_bilan_olib_tashlangan_takliflar” boʻlsa — ular olib tashlanganini ayt; xaritadagi ➕ P1… yangi oʻtish joylari, ⛔ Z zinapoya, toʻq sariq/qizil — qiya qismlar. “maʼlumot yoʻq” ni “yoʻq” deb yozma — “ochiq maʼlumotda belgilanmagan, joyida tekshirish kerak” de.
 - “koʻchalar_reytingi” berilgan boʻlsa (shahar yoki hudud koʻchalari): 1-qator — nechta koʻcha, oʻrtacha ball, eng yomoni. **Eng muammoli koʻchalar** — 1…10 (xaritadagi raqamlar): koʻcha — ball — asosiy muammo. **Umumiy muammolar** (jami raqamlar). **Nima qilish kerak** — birinchi navbatda qaysi koʻchalarda nima (oʻtish joyi, pandus, qoplama). Oxirida: batafsil tekshiruv uchun koʻcha nomini yozish mumkinligini ayt.
+- Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, ariq, maktab, bordyur) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de; real suratlar tahlili berilgan boʻlsa — suratga ishon. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi, svetofor yoki bekat taklif qilma.
 - Kod bloki, ASCII sxema ishlatma — oddiy matn va roʻyxat.
 - Maʼlumot qayerdan olinganini, qanday hisoblanganini, manbalar roʻyxatini matnda yozma (ular alohida koʻrsatiladi). Faqat natija va tavsiya.
   • Hisob taxminiy ekanini bir marta ayt (bino materiali/yili yoʻq — qurilish inspeksiyasi va kadastrdan olinsa aniqlashadi). Raqamlarni faqat JSON’dan ol.
