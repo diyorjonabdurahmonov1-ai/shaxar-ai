@@ -124,7 +124,7 @@
 
   // ---------- Chatlar: faqat oxirgi savol-javob ochiq, eskilari yigʻiladi; yangi javob kelganda panel uning boshiga oʻtadi ----------
   // Sahifa (window) aylantirilmaydi — xarita va chizma joyida qoladi.
-  const chatSeen = new Map(), chatOpen = new Set();
+  const chatSeen = new Map(), chatOpen = new Set(), chatAnsAt = new Map();
   function enhanceChats(root) {
     root.querySelectorAll('.chat-log').forEach(log => {
       const box = log.closest('section') || log, id = box.id || 'chat';
@@ -143,11 +143,23 @@
         });
         const last = groups[groups.length - 1];
         last.forEach(x => x.classList.add('qa-cur'));
+        // Savol yoziladigan joyda holat: “Tahlil qilinmoqda” yoki “Javob tayyor — koʻrish”
+        const form = box.querySelector('form.chat-form, form');
+        if (form) {
+          form.querySelectorAll('.composer-status').forEach(x => x.remove());
+          const thinkingNow = last.some(x => x.querySelector('.think'));
+          const ansNow = last.filter(x => x.classList.contains('ai') && !x.querySelector('.think'));
+          let st = null;
+          if (thinkingNow) { st = document.createElement('div'); st.className = 'composer-status busy'; st.innerHTML = '<span class="cs-orb"></span><span>Tahlil qilinmoqda…</span><button type="button" class="cs-go">savolga ↑</button>'; }
+          else if (ansNow.length && Date.now() - (chatAnsAt.get(id) || 0) < 15000) { st = document.createElement('div'); st.className = 'composer-status ok'; st.innerHTML = '<span>✓ Javob tayyor</span><button type="button" class="cs-go">koʻrish ↑</button>'; }
+          if (st) { form.prepend(st); const tgt = thinkingNow ? last[0] : ansNow[ansNow.length - 1]; st.querySelector('.cs-go').onclick = () => scrollPanelTo(tgt); }
+        }
         const ans = last.filter(x => x.classList.contains('ai') && !x.querySelector('.think'));
         const sig = users.length + ':' + ans.length;
         if (chatSeen.has(id) && chatSeen.get(id) !== sig && ans.length) {
           // Yangi javob: yonib turadi, panel savol boshiga aylanadi
           ans[ans.length - 1].classList.add('qa-new');
+          chatAnsAt.set(id, Date.now());
           requestAnimationFrame(() => scrollPanelTo(last[0]));
         } else if (chatSeen.get(id) !== sig && last.some(x => x.querySelector('.think'))) requestAnimationFrame(() => scrollPanelTo(last[0]));
         chatSeen.set(id, sig);
@@ -231,7 +243,9 @@
     el3.hidden = t !== 'twin';
     $('.map-wrap').classList.toggle('twin-on', t === 'twin');
     if (t === 'twin') loadTwin();
-    NX.camwall.show(t === 'map');
+    NX.camwall.show(t === 'map' && !NX.fx.active());
+    // Natija (masalan suv yechimi) 3D da olingan boʻlsa — xaritaga oʻtganda shu joyga uchadi
+    if (t === 'map' && S.twin && S.twin.hz && NX.fx.active()) setTimeout(() => { const pts = []; S.twin.hz.items.forEach(a => { if (a.kind !== 'water' && a.kind !== 'zone' && a.lat != null) pts.push([a.lat, a.lon]); }); if (pts.length) NX.view.fitPoints(pts); }, 200);
     if (t === 'systems' && !S.webcams && NX.ai.available()) camLoad();
     if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
@@ -467,7 +481,7 @@
     NX.map3d.fitTo(pts);
     ensureLeaflet(); NX.view.showActions(H.items);
     // Jonli simulyatsiya xaritada (2D); boshqa belgilar xira — natija birinchi oʻrinda
-    NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter);
+    NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter); fixLegend(H);
     // Zilzila: xarita bir necha soniya silkinadi (simulyatsiya), 3D da kamera titraydi
     if (H.kind === 'quake') { const w = $('.map-wrap'); w.classList.remove('quake-shake'); void w.offsetWidth; w.classList.add('quake-shake'); setTimeout(() => w.classList.remove('quake-shake'), 2600); NX.map3d.shake && NX.map3d.shake(); }
     hazardFocus(true);
@@ -496,21 +510,34 @@
     const fs = NX.ai.detectStreets(q, S.model)[0];
     let os = null; try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(20000).then(() => null)]); } catch (e) { os = null; }
     const areaScope = S.area && (opts.area || /shu\s*(yer|joy|hudud)|bu\s*(yer|joy|hudud)|belgila/i.test(q));
-    const X = await NX.drainfix.solve({ R, D: NX.twin.ground(T.d40), net, name: opts.name || (fs && fs.s.name), poly: areaScope ? S.area.st.poly : null, rainMm: (R.rain && R.rain[0] && R.rain[0].mmh) || 30, drainMm: R.drain, spaces: os && os.spaces });
+    const X = await NX.drainfix.solve({ R, D: NX.twin.ground(T.d40), net, q, name: opts.name || (fs && fs.s.name), poly: areaScope ? S.area.st.poly : null, rainMm: (R.rain && R.rain[0] && R.rain[0].mmh) || 30, drainMm: R.drain, spaces: os && os.spaces });
     if (!X) return null;
+    if (X.notFound) return { kind: 'notfound', X };
     // Suv koʻchada qoladi (muammo koʻrinib tursin), yechim ustidan chiziladi; loyiha sxemasi — javobda
     const H = { kind: 'fix', X, items: NX.hazard.waterItems(R, T.buildings).filter(a => a.kind === 'water').concat(NX.drainfix.items(X)), facts: NX.drainfix.facts(X), svg: NX.drainfix.svg(X) };
     // Shu joyning real suratlari (Mapillary) — AI va chat uchun
     if (NX.mly && NX.mly.available()) { try { const ph = await Promise.race([NX.mly.photos(X.site[0], X.site[1], 90), NX.sleep(10000).then(() => [])]); H.photos = (ph || []).slice(0, 3).map(p => ({ url: p.url, link: NX.mly.link(p.id), date: p.date, d: Math.round(p.d) })); if (H.photos.length) H.facts.real_suratlar = H.photos.map(p => ({ sana: p.date ? new Date(p.date).toISOString().slice(0, 10) : null, masofa_m: p.d })); } catch (e) { /* surat boʻlmasa ham */ } }
+    // Sunʼiy yoʻldosh surati ustida loyiha (javobda)
+    try { const wseg = H.items.filter(a => a.kind === 'water').flatMap(a => a.segs).filter(sg => { const [x, y] = NX.geo.xy(sg.a[0], sg.a[1]), [sx, sy] = NX.geo.xy(X.site[0], X.site[1]); return Math.hypot(x - sx, y - sy) < 2500; }); H.sat = await Promise.race([NX.drainfix.satImage(X, wseg), NX.sleep(15000).then(() => null)]); } catch (e) { H.sat = null; }
     showHazard(H);
     return H;
   }
   function fixAsk(name) {
     if (S.tab !== 'twin') setTab('twin');
-    twinAsk(`${name} ${/koʻcha|ko'cha|yoʻl/i.test(name) ? '' : 'koʻchasida '}suv toʻplanishi muammosini qanday hal qilamiz?`);
+    twinAsk(`${name} ${/koʻcha|ko'cha|yoʻl/i.test(name) ? '' : 'koʻchasida '}suv toʻplanishi muammosini qanday hal qilamiz?`, { name });
+  }
+  // Xaritada izoh: yechimning raqamlari nimani bildiradi
+  function fixLegend(H) {
+    const wrap = $('.map-wrap'); if (!wrap) return;
+    let el = wrap.querySelector('.fix-legend');
+    if (!H || H.kind !== 'fix') { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.className = 'fix-legend'; wrap.appendChild(el); }
+    const st = NX.drainfix.steps(H.X);
+    el.innerHTML = `<b>🛠 ${NX.esc(H.X.name)} — yechim</b>${st.map(x => `<div class="fl-row"><i style="background:${x.col}">${x.n}</i><span><b>${NX.esc(x.nima)}</b><small>${NX.esc(x.qilish)} · ${NX.esc(x.olcham)}</small></span></div>`).join('')}<div class="fl-row"><i class="fl-cells"></i><span><small>moviy kataklar — suv yigʻish havzasi (${H.X.Aha} ga)</small></span></div><div class="fl-row"><i class="fl-ww"></i><span><small>〰 mavjud ariq/kanallar (OSM)</small></span></div><button type="button" class="fl-min" aria-label="Yigʻish">–</button>`;
+    el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
   }
   document.addEventListener('click', e => { const b = e.target.closest('[data-fix-street]'); if (b) { e.preventDefault(); fixAsk(b.dataset.fixStreet); } });
-  function hazardClear() { NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+  function hazardClear() { fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -599,7 +626,12 @@
       if (it.fix && R) {
         // Suv toʻplanadigan joy uchun muhandislik yechimi: havza, oqim, quvur, rezervuar, bosh reja/UNESCO
         try { H = await fixRun(q, R, opts || {}); } catch (e) { console.warn('yechim:', e); }
-        if (H) { extra.suv_yechimi = H.facts; local = NX.drainfix.summary(H.X); delete extra.real_hodisalar_oav; }
+        if (H && H.kind === 'notfound') {
+          // Soʻralgan koʻcha bu ssenariyda suv bosmaydi — boshqa joy koʻrsatilmaydi
+          extra.suv_yechimi = { topilmadi: `“${H.X.asked}” koʻchasida bu yomgʻirda 5 sm dan chuqur suv toʻplanmaydi (model)`, suv_toʻplanadigan_koʻchalar: H.X.suggest };
+          local = `**“${H.X.asked}” koʻchasida bu ssenariyda suv toʻplanmaydi** (2D model, 5 sm dan chuqur emas).\n\nSuv toʻplanadigan koʻchalar: ${H.X.suggest.join(', ')}. Roʻyxatdagi “🛠 Yechim” tugmasini bosing yoki koʻproq yomgʻir (masalan 80 mm) bilan soʻrang.`;
+          H = showHazard({ kind: 'water', items: wItems });
+        } else if (H) { extra.suv_yechimi = H.facts; local = NX.drainfix.summary(H.X); delete extra.real_hodisalar_oav; }
         else H = showHazard({ kind: 'water', items: wItems });
       } else if (it.evac) {
         try { H = await hazardRun('flood', q, W, Object.assign({}, opts, { extraItems: wItems })); } catch (e) { console.warn('xavf xaritasi:', e); }
@@ -618,7 +650,7 @@
       catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
       if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src } })); } catch (e) { /* */ } }
     }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {

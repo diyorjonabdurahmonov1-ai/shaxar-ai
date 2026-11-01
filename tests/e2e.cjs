@@ -165,7 +165,7 @@ async function roadBlock(browser) {
   await p.click('[data-act=road-clear]');
   await p.click('.tabs [data-tab=ai]');
   await p.fill('#chat textarea[name=q]', 'Registon koʻchasida 12 qavatli bino qurish uchun UNESCO ruxsat beradimi?');
-  await p.click('#chat form button');
+  await p.click('#chat form button.primary');
   await p.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length >= 2, null, { timeout: 60000 });
   const pl = await p.evaluate(() => { const m = NX.state.chat.msgs[NX.state.chat.msgs.length - 1]; return { it: NX.intent('Registon koʻchasida 12 qavatli bino qurish uchun UNESCO ruxsat beradimi?').main, hz: (m.hz || []).length, title: m.hz && m.hz[0] && m.hz[0].title, zones: document.querySelectorAll('.leaflet-overlay-pane path.rd-zone').length, labs: document.querySelectorAll('.rd-lab').length, img: !!document.querySelector('.leaflet-image-layer') }; });
   if (process.env.SHOT_PLAN) { await p.click('.tabs [data-tab=map]'); await p.waitForTimeout(1500); await p.screenshot({ path: process.env.SHOT_PLAN }); await p.click('.tabs [data-tab=ai]'); }
@@ -173,7 +173,7 @@ async function roadBlock(browser) {
   // Chatdan “yangi koʻcha” savoli — chizish rejimi ochiladi
   await p.click('.tabs [data-tab=ai]');
   await p.fill('#chat textarea[name=q]', 'Bu yerdan yangi koʻcha ochsak boʻladimi?');
-  await p.click('#chat form button');
+  await p.click('#chat form button.primary');
   await p.waitForSelector('.draw-ov.line', { timeout: 5000 });
   ok('Chatda “yangi koʻcha” savoli — xaritada chizish rejimi ochiladi', await p.evaluate(() => NX.state.roadPendingQ === undefined || !!document.querySelector('.draw-ov.line')));
   await p.keyboard.press('Escape');
@@ -229,7 +229,7 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => NX.state.twin.dyn && NX.state.twin.dyn.label === '10 mm, 1 soatda' && !NX.state.twin.dynBusy, null, { timeout: 180000 });
   ok('Kam yomgʻir — kamroq suvli koʻcha', await page.evaluate(p => NX.state.twin.dyn.peak.km < p, d80.peak));
   await page.fill('#twinChat textarea[name=tq]', '50 mm kuchli yomgʻir yogʻsa qaysi koʻchalarni suv bosadi?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
   const wq = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H && H.kind, water: H ? H.items.filter(a => a.kind === 'water').reduce((t, a) => t + a.segs.length, 0) : 0, pins: H ? H.items.filter(a => a.kind === 'point').map(a => a.id) : [], lines: H ? H.items.filter(a => a.kind === 'line').length : -1, fx: NX.fx.active() }; });
@@ -237,14 +237,14 @@ async function roadBlock(browser) {
   if (process.env.SHOT15) { await page.click('.tabs [data-tab=map]'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT15 }); await page.click('.tabs [data-tab=twin]'); await page.waitForTimeout(800); }
   // Favqulodda vaziyat: zarar zonalari va evakuatsiya yoʻllari koʻcha tarmogʻida hisoblanib, xaritada chiziladi
   await page.fill('#twinChat textarea[name=tq]', '9 ballik zilzila boʻlsa qayer koʻp zarar koʻradi va evakuatsiya uchun qaysi yoʻl xavfsiz?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 4, null, { timeout: 180000 });
   const hz = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, scope: H.scope, I: H.I, z: H.zones.length, r: H.routes.length, pl: H.routes[0] && H.routes[0].path.length, sh: H.shelters.map(s => s.name), f3: NX.map3d.map().getSource('hz')._data.features.length, pins: document.querySelectorAll('.hz-pin').length, list: document.querySelectorAll('#twinChat .hz-list li').length, mode: NX.map3d.mode() }; });
   const fx3 = await page.evaluate(() => ({ fx: NX.fx.active(), op: NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-opacity'), close: getComputedStyle(document.querySelector('.hz-close')).zIndex }));
   ok('3D egizakda ham evakuatsiya yoʻllari va oqim binolar ustida (jonli qatlam 3D kamerada), binolar shaffof', fx3.fx && fx3.op === 0.5 && +fx3.close > 1050, JSON.stringify(fx3));
   ok('Zilzila: xavfli zonalar, butun shahar evakuatsiya rejasi (koʻchalar boʻylab) va yigʻilish joylari xaritada', hz.kind === 'quake' && hz.scope === 'all' && hz.I === 9 && hz.z > 0 && hz.r > 0 && hz.pl > 2 && hz.f3 >= hz.z + hz.r && hz.pins > 0 && hz.list > 0 && hz.mode === 'quake' && hz.sh.some(n => /Sinov/.test(n)), JSON.stringify(hz));
   await page.fill('#twinChat textarea[name=tq]', '50 mm yomgʻirda suv toshsa evakuatsiya uchun eng baland joy qayer?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 6, null, { timeout: 240000 });
   const hf = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, r: H.routes.length, up: H.routes.map(r => r.up), t: H.targets.length, high: H.high.length, f3: NX.map3d.map().getSource('hz')._data.features.length }; });
   ok('Suv toshqini: suvli koʻchadan quruq va baland joyga yoʻl, eng baland joylar xaritada', hf.kind === 'flood' && hf.r > 0 && hf.t > 0 && hf.high > 0 && hf.f3 > 0 && hf.up.every(u => u >= 0), JSON.stringify(hf));
@@ -255,24 +255,24 @@ async function roadBlock(browser) {
   ok('Savollar katalogi (30+ savol): har biri oʻz hisobiga yoʻnaltiriladi; “Nimalarni soʻrash mumkin” roʻyxati chatda', cat.length === 0 && (await page.evaluate(() => NX.QUESTIONS.flatMap(g => g.q).length)) >= 30 && !!(await page.$('#twinChat .ask-help')), JSON.stringify(cat));
   // Har bir mahalla uchun evakuatsiya rejasi: sigʻim boʻyicha taqsimot, vaqt, zaxira yoʻl
   await page.fill('#twinChat textarea[name=tq]', 'Zilzilada har bir mahalla aholisini qaysi yoʻldan qayerga evakuatsiya qilamiz?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 8, null, { timeout: 240000 });
   const hm = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, mh: H.byMahalla, r: H.routes.map(r => ({ from: r.fromName, ppl: r.ppl, min: r.min, tot: r.totalMin, nar: r.narrowM, bk: !!r.backup })), sh: H.shelters.map(x => ({ n: x.name, a: x.assigned, c: x.cap })), facts: !!H.facts.evakuatsiya_rejasi }; });
   ok('Mahallalar boʻyicha evakuatsiya rejasi: odamlar sigʻim boʻyicha taqsimlanadi, chiqib ketish vaqti va eng tor joy hisoblanadi', hm.kind === 'quake' && hm.mh && hm.r.length > 0 && hm.r.some(r => /Sinov mahallasi/.test(r.from)) && hm.r.every(r => r.tot >= r.min && r.nar > 0 && r.ppl > 0) && hm.facts, JSON.stringify(hm));
   // Yongʻin: oʻt oʻchiruvchilar qayerga necha daqiqada yetadi (koʻp manbali Dijkstra)
   await page.fill('#twinChat textarea[name=tq]', 'Yongʻin boʻlsa oʻt oʻchiruvchilar qaysi hududlarga 10 daqiqada yetib bora olmaydi?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 10, null, { timeout: 180000 });
   const fsv = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, svc: H.svc, st: H.stations.length, cover: H.cover, route: H.route && H.route.min, pins: document.querySelectorAll('.hz-pin').length }; });
   ok('Yongʻin xizmati: stansiyalar, meʼyorda (10 daq.) yetiladigan foiz, uzoq hududlar va yoʻl xaritada', fsv.kind === 'svc' && fsv.svc === 'fire' && fsv.st === 1 && fsv.cover != null && fsv.pins > 0, JSON.stringify(fsv));
   // Zilzila: faqat zarar soʻralsa — yoʻl chizilmaydi; “qaysi koʻchalardan oʻtib boʻlmaydi” — toʻsiladigan koʻchalar
   await page.fill('#twinChat textarea[name=tq]', 'Seysmik xavf boʻyicha eng zaif binolar qayerda?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 12, null, { timeout: 180000 });
   const qd = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, zones: H.items.filter(a => a.kind === 'zone').length, routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
   ok('Zilzila “qayer zaif” — faqat xavfli hududlar (yoʻllar chizilmaydi)', qd.kind === 'quake' && qd.zones > 0 && qd.routes === 0, JSON.stringify(qd));
   await page.fill('#twinChat textarea[name=tq]', 'Zilziladan keyin qutqaruvchilar qaysi koʻchalardan oʻta olmaydi?');
-  await page.click('#twinChat form button');
+  await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 14, null, { timeout: 180000 });
   const qb = await page.evaluate(() => { const H = NX.state.twin.hz; return { show: H.show, facts: Array.isArray(H.facts.vayronadan_toʻsilishi_mumkin_koʻchalar), routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
   ok('Zilzila “qaysi koʻchalardan oʻtib boʻlmaydi” — vayronadan toʻsiladigan koʻchalar hisobi', qb.show.blocked && qb.facts && qb.routes === 0, JSON.stringify(qb));
@@ -281,12 +281,12 @@ async function roadBlock(browser) {
   await page.evaluate(() => { const T = NX.state.twin; T.dynFrame = T.dyn.frames.indexOf(T.dyn.peak); });
   await page.click('[data-act=flood-fix] >> nth=0');
   await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nFix, { timeout: 240000 });
-  const fx = await page.evaluate(() => { const H = NX.state.twin.hz; return H && { kind: H.kind, basin: (H.items.find(a => a.id === 'HAVZA') || { cells: [] }).cells.length, ha: H.facts.sabab.havza_ga, q: H.facts.sabab.eng_yuqori_oqim_m3s, opts: H.facts.variantlar.map(o => o.id), best: H.facts.tavsiya, outlet: typeof H.facts.chiqish_joyi === 'object', inlets: H.items.filter(a => /^Q\d/.test(a.id)).length, text: /Variantlar|Tavsiya/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text) }; });
-  ok('Suv muammosi yechimi: havza (ga), oqim (m³/s), A/B/C/D variantlar, chiqish joyi, quduqlar — xaritada va javobda', fx && fx.kind === 'fix' && fx.basin > 0 && fx.ha > 0 && fx.q > 0 && fx.opts.length >= 2 && fx.best.length >= 1 && fx.inlets >= 1 && fx.text, JSON.stringify(fx));
+  const fx = await page.evaluate(() => { const H = NX.state.twin.hz; return H && { kind: H.kind, basin: (H.items.find(a => a.id === 'HAVZA') || { cells: [] }).cells.length, ha: H.facts.sabab.havza_ga, q: H.facts.sabab.eng_yuqori_oqim_m3s, opts: H.facts.variantlar.map(o => o.id), best: H.facts.tavsiya, outlet: typeof H.facts.chiqish_joyi === 'object', inlets: H.items.filter(a => /^Q\d/.test(a.id)).length, text: /Nima qilish kerak/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text), legend: !!document.querySelector('.fix-legend') }; });
+  ok('Suv muammosi yechimi: havza (ga), oqim (m³/s), A/B/C/D variantlar, chiqish joyi, quduqlar — xaritada va javobda', fx && fx.kind === 'fix' && fx.basin > 0 && fx.ha > 0 && fx.q > 0 && fx.opts.length >= 2 && fx.best.length >= 1 && fx.inlets >= 1 && fx.text && fx.legend, JSON.stringify(fx));
   // AI yordamchi (asosiy chat) ham shu hisobga ulanadi — javob 2D xaritada
   await page.click('.tabs [data-tab=ai]');
   await page.fill('#chat textarea[name=q]', 'Suv toshsa odamlarni qaysi yoʻldan baland joyga olib chiqamiz?');
-  await page.click('#chat form button');
+  await page.click('#chat form button.primary');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length >= 2 && NX.state.chat.msgs[NX.state.chat.msgs.length - 1].role === 'ai', null, { timeout: 240000 });
   const mc = await page.evaluate(() => { const m = NX.state.chat.msgs[NX.state.chat.msgs.length - 1]; return { hz: m.hz ? m.hz.length : 0, list: document.querySelectorAll('#chat .hz-list li').length, ann: document.querySelectorAll('.leaflet-marker-icon.ann').length, kind: NX.state.twin.hz.kind }; });
   ok('AI yordamchi chatida ham: favqulodda savol hisoblanadi, yoʻllar 2D xaritada va roʻyxatda', mc.hz > 0 && mc.list > 0 && mc.ann > 0 && mc.kind === 'flood', JSON.stringify(mc));
@@ -366,7 +366,7 @@ async function roadBlock(browser) {
   ok('“AI yordamchi” boʻlimi va kirish tugmasi', await page.evaluate(() => NX.state.tab === 'ai'));
   await page.evaluate(() => NX.view.clearDeltas());
   await page.fill('#chat textarea[name=q]', 'Registon koʻchasini yopsak nima boʻladi?');
-  await page.click('#chat form button');
+  await page.click('#chat form button.primary');
   await page.waitForSelector('#chat .chat-sim', { timeout: 60000 });
   ok('Chat: “yopsak” → hisob, natija xaritada qizil/yashil', await page.evaluate(() => NX.state.sim.last.type === 'close' && NX.map.hasDeltas()) && /AI ishlamadi/.test(await page.textContent('#chat .ai-src')));
   ok('Chat: taʼsirlangan koʻchalar tugma sifatida', (await page.$$('#chat .chat-sim [data-act=chat-street]')).length > 0);
@@ -374,7 +374,7 @@ async function roadBlock(browser) {
   await clickStreet(page, 'Dagbitskiy koʻchasi');
   await page.waitForFunction(() => /Dagbitskiy/.test(document.querySelector('#chat .chat-ctx').textContent), null, { timeout: 5000 });
   ok('Chat: xaritada bosilgan koʻcha “Tanlangan” boʻladi', await page.evaluate(() => NX.state.tab === 'ai'));
-  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button');
+  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button.primary');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
   ok('Chat: tanlangan koʻcha uchun tayyor savol (yopish)', await page.evaluate(() => /Dagbitskiy/.test(NX.state.sim.last.label) && NX.state.sim.last.type === 'close'));
   // Koʻchaning bir qismini tanlash: ikki nuqta → faqat shu qism tahlil qilinadi
@@ -398,7 +398,7 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => NX.state.segment, null, { timeout: 5000 });
   const segN = await page.evaluate(() => NX.state.segment.pieces.length);
   ok('Qism tanlandi: koʻchaning faqat bir boʻlagi', segN > 0 && segN < segPts.total && (await page.isVisible('#chat .seg-bar.on')) && (await page.evaluate(() => NX.state.tab)) === 'ai', `${segN}/${segPts.total}`);
-  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button');
+  await page.evaluate(() => { const s = NX.state.model.streets[NX.state.chatStreet]; document.querySelector('#chat textarea[name=q]').value = NX.state.segment && NX.state.segment.street === s.id ? 'Shu qismini yopsak nima boʻladi?' : s.name + 'ni yopsak nima boʻladi?'; }); await page.click('#chat form button.primary');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 6, null, { timeout: 60000 });
   ok('Simulyatsiya faqat tanlangan qism uchun', await page.evaluate(() => NX.state.sim.last.type === 'close' && /→/.test(NX.state.sim.last.label) && / m\)|km\)/.test(NX.state.sim.last.label) && NX.map.hasDeltas()), await page.evaluate(() => NX.state.sim.last.label));
   await page.click('#chat [data-act=seg-clear]');
@@ -477,7 +477,7 @@ async function roadBlock(browser) {
   await page.click('.tabs [data-tab=ai]');
   await page.click('#chat [data-act=chat-reset]');
   await page.fill('#chat textarea[name=q]', 'Dagbitskiy koʻchasini bir tomonlama qilsak nima boʻladi?');
-  await page.click('#chat form button');
+  await page.click('#chat form button.primary');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 90000 });
   const aiTxt = await page.textContent('#chat .chat-msg.ai .ai-text');
   const body = ctx.openaiBodies[ctx.openaiBodies.length - 1];
@@ -486,7 +486,7 @@ async function roadBlock(browser) {
   ok('AI javobi koʻrsatiladi (ogohlantirishsiz)', /Hozirgi holat/.test(aiTxt) && !(await page.$('#chat .ai-src')));
   // Umumiy savol (koʻcha va stsenariysiz): AI ga real holat beriladi
   await page.fill('#chat textarea[name=q]', 'Hozir qaysi koʻchalar tirband va ob-havo qanday?');
-  await page.click('#chat form button');
+  await page.click('#chat form button.primary');
   await page.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 4, null, { timeout: 60000 });
   const gen = ctx.openaiBodies[ctx.openaiBodies.length - 1];
   const genMsg = gen.messages[gen.messages.length - 1].content;
@@ -591,7 +591,7 @@ async function roadBlock(browser) {
   await p5.waitForSelector('#panel .live', { timeout: 20000 });
   await p5.click('.tabs [data-tab=ai]');
   await p5.fill('#chat textarea', 'Registon koʻchasini yopsak nima boʻladi?');
-  await p5.click('#chat form button');
+  await p5.click('#chat form button.primary');
   await p5.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 60000 });
   const aiTxt5 = await p5.textContent('#chat .chat-msg.ai .ai-text');
   ok('AI proksi orqali javob (brauzerda kalit yoʻq)', /Proksi javobi/.test(aiTxt5) && proxyReqs.length > 0 && proxyReqs.every(r => !r.auth) && ctx5.openaiBodies.length === 0, `soʻrovlar: ${proxyReqs.length}, model: ${proxyReqs[0] && proxyReqs[0].body.model}`);
@@ -812,7 +812,7 @@ async function roadBlock(browser) {
   await p8.click('.tabs [data-tab=ai]');
   const srch0 = px.search, chat0 = px.chat.length;
   await p8.fill('#chat textarea[name=q]', 'Registon koʻchasida doim tirbandlik, nima qilsak boʻladi? Soatbay bir tomonlama qilsak-chi?');
-  await p8.click('#chat form button');
+  await p8.click('#chat form button.primary');
   await p8.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.some(m => m.role === 'ai'), null, { timeout: 120000 });
   const deepReq = px.chat.slice(chat0).find(b => /bosh tahlilchisan/.test(b.messages[0].content));
   const deepFacts = deepReq && JSON.parse(deepReq.messages[deepReq.messages.length - 1].content.split('(JSON):\n')[1]);
@@ -821,7 +821,7 @@ async function roadBlock(browser) {
   await p8.click('.tabs [data-tab=map]');
   await p8.evaluate(c => { const poly = [[c[0] - 0.002, c[1] - 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] + 0.002, c[1] - 0.002]]; const st = NX.area.stats(NX.state.model, poly); st.systems = []; const A0 = {}; Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; }); NX.state.area = { st, spec: { flats: 500, floors: 9 }, A: A0, res: null, busy: null, qa: [], qaBusy: null }; }, await p8.evaluate(() => NX.state.model.streets.find(x => x.name === 'Registon koʻchasi').center));
   await p8.click('.tabs [data-tab=map]');
-  await p8.fill('#areaChat textarea[name=aq]', 'Bu yerda doim tirbandlik — nima qilsak boʻladi?'); await p8.click('#areaChat form button');
+  await p8.fill('#areaChat textarea[name=aq]', 'Bu yerda doim tirbandlik — nima qilsak boʻladi?'); await p8.click('#areaChat form button.primary');
   await p8.waitForFunction(() => NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 120000 });
   const nOpt = (await p8.$$('#areaChat .dopt[data-act=area-opt]')).length;
   await p8.click('#areaChat .dopt[data-act=area-opt] >> nth=1');
@@ -894,7 +894,7 @@ async function roadBlock(browser) {
   if (process.env.SHOT11) await p8.screenshot({ path: process.env.SHOT11 });
   const img0 = px.image.length;
   await p8.fill('#twinChat textarea[name=tq]', 'Shu koʻrinishda 50 mm yomgʻir yogʻsa qanday boʻlishini rasmini chiz');
-  await p8.click('#twinChat form button');
+  await p8.click('#twinChat form button.primary');
   await p8.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length >= 2, null, { timeout: 240000 }).catch(async e => { console.log('DBG', await p8.evaluate(() => JSON.stringify({ c: NX.state.twinChat, open: !!document.querySelector('dialog[open]'), dlg: [...document.querySelectorAll('dialog[open]')].map(d => d.id) }))); throw e; });
   const im = px.image.slice(img0)[0];
   ok('3D egizak chati: “rasm chiz” — 3D koʻrinish asosida AI rasm chatda', im && /^data:image\/png/.test(im.plan || '') && !!(await p8.$('#twinChat .vgen img')), im ? 'prompt: ' + String(im.prompt).slice(0, 60) : 'soʻrov yoʻq');
@@ -923,7 +923,7 @@ async function roadBlock(browser) {
   const st9 = await p9.evaluate(() => ({ ha: NX.state.area.st.areaHa, streets: NX.state.area.st.streets.length, probs: NX.state.area.st.problems.length }));
   ok('Sichqoncha bilan erkin chizilgan hudud tahlil qilinadi', st9.ha > 1 && st9.streets > 0 && /Belgilangan hudud/.test(await p9.textContent('#panel h2')) && !(await p9.$('.draw-ov')), JSON.stringify(st9));
   ok('Hudud panelida AI tahlil asosiy (alohida “Taxmin” boʻlimi yoʻq)', (await p9.isVisible('#areaChat textarea')) && !(await p9.$('#areaBuild')));
-  await p9.fill('#areaChat textarea[name=aq]', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'); await p9.click('#areaChat form button');
+  await p9.fill('#areaChat textarea[name=aq]', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'); await p9.click('#areaChat form button.primary');
   await p9.waitForFunction(() => NX.state.area.res && !NX.state.area.busy && NX.state.area.qa.length === 2 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const r9 = await p9.evaluate(() => ({ res: NX.state.area.res.b.residents, trips: NX.state.area.res.sim.build && NX.state.area.res.sim.build.trips, deltas: NX.map.hasDeltas() }));
   ok('500 xonadon: aholi, mashinalar, yuklama xaritada', r9.res === 2000 && r9.trips === 150 && r9.deltas, JSON.stringify(r9));
@@ -947,7 +947,7 @@ async function roadBlock(browser) {
   ok('Bino safarlari mahalla koʻchalariga ham tarqaladi (bir nechta chiqish)', await p9.evaluate(() => NX.state.area.res.sim.deltas.length / 2 >= 6), await p9.evaluate(() => String(NX.state.area.res.sim.deltas.length / 2)));
   if (process.env.SHOT2) { await p9.evaluate(() => document.querySelector('#areaChat').scrollIntoView()); await p9.screenshot({ path: process.env.SHOT2 }); }
   // “Nima qursam foydali?” — dom hisobi emas: xizmatlar qamrovi meʼyorga nisbatan, xaritada
-  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerga nima qursam foydali boʻladi?'); await p9.click('#areaChat form button');
+  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerga nima qursam foydali boʻladi?'); await p9.click('#areaChat form button.primary');
   await p9.waitForFunction(() => NX.state.area.qa.length === 4 && !NX.state.area.qaBusy, null, { timeout: 90000 });
   const nd = await p9.evaluate(() => { const A = NX.state.area; return { n: A.needs && A.needs.list.length, pop: A.needs && A.needs.aholi, school: A.needs && A.needs.list.find(x => x.k === 'school').eng_yaqini, flats: A.spec.flats, acts: A.qa[3].actions.map(a => a.title) }; });
   ok('“Nima qursam foydali”: yetishmaydigan xizmatlar (meʼyoriy radius, qamrov), dom hisobi qayta qilinmaydi, xaritada', nd.n === 9 && nd.pop > 0 && nd.school && nd.school.nomi === 'Sinov maktabi' && nd.flats === 500 && nd.acts.length > 0 && !nd.acts.some(t => /🏢/.test(t)), JSON.stringify(nd));
@@ -980,7 +980,7 @@ async function roadBlock(browser) {
   await p9.click('[data-act=plan-show]'); await p9.waitForTimeout(800);
   ok('Muhofaza zonalari xaritada', await p9.evaluate(() => Object.values(NX.map.leaflet()._layers).some(l => l.feature && l.feature.properties && l.feature.properties.zona === 'muhofaza')));
   // Hudud chatida favqulodda savol — FAQAT shu hudud uchun reja (shahar boʻyicha tayyor javob emas), jonli simulyatsiya xaritada
-  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerdagi odamlarni zilzila vaqtida qayerga evakuatsiya qilsa boʻladi?'); await p9.click('#areaChat form button');
+  await p9.fill('#areaChat textarea[name=aq]', 'Shu yerdagi odamlarni zilzila vaqtida qayerga evakuatsiya qilsa boʻladi?'); await p9.click('#areaChat form button.primary');
   await p9.waitForFunction(() => NX.state.area.qa.length === 6 && !NX.state.area.qaBusy, null, { timeout: 240000 });
   const arq = await p9.evaluate(() => { const H = NX.state.twin.hz, A = NX.state.area; return { scope: H.scope, zones: H.zones.length, cells: H.zones[0].cells.length, inside: H.zones[0].cells.every(c => NX.area.inside(A.st.poly, c[0], c[1])), routes: H.routes.map(r => r.from), facts: H.facts.savol_doirasi, fx: NX.fx.active(), close: !!document.querySelector('.hz-close'), cap: H.shelters.every(x => x.cap > 0), acts: A.qa[5].actions.length }; });
   ok('Hudud chatida zilzila: faqat shu hudud (uy guruhlari → yigʻilish joylari), xavfli joy — hudud ichidagi binolar shaklida, jonli simulyatsiya', arq.scope === 'area' && arq.zones === 1 && arq.cells > 0 && arq.inside && arq.routes.length > 0 && arq.routes.every(f => /^A\d/.test(f)) && /FAQAT/.test(arq.facts) && arq.fx && arq.close && arq.cap && arq.acts > 0 && /Evakuatsiya rejasi/.test(await p9.evaluate(() => NX.state.area.qa[5].text)), JSON.stringify(arq));
@@ -989,7 +989,7 @@ async function roadBlock(browser) {
   ok('“Natijani yopish” — simulyatsiya va belgilar olib tashlanadi', await p9.evaluate(() => !NX.fx.active() && !document.querySelector('.hz-close')));
   await p9.click('.tabs [data-tab=ai]');
   await p9.fill('#chat textarea[name=q]', 'Bu hududga 300 xonadonli 12 qavatli dom qursak nima boʻladi?');
-  await p9.click('#chat form button');
+  await p9.click('#chat form button.primary');
   await p9.waitForFunction(() => !NX.state.chat.busy && NX.state.chat.msgs.length === 2, null, { timeout: 90000 });
   ok('AI yordamchi chatida ham hudud va qurilish tahlili', await p9.evaluate(() => NX.state.area.spec.flats === 300 && NX.state.area.spec.floors === 12 && NX.state.area.res.b.residents === 1200));
   await p9.click('.tabs [data-tab=map]');
@@ -1013,7 +1013,7 @@ async function roadBlock(browser) {
   await p10.click('.tabs [data-tab=twin]');
   const t10 = Date.now();
   await p10.fill('#twinChat textarea[name=tq]', '30 mm yomgʻir yogʻsa qayerni suv bosadi?');
-  await p10.click('#twinChat form button');
+  await p10.click('#twinChat form button.primary');
   await p10.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 150000 });
   const dt10 = Math.round((Date.now() - t10) / 1000);
   ok('Koʻchalar serveri javob bermasa ham chat ~1 daqiqada javob beradi; markaz koʻchalari darhol ishlatiladi', dt10 < 110 && (await p10.evaluate(() => NX.state.twin.roads && NX.state.twin.roads.length > 0 && String(NX.state.twin.roads[0].id)[0] === 'm')), dt10 + ' s');
