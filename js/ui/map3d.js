@@ -58,8 +58,10 @@
   // Balandlik: sunʼiy yoʻldoshda — iliq qum/tosh tuslari; “Raqamli egizak”da — balandlik oshgani sari yorugʻroq zumrad-moviy (suv rangi emas)
   const H_SAT = ['interpolate', ['linear'], ['get', 'lv'], 1, '#f3ead9', 2, '#e6d5bb', 4, '#cdb594', 6, '#a8927a', 9, '#7c6f66', 14, '#5b524d'];
   const H_TWIN = ['interpolate', ['linear'], ['get', 'lv'], 1, '#1f3b4d', 2, '#24566a', 4, '#1f7f86', 6, '#22a39a', 9, '#5eead4', 14, '#ccfbf1'];
+  // Sunʼiy yoʻldosh fonida past uylar bir xil “kubik” boʻlmasin — devor tuslari biroz farqli (faqat koʻrinish uchun, maʼlumot emas)
+  const H_SAT_V = ['case', ['<=', ['get', 'lv'], 2], ['match', ['%', ['get', 'id'], 5], 0, '#efe5d2', 1, '#e6d9c0', 2, '#f4eee3', 3, '#dccdb1', '#e9dfcc'], H_SAT];
   function colorExpr() {
-    const hgt = base === 'twin' ? H_TWIN : H_SAT;
+    const hgt = base === 'twin' ? H_TWIN : H_SAT_V;
     if (mode === 'solar') return ['interpolate', ['linear'], ['get', 'kwh'], 0, '#e5e7eb', 3000, '#fde68a', 8000, '#fcd34d', 20000, '#f59e0b', 50000, '#b45309'];
     if (mode === 'flood') return ['case', ['boolean', ['feature-state', 'wet'], false], '#60a5fa', base === 'twin' ? '#334155' : '#e2e8f0'];
     if (mode === 'plan') return ['case', ['boolean', ['feature-state', 'shade'], false], '#475569', hgt];
@@ -279,7 +281,7 @@
         // Tomlar — derazali devorlar ustida balandlik rangidagi yupqa qatlam
         map.addLayer({ id: 'bld-roof', type: 'fill-extrusion', source: 'bld', layout: { visibility: 'none' }, paint: { 'fill-extrusion-color': ['case', ['==', ['get', 'lm'], 1], '#fde68a', H_TWIN], 'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['get', 'h']], 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['+', ['get', 'h'], 0.6]], 'fill-extrusion-opacity': 0.92 } });
         // Bino konturlari yerda yupqa nur — “gologramma” koʻrinishi (yaqinlashganda)
-        map.addLayer({ id: 'bld-foot', type: 'line', source: 'bld', minzoom: 15, layout: { visibility: base === 'twin' ? 'visible' : 'none' }, paint: { 'line-color': ['case', ['==', ['get', 'lm'], 1], '#fde68a', '#22d3ee'], 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16.5, 0.35], 'line-width': 1, 'line-blur': 0.6 } });
+        map.addLayer({ id: 'bld-foot', type: 'line', source: 'bld', minzoom: 15, paint: { 'line-color': base === 'twin' ? ['case', ['==', ['get', 'lm'], 1], '#fde68a', '#22d3ee'] : '#3f3428', 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16.5, 0.35], 'line-width': 1, 'line-blur': 0.6 } });
         addWindows(); applyWindows();
         try { map.setLight({ anchor: 'map', color: '#ffffff', intensity: 0.45, position: [1.3, 210, 35] }); } catch (e) { /* */ }
         sky();
@@ -458,7 +460,9 @@
     base = k; try { localStorage.setItem('m3d:base', k); } catch (e) { /* */ }
     if (!map) return;
     applyBase();
-    ['roads-glow', 'roads-core', 'bld-foot'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', k === 'twin' ? 'visible' : 'none'));
+    ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', k === 'twin' ? 'visible' : 'none'));
+    // Bino konturlari: egizakda nur, sunʼiy yoʻldosh/xaritada — toʻq chiziq (uylar bir-biridan ajralib koʻrinadi)
+    if (map.getLayer('bld-foot')) map.setPaintProperty('bld-foot', 'line-color', k === 'twin' ? ['case', ['==', ['get', 'lm'], 1], '#fde68a', '#22d3ee'] : '#3f3428');
     sky(); refresh();
   }
   function flyTo(lat, lon, z) { if (map) map.flyTo({ center: [lon, lat], zoom: z || 17, pitch: 60, duration: 900 }); }
