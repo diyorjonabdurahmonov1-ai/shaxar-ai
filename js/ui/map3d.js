@@ -228,7 +228,8 @@
       const el = document.createElement('div');
       el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
       const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
-      if (window.maplibregl.Popup) m.setPopup(new window.maplibregl.Popup({ maxWidth: '260px' }).setHTML(`<div class="ppop"><b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p></div>`));
+      // Toʻliq popup: izoh, koʻcha nomi, shu nuqtaning real surati (Mapillary) va Yandex panorama — 2D dagi bilan bir xil
+      if (window.maplibregl.Popup) m.setPopup(new window.maplibregl.Popup({ maxWidth: '320px' }).setHTML(NX.place ? NX.place.html(a) : `<div class="ppop"><b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p></div>`));
       m.addTo(map); hzMarks.push(m);
     });
   }

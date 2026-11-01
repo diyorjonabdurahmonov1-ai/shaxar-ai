@@ -45,6 +45,15 @@
     return null;
   }
 
+  // Yirik koʻchalar (magistral–3-darajali) tugunlari: koordinata → koʻcha nomlari (bir marta hisoblanadi)
+  const jCache = new WeakMap();
+  function junctions(roads) {
+    if (jCache.has(roads)) return jCache.get(roads);
+    const m = new Map();
+    roads.forEach(w => { if (!MAIN.test(w.hw || '') || !w.ll) return; const nm = coreName(w.name) || ('#' + w.id); w.ll.forEach(p => { const k = p[0].toFixed(5) + ',' + p[1].toFixed(5); let v = m.get(k); if (!v) m.set(k, (v = new Set())); v.add(nm); }); });
+    jCache.set(roads, m);
+    return m;
+  }
   // ---------- Geometriya ----------
   const xy = p => G.xy(p[0], p[1]);
   function grid(lines, cell) {
@@ -92,6 +101,13 @@
     if (osm) osm.filter(x => x.type === 'node' && (x.t.highway === 'crossing' || x.t.crossing)).forEach(x => crossPts.push({ c: x.c, src: 'OSM', sig: x.t.crossing === 'traffic_signals', kerb: x.t.kerb, tact: x.t.tactile_paving }));
     ((o.M && o.M.crossings) || []).forEach(x => { const c = [x.lat, x.lon]; if (inBB(c)) crossPts.push({ c, src: 'model' }); });
     const onStreet = p => { const [x, y] = xy(p); let best = null; S0.list.forEach(q => { const [qx, qy] = xy(q.p), d = Math.hypot(qx - x, qy - y); if (d < 25 && (!best || d < best.d)) best = { d, s: q.s, q }; }); return best; };
+    // Svetoforlar (OSM tugunlari va sayt modeli) — svetoforli joyda piyoda oʻtishi bor deb hisoblanadi
+    if (osm) osm.filter(x => x.t.highway === 'traffic_signals').forEach(x => crossPts.push({ c: x.c, src: 'svetofor', sig: true }));
+    ((o.M && o.M.signals) || []).forEach(x => { const c = [x.lat, x.lon]; if (inBB(c)) crossPts.push({ c, src: 'svetofor', sig: true }); });
+    // Yirik koʻchalar kesishgan chorrahalar — odamlar shu yerda kesib oʻtadi (oʻtish imkoniyati sifatida hisoblanadi, yangi taklif qoʻyilmaydi)
+    const J = junctions(o.roads || ways), myCore = coreName(name);
+    ways.forEach(w => w.ll.forEach(p => { if (!inBB(p)) return; const v = J.get(p[0].toFixed(5) + ',' + p[1].toFixed(5)); if (v && [...v].some(nm => nm !== myCore)) crossPts.push({ c: p, src: 'chorraha', junc: true }); }));
+    (o.extraCross || []).forEach(c => crossPts.push(c));
     const cr = []; crossPts.forEach(c => { const h = onStreet(c.c); if (h && !cr.some(x => Math.abs(x.s - h.s) < 25)) cr.push(Object.assign({}, c, { s: h.s })); });
     cr.sort((a, b) => a.s - b.s);
     const gaps = []; let prev = 0; cr.concat([{ s: S0.L, end: true }]).forEach(c => { gaps.push({ from: prev, to: c.s, len: c.s - prev }); prev = c.s; });
@@ -127,7 +143,9 @@
     const at = sv => { let best = S0.list[0]; S0.list.forEach(q => { if (Math.abs(q.s - sv) < Math.abs(best.s - sv)) best = q; }); return best.p; };
     const proposals = [];
     poiNoCross.slice(0, 6).forEach(p => proposals.push({ s: p.s, p: p.p, why: `${p.kind}${p.name ? ' “' + p.name + '”' : ''} oldida oʻtish joyi yoʻq` }));
+    // Mavjud oʻtish joyi / svetofor / chorrahadan 120 m ichida yangi oʻtish joyi taklif qilinmaydi
     if (main) gaps.filter(g => g.len > 300).forEach(g => { const k = Math.floor(g.len / 300); for (let j = 1; j <= k && proposals.length < 10; j++) { const sv = g.from + g.len * j / (k + 1); if (!proposals.some(x => Math.abs(x.s - sv) < 120)) proposals.push({ s: sv, p: at(sv), why: `${Math.round(g.len)} m oraliqda oʻtish joyi yoʻq (meʼyor ≤ 300 m)` }); } });
+    for (let i = proposals.length - 1; i >= 0; i--) if (cr.some(c => Math.abs(c.s - proposals[i].s) < 120)) proposals.splice(i, 1);
     proposals.sort((a, b) => a.s - b.s);
     // Ballar (0–100); maʼlumot yoʻq boʻlsa — jarima yarmi, “?” bilan
     const pct = (a, b) => (b ? a / b : 0);
@@ -141,7 +159,7 @@
     const issues = [], fixes = [];
     if (unpaved > 30) { issues.push({ cat: 'car', t: `${F(unpaved)} m qoplamasiz` }); fixes.push({ cat: 'car', t: `${F(unpaved)} m asfalt qoplash`, q: Math.round(unpaved) }); }
     if (poiUniq.some(p => /maktab|bogʻcha/.test(p.kind)) && speed > 40) { issues.push({ cat: 'car', t: `maktab/bogʻcha yonida tezlik ${speed} km/soat` }); fixes.push({ cat: 'car', t: 'maktab yonida 30–40 km/soat cheklov, “Bolalar” belgisi va sunʼiy notekislik' }); }
-    if (proposals.length) { issues.push({ cat: 'ped', t: `${proposals.length} joyda oʻtish joyi yetishmaydi` }); fixes.push({ cat: 'ped', t: `${proposals.length} ta yangi piyoda oʻtish joyi (zebra + pastlatilgan bordyur + taktil plitka)${main ? ', asosiy koʻchada — svetofor yoki orol bilan' : ''}` }); }
+    if (proposals.length) { issues.push({ cat: 'ped', t: `${proposals.length} joyda oʻtish joyi yetishmasligi mumkin (ochiq xarita boʻyicha)` }); fixes.push({ cat: 'ped', t: `${proposals.length} ta yangi piyoda oʻtish joyi (zebra + pastlatilgan bordyur + taktil plitka)${main ? ', asosiy koʻchada — svetofor yoki orol bilan' : ''}` }); }
     if (swNo) { issues.push({ cat: 'ped', t: `OSM boʻyicha ${swNo} ta qismda trotuar yoʻq` }); fixes.push({ cat: 'ped', t: 'trotuar qurish (kenglik ≥ 2 m, tekis, toʻsiqsiz)' }); }
     else if (swCov < 20 && !swYes) issues.push({ cat: 'ped', t: 'trotuar haqida ochiq maʼlumot yoʻq — suratlar boʻyicha tekshiriladi' });
     if (steep5) { issues.push({ cat: 'acc', t: `${F(steep5 * 20)} m qismda qiyalik 5% dan katta (eng koʻpi ~${maxSlope.toFixed(1)}%)` }); fixes.push({ cat: 'acc', t: `qiya qismlarda har 30 m da dam olish maydonchasi, tutqichlar; ${steep8 ? '8% dan qiya joylarda muqobil yoʻl yoki lift/pandus' : 'pandus qiyaligi ≤ 5%'}` }); }
@@ -170,6 +188,25 @@
     return { det, photos };
   }
 
+  // Taklif qilingan har bir yangi oʻtish joyini real suratlar bilan tekshirish: 60 m ichida Mapillary zebra yoki svetofor
+  // aniqlagan boʻlsa — taklif olib tashlanadi (u yerda allaqachon bor). A.proposals oʻzgaradi, olib tashlanganlar A.dropped da
+  async function verifyProposals(A) {
+    if (!(NX.mly && NX.mly.available()) || !A.proposals.length) return A;
+    const keep = [], dropped = [];
+    for (const p of A.proposals) {
+      let ft = [];
+      try { ft = await Promise.race([NX.mly.features(p.p[0], p.p[1], 60), NX.sleep(8000).then(() => [])]); } catch (e) { ft = []; }
+      const hit = (ft || []).find(f => /crosswalk|pedestrians-crossing|traffic-light/.test(f.v || '') && f.d <= 60);
+      if (hit) dropped.push(Object.assign({}, p, { why2: /traffic-light/.test(hit.v) ? 'suratlarda svetofor bor' : 'suratlarda zebra bor', d: Math.round(hit.d) }));
+      else keep.push(p);
+    }
+    A.proposals = keep; A.dropped = dropped;
+    if (dropped.length) {
+      A.issues = A.issues.map(x => (/oʻtish joyi yetishmasligi/.test(x.t) ? (keep.length ? Object.assign({}, x, { t: `${keep.length} joyda oʻtish joyi yetishmasligi mumkin (ochiq xarita boʻyicha)` }) : null) : x)).filter(Boolean);
+      A.fixes = A.fixes.map(x => (/yangi piyoda oʻtish joyi/.test(x.t) ? (keep.length ? Object.assign({}, x, { t: x.t.replace(/^\d+/, keep.length) }) : null) : x)).filter(Boolean);
+    }
+    return A;
+  }
   // ---------- Xarita ----------
   function items(A) {
     const out = [];
@@ -177,8 +214,8 @@
     const col = A.scores.ped >= 70 && A.scores.acc >= 70 ? '#22c55e' : A.scores.ped >= 45 ? '#facc15' : '#f97316';
     A.ways.forEach((w, i) => out.push({ kind: 'line', style: 'seg', id: 'K' + i, path: w.ll, lat: w.ll[0][0], lon: w.ll[0][1], color: col, list: false, title: `🛣 ${A.name}`, note: '' }));
     A.steepSegs.forEach((x, i) => out.push({ kind: 'line', style: 'seg', id: 'Q' + i, path: x.seg, lat: x.seg[0][0], lon: x.seg[0][1], color: x.sl > 8 ? '#ef4444' : '#fb923c', list: false, title: `♿ Qiyalik ~${x.sl.toFixed(1)}%`, note: x.sl > 8 ? 'aravacha uchun juda qiyin' : 'aravacha uchun qiyin (> 5%)' }));
-    A.crossings.forEach((c, i) => out.push({ kind: 'point', id: 'O' + (i + 1), lat: c.c[0], lon: c.c[1], color: c.kerb && /lowered|flush/.test(c.kerb) ? '#22c55e' : '#e2e8f0', list: false, title: `🚸 Mavjud oʻtish joyi${c.sig ? ' (svetofor)' : ''}`, note: c.kerb ? `bordyur: ${c.kerb}` : 'bordyur haqida maʼlumot yoʻq' }));
-    A.proposals.forEach((p, i) => out.push({ kind: 'point', id: 'P' + (i + 1), lat: p.p[0], lon: p.p[1], color: '#a855f7', title: `➕ P${i + 1}: yangi oʻtish joyi`, note: `${p.why}. Zebra + pastlatilgan bordyur + taktil plitka${A.main ? ' + svetofor/orol' : ''}.` }));
+    A.crossings.forEach((c, i) => out.push({ kind: 'point', id: 'O' + (i + 1), lat: c.c[0], lon: c.c[1], color: c.kerb && /lowered|flush/.test(c.kerb) ? '#22c55e' : '#e2e8f0', list: false, title: c.junc ? '🔀 Yirik chorraha (oʻtish imkoniyati)' : `🚸 Mavjud oʻtish joyi${c.sig ? ' (svetofor)' : ''}`, note: c.kerb ? `bordyur: ${c.kerb}` : 'bordyur haqida maʼlumot yoʻq' }));
+    A.proposals.forEach((p, i) => out.push({ kind: 'point', id: 'P' + (i + 1), lat: p.p[0], lon: p.p[1], color: '#a855f7', title: `➕ P${i + 1}: yangi oʻtish joyi (nomzod)`, note: `${p.why}. Real surat va panoramada tekshiring. Zebra + pastlatilgan bordyur + taktil plitka${A.main ? ' + svetofor/orol' : ''}.` }));
     A.steps.forEach((p, i) => out.push({ kind: 'point', id: 'Z' + (i + 1), lat: p[0], lon: p[1], color: '#ef4444', title: `⛔ Z${i + 1}: zinapoya`, note: 'Aravacha oʻta olmaydi — yoniga pandus kerak.' }));
     A.poiNoCross.slice(0, 6).forEach((p, i) => out.push({ kind: 'point', id: 'M' + (i + 1), lat: p.p[0], lon: p.p[1], color: '#f59e0b', list: false, title: `🏫 ${p.kind}${p.name ? ' ' + p.name : ''}`, note: '60 m ichida oʻtish joyi yoʻq' }));
     return out;
@@ -194,7 +231,9 @@
       ai_suratlar_tahlili: vis || null,
       muammolar: A.issues.map(x => ({ soha: { car: 'avtomobil', ped: 'piyoda', acc: 'nogironlar' }[x.cat], muammo: x.t })),
       yechimlar: A.fixes.map(x => ({ soha: { car: 'avtomobil', ped: 'piyoda', acc: 'nogironlar' }[x.cat], nima: x.t })),
-      yangi_oʻtish_joylari: A.proposals.map((p, i) => ({ belgi: 'P' + (i + 1), sabab: p.why })),
+      yangi_oʻtish_joylari: A.proposals.map((p, i) => ({ belgi: 'P' + (i + 1), sabab: p.why, holat: 'nomzod — joyida tekshirish kerak' })),
+      suratlar_bilan_olib_tashlangan_takliflar: (A.dropped || []).map(p => `${p.why} — lekin ${p.why2} (${p.d} m)`),
+      mavjud_oʻtish_imkoniyatlari: { zebra_osm: A.crossings.filter(c => /OSM|model/.test(c.src)).length, svetofor: A.crossings.filter(c => c.sig).length, yirik_chorrahalar: A.crossings.filter(c => c.junc).length },
       maʼlumot_holati: A.osmOk ? 'OSM tugunlari olindi' : 'OSM serveri javob bermadi — bordyur/svetofor/turargoh maʼlumotisiz',
       ogohlantirish: 'OSM’da trotuar va bordyur toʻliq chizilmagan: “maʼlumot yoʻq” — “yoʻq” degani emas. Suratlar boʻyicha tekshiruv va joyida koʻrik tavsiya etiladi.',
     };
@@ -203,7 +242,7 @@
     const sc = A.scores, bar = v => (v >= 70 ? '🟢' : v >= 45 ? '🟡' : '🔴');
     const L = [`**${A.name}** — ${F(A.L)} m: ${bar(sc.car)} avtomobil ${sc.car}/100 · ${bar(sc.ped)} piyoda ${sc.ped}/100 · ${bar(sc.acc)} nogironlar ${sc.acc}/100.`];
     L.push('', '**🚗 Avtomobil**', `- Tezlik ${A.speed} km/soat (${A.speedKnown ? 'belgi' : 'belgi yoʻq, shahar meʼyori'}), qoplama: ${A.surface}${A.unpaved ? `, ${F(A.unpaved)} m qoplamasiz` : ''}${A.signals != null ? `, svetofor ${A.signals}` : ''}${A.parking != null ? `, atrofda ${A.parking} ta turargoh` : ''}.`);
-    L.push('', '**🚶 Piyoda**', `- Oʻtish joylari: ${A.crossings.length} ta, eng katta oraliq ${F(A.maxGap)} m (meʼyor ≤ ${A.main ? 300 : 500} m).`, `- Trotuar: ${A.swNo ? `${A.swNo} qismda yoʻq` : A.swYes ? 'bor (OSM)' : `ochiq maʼlumot ${A.swCov}% (to‘liq emas)`}.`, A.poiNoCross.length ? `- Oʻtish joyi yoʻq muhim joylar: ${A.poiNoCross.map(p => p.kind + (p.name ? ' ' + p.name : '')).join(', ')}.` : '- Maktab, bekat va shifoxonalar yonida oʻtish joyi bor yoki ular yoʻq.');
+    L.push('', '**🚶 Piyoda**', `- Oʻtish imkoniyatlari: ${A.crossings.length} ta (zebra ${A.crossings.filter(c => !c.sig && !c.junc).length}, svetofor ${A.crossings.filter(c => c.sig).length}, yirik chorraha ${A.crossings.filter(c => c.junc).length}), eng katta oraliq ${F(A.maxGap)} m (meʼyor ≤ ${A.main ? 300 : 500} m).`, ...(A.dropped && A.dropped.length ? [`- Suratlar bilan tekshirildi: ${A.dropped.length} ta taklif olib tashlandi (${A.dropped.map(p => p.why2).join(', ')}).`] : []), `- Trotuar: ${A.swNo ? `${A.swNo} qismda yoʻq` : A.swYes ? 'bor (OSM)' : `ochiq maʼlumot ${A.swCov}% (to‘liq emas)`}.`, A.poiNoCross.length ? `- Oʻtish joyi yoʻq muhim joylar: ${A.poiNoCross.map(p => p.kind + (p.name ? ' ' + p.name : '')).join(', ')}.` : '- Maktab, bekat va shifoxonalar yonida oʻtish joyi bor yoki ular yoʻq.');
     L.push('', '**♿ Nogironlar uchun**', `- Qiyalik (taxminiy): ${A.steep5 ? `${F(A.steep5)} m da 5% dan katta (eng koʻpi ~${A.maxSlope}%)` : '5% dan oshmaydi'}.`, `- Bordyur: ${A.kerbLow + A.kerbRaised ? `${A.kerbLow} ta pastlatilgan, ${A.kerbRaised} ta baland` : 'maʼlumot yoʻq'}; taktil plitka: ${A.tactYes + A.tactNo ? `${A.tactYes} bor / ${A.tactNo} yoʻq` : 'maʼlumot yoʻq'}; zinapoya: ${A.steps.length}.`);
     if (ml) L.push('', `**📷 Suratlardan (Mapillary):** zebra ${ml.det.crosswalk}, svetofor ${ml.det.light}, piyoda belgisi ${ml.det.ped_sign}, tezlik belgisi ${ml.det.speed_sign}.`);
     if (vis && vis.length) L.push('', '**🤖 Suratlar tahlili**', ...vis.map(v => `- ${v}`));
@@ -280,7 +319,7 @@
       rejim: Rk.area ? 'belgilangan hudud koʻchalari' : 'shahar asosiy koʻchalari (magistral, 1–3-darajali)', yonalish: FOCUS_UZ[Rk.focus], tekshirilgan_koʻchalar: Rk.n, jami_km: Rk.km, ortacha_ball: Rk.avg,
       eng_muammoli_koʻchalar_xaritadagi_raqam_bilan: Rk.list.slice(0, 10).map((A, j) => ({ raqam: j + 1, koʻcha: A.name, uzunlik_m: A.L, ball: A.score, avtomobil: A.scores.car, piyoda: A.scores.ped, nogironlar: A.scores.acc, oʻtish_joylari: A.crossings.length, eng_katta_oraliq_m: A.maxGap, qiyalik_5foizdan_m: A.steep5, qoplamasiz_m: A.unpaved, oʻtish_joyi_yoʻq_muhim_joylar: A.poiNoCross.map(p => p.kind + (p.name ? ' ' + p.name : '')), muammolar: A.issues.map(x => x.t), yechimlar: A.fixes.map(x => x.t) })),
       eng_yaxshi_koʻchalar: Rk.list.slice(-3).reverse().map(A => ({ koʻcha: A.name, ball: A.score })),
-      jami: { yangi_oʻtish_joyi_kerak: Rk.tot.proposals, zinapoyalar: Rk.tot.steps, qiya_qismlar_m: Rk.tot.steepM, qoplamasiz_m: Rk.tot.unpavedM, oʻtish_joyi_yoʻq_maktab_bekat_shifoxona: Rk.tot.poiNoCross },
+      jami: { oʻtish_joyi_nomzodlari_tekshirish_kerak: Rk.tot.proposals, zinapoyalar: Rk.tot.steps, qiya_qismlar_m: Rk.tot.steepM, qoplamasiz_m: Rk.tot.unpavedM, oʻtish_joyi_yoʻq_maktab_bekat_shifoxona: Rk.tot.poiNoCross },
       ogohlantirish: 'Tezkor reyting statik ochiq maʼlumot (OSM/Overture, relyef) boʻyicha; bordyur, taktil plitka va suratlar bitta koʻcha tanlanganda tekshiriladi. “Maʼlumot yoʻq” — “yoʻq” degani emas.',
     };
   }
@@ -288,7 +327,7 @@
     const bar = v => (v >= 70 ? '🟢' : v >= 45 ? '🟡' : v >= 25 ? '🟠' : '🔴');
     const L = [`**${Rk.area ? 'Belgilangan hudud' : 'Shahar asosiy koʻchalari'} — ${FOCUS_UZ[Rk.focus]} boʻyicha:** ${Rk.n} ta koʻcha (${Rk.km} km), oʻrtacha ${Rk.avg}/100.`, '', '**Eng muammoli koʻchalar** (xaritadagi raqamlar):'];
     Rk.list.slice(0, 10).forEach((A, j) => L.push(`- ${j + 1}. ${bar(A.score)} **${A.name}** — ${A.score}/100 (🚗 ${A.scores.car} · 🚶 ${A.scores.ped} · ♿ ${A.scores.acc}): ${topIssue(A, Rk.focus)}.`));
-    L.push('', `**Jami:** ${Rk.tot.proposals} joyda yangi oʻtish joyi kerak, ${F(Rk.tot.steepM)} m qiya (> 5%) qism, ${Rk.tot.steps} ta zinapoya, ${F(Rk.tot.unpavedM)} m qoplamasiz yoʻl, ${Rk.tot.poiNoCross} ta maktab/bekat/shifoxona oldida oʻtish joyi yoʻq.`);
+    L.push('', `**Jami:** ${Rk.tot.proposals} ta nomzod joyda oʻtish joyi yetishmasligi mumkin (joyida/suratda tekshirish kerak), ${F(Rk.tot.steepM)} m qiya (> 5%) qism, ${Rk.tot.steps} ta zinapoya, ${F(Rk.tot.unpavedM)} m qoplamasiz yoʻl, ${Rk.tot.poiNoCross} ta maktab/bekat/shifoxona oldida oʻtish joyi yoʻq.`);
     L.push('', 'Batafsil tekshiruv (suratlar, bordyur, taktil plitka) uchun koʻcha nomini yozing: masalan “' + (Rk.list[0] ? Rk.list[0].name : 'Registon koʻchasi') + ' piyodalar va nogironlar uchun qulaymi?”');
     return L.join('\n');
   }
@@ -302,5 +341,5 @@
     (Array.isArray(v.kuzatuvlar) ? v.kuzatuvlar : []).slice(0, 4).forEach(x => L.push(String(x)));
     return L.length ? L : null;
   }
-  NX.audit = { visLines, audit, rank, rankItems, rankFacts, rankSummary, scoreCol, mapillary, items, facts, summary, svg, walk, coreName, FOCUS_UZ };
+  NX.audit = { verifyProposals, visLines, audit, rank, rankItems, rankFacts, rankSummary, scoreCol, mapillary, items, facts, summary, svg, walk, coreName, FOCUS_UZ };
 })();

@@ -557,6 +557,9 @@
         busy(`${A.name}: real koʻcha suratlari tahlil qilinmoqda`);
         let ml = null, vis = null;
         try { ml = await Promise.race([NX.audit.mapillary(A), NX.sleep(30000).then(() => null)]); } catch (e) { ml = null; }
+        // Har bir taklif qilingan oʻtish joyi real suratlar bilan tekshiriladi (zebra/svetofor bor boʻlsa — olib tashlanadi)
+        busy(`${A.name}: takliflar real suratlar bilan tekshirilmoqda`);
+        try { await Promise.race([NX.audit.verifyProposals(A), NX.sleep(40000)]); } catch (e) { /* */ }
         if (ml && ml.photos.length && NX.ai.available()) { try { vis = await Promise.race([NX.ai.streetVision(ml.photos, A), NX.sleep(60000).then(() => null)]); } catch (e) { vis = null; } }
         const H = { kind: 'audit', A, focus: it.focus, items: NX.audit.items(A), facts: NX.audit.facts(A, ml, vis), svg: NX.audit.svg(A), local: NX.audit.summary(A, ml, NX.audit.visLines(vis)) };
         H.facts.savol_yonalishi = NX.audit.FOCUS_UZ[it.focus];
