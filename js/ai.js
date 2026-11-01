@@ -565,6 +565,23 @@ Faqat aniq koʻringan narsani yoz; koʻrinmasa — “noaniq”. Taxmin qilma.`;
     const m = r.text.match(/\{[\s\S]*\}/);
     try { return m ? JSON.parse(m[0]) : null; } catch (e) { return null; }
   }
+  // Savol turini aniqlash (regex topa olmaganda): engil model, faqat bitta soʻz qaytaradi
+  const ROUTE_TYPES = ['quake', 'flood', 'evac', 'fire', 'ambulance', 'police', 'access', 'traffic', 'needs', 'build', 'plan', 'road', 'climate', 'solar', 'general'];
+  const ROUTER = `Sen Samarqand hokimiyati saytining savol yoʻnaltiruvchisisan. Savol oʻzbek, rus yoki aralash tilda, imlo xatolari bilan boʻlishi mumkin.
+Savolni quyidagi turlardan BIRIGA ajrat va FAQAT tur nomini yoz (boshqa hech narsa yozma):
+quake — zilzila, yer silkinishi, binolar zaifligi; flood — yomgʻir, sel, suv bosishi, koʻlmak; evac — evakuatsiya, qochish, yigʻilish joyi;
+fire — yongʻin, oʻt oʻchirish; ambulance — tez yordam, shifoxonaga yetib borish; police — politsiya, patrul;
+access — koʻcha holati, trotuar, piyoda oʻtish joyi, nogironlar, pandus, asfalt, qoplama, avtoturargoh, koʻcha chiroqlari;
+traffic — tirbandlik, svetofor, avtobus, bekat, marshrut, avariya, chorraha; needs — hududda nima yetishmaydi, qayerga maktab/bogʻcha/park kerak;
+build — aniq bino qurish (qavat, xonadon); plan — bosh reja, UNESCO, qurilish ruxsati, muhofaza zonasi; road — yangi koʻcha/yoʻl, koʻprik loyihasi;
+climate — iqlim, issiqlik, daraxt, havo, ekologiya; solar — quyosh paneli, energiya; general — boshqa.
+Oldingi savol berilgan boʻlsa va yangi savol uning davomi boʻlsa (“u-chi?”, “endi…”) — oldingi savol turini hisobga ol.`;
+  async function route(q, prevQ) {
+    if (!aiAvailable()) return null;
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: ROUTER }, { role: 'user', content: (prevQ ? `Oldingi savol: ${prevQ}\n` : '') + `Savol: ${q}` }], NX.config.openaiLight, 'router');
+    const w = (r.text || '').toLowerCase().match(/[a-z]+/);
+    return w && ROUTE_TYPES.includes(w[0]) && w[0] !== 'general' ? w[0] : null;
+  }
   async function twinAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
@@ -657,5 +674,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

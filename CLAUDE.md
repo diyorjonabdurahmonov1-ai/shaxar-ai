@@ -24,12 +24,12 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 - `js/data/buildings.js` — `data/buildings-samarqand.json` (v3: Overture OSM + Microsoft ~123 ming + Microsoft Global ML Buildings 2026-02-03 dan Overture’da yoʻq 12.9 ming = ~136 ming; `h` — ichki hovlilar). Google Open Buildings Oʻzbekistonni qamramaydi. Har bir uyni aniq olish uchun — hokimiyat kadastr GIS fayli kerak (sunʼiy yoʻldosh suratlaridan oʻzimiz ajratish Esri/Google ToS’ga zid). Binolar yuklanganda `nx:buildings` hodisasi.
 - `js/ui/map3d.js` — MapLibre 3D: fon — Esri raster (har biri oʻz `maxzoom`i: sat 18, street 17, twin 16 — undan yuqorida Esri Samarqand uchun “Map data not yet available” beradi) + OpenFreeMap vektor (`omt`: koʻchalar, suv, bogʻlar, nomlar — har zoomda tiniq; testda rad etiladi), binolar ichki hovlilari (`buildings-samarqand.json` v2 `h` — teshiklar), tarixiy obidalar oltin (`lm`), bino konturlari nuri (`bld-foot`), “Raqamli egizak” uslubi, derazalar, realistik suv (tekstura), yomgʻir, zilzila silkinishi, hazard qatlamlari va oqim nuqtalari (`hz-dots`); quyosh real vaqt (`applySun`, `NX.twin.sunPos`), daraxtzor/bogʻlar 3D (`v-trees`, `v-parks3d`), obidalar yorliqlari va “🎬 sayohat” (`LANDMARKS`, `tour`). Relyef (`setTerrain`) sinab koʻrildi — 136 ming bino bilan sahna boʻsh qoldi, olib tashlandi.
 - `js/ui/fx.js` — 2D xaritadagi jonli simulyatsiya canvas’i (3D da oʻchadi). `js/ui/backdrop.js` — orqa fon animatsiyasi.
-- `js/ai.js` — AI promptlari (SYSTEM, TWIN, AREA, DEEP…), `callOpenAI` Worker orqali.
+- `js/ai.js` — AI promptlari (SYSTEM, TWIN, AREA, DEEP…), `callOpenAI` Worker orqali; `route()` — regex topmagan savol turini engil model aniqlaydi. `app.js` `smartQ` (`NX.smartQ`): davomli savollar (“-chi?”, “endi…”) oldingi savol bilan birlashadi, keyin `route`; barcha chatlarda (`twinAsk` `opts.display/resolved`). Intent regexlari imlo xatolari (“zilzla”), qoʻshimchalar (“selda”) va ruscha soʻzlarni taniydi.
 - `worker/ai-proxy.js` — Cloudflare Worker `cityjam-ai` (foydalanuvchi oʻzi deploy qiladi).
 - `data/*.json` — tayyor fayllar (binolar, koʻchalar, ochiq joylar/xizmatlar, OAV toshqin xabarlari).
 
 ## Testlar
-- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 185/185. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
+- `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 186/186. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
 - `node tests/real-data.cjs` — haqiqiy relyef/koʻchalar/binolar bilan qoʻlda tekshiruv (internet kerak).
 - Har oʻzgarishdan keyin testlarni yurgizing; vizual ishlarda skrinshot olib koʻring.
 

@@ -578,6 +578,23 @@
     return H;
   }
   document.addEventListener('click', e => { const b = e.target.closest('[data-audit-street]'); if (b) { e.preventDefault(); const nm = b.dataset.auditStreet; if (S.tab !== 'twin' && S.tab !== 'ai') setTab('twin'); (S.tab === 'ai' ? chatSend : twinAsk)(`${nm} avtomobil, piyoda va nogironlar uchun qanday holatda?`); } });
+  // ---------- Aqlli savol: davomli savollar (“-chi?”, “endi…”) oldingi savol bilan birlashadi; tur topilmasa — AI yoʻnaltiruvchi ----------
+  const FOLLOW = /(-?chi\s*\??\s*$|\bendi\b|\bunda\b|u\s*yerda|shu\s*yerda|bu\s*holda|\byana\b|\bboshqa\b|xuddi\s*shu|o[ʻ'‘`]?sha|\bа\s*если|\bа\s*для)/i;
+  const CANON = { quake: 'zilzila', flood: 'yomgʻir yogʻsa qaysi koʻchani suv bosadi', evac: 'evakuatsiya', fire: 'yongʻin', ambulance: 'tez yordam yetib borish', police: 'politsiya', access: 'koʻcha holati', traffic: 'tirbandlik', needs: 'nima yetishmaydi', plan: 'bosh reja', road: 'yangi koʻcha', climate: 'iqlim', solar: 'quyosh paneli' };
+  async function smartQ(q, prevQ) {
+    let it = NX.intent(q);
+    if (it.main !== 'general') return q;
+    if (prevQ && (FOLLOW.test(q) || q.trim().split(/\s+/).length <= 5)) {
+      const both = prevQ + ' — ' + q;
+      if (NX.intent(both).main !== 'general') return both;
+    }
+    if (NX.ai.available() && NX.ai.route) {
+      try { const r = await Promise.race([NX.ai.route(q, prevQ), NX.sleep(9000).then(() => null)]); if (r && CANON[r]) return `${q} (${CANON[r]})`; } catch (e) { /* yoʻnaltiruvchi ishlamadi */ }
+    }
+    return q;
+  }
+  NX.smartQ = smartQ;
+  const lastUser = msgs => { for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === 'user') return msgs[i].text; return null; };
   function fixAsk(name) {
     if (S.tab !== 'twin') setTab('twin');
     twinAsk(`${name} ${/koʻcha|ko'cha|yoʻl/i.test(name) ? '' : 'koʻchasida '}suv toʻplanishi muammosini qanday hal qilamiz?`, { name });
@@ -624,8 +641,9 @@
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
     if (!q || C.busy) return;
-    const prev = C.msgs.slice(-2);
-    C.msgs.push({ role: 'user', text: q });
+    const prev = C.msgs.slice(-2), prevQ = lastUser(C.msgs);
+    C.msgs.push({ role: 'user', text: (opts && opts.display) || q });
+    if (!(opts && opts.resolved)) { C.busy = 'Tahlil qilinmoqda'; renderKeepScroll(); q = await smartQ(q, prevQ); C.busy = null; }
     const it0 = NX.intent(q);
     if (it0.main === 'plan' || it0.main === 'road') {
       if (it0.main === 'road') { C.msgs.push({ role: 'ai', text: ROAD_HINT, src: 'ai' }); renderKeepScroll(); drawRoad(q); return null; }
@@ -1092,15 +1110,16 @@
     const A = S.area;
     q = (q || '').trim();
     if (!A || !q || A.qaBusy) return;
-    const prev = A.qa.slice(-2);
+    const prev = A.qa.slice(-2), prevQ = lastUser(A.qa), shown = q;
     A.qa.push({ role: 'user', text: q });
+    if (NX.intent(q).main === 'general') { A.qaBusy = 'Tahlil qilinmoqda…'; renderKeepScroll(); try { q = await smartQ(q, prevQ); } finally { A.qaBusy = null; } }
     const it = NX.intent(q);
     if (it.hazard || it.main === 'access') {
       // Zilzila / suv / yongʻin / koʻcha holati — shu hudud uchun ham yoʻl hisoblanadi (3D egizak hisobi)
       A.qaBusy = 'Favqulodda vaziyat hisoblanmoqda — natija xaritada…'; renderKeepScroll();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && A.qaBusy) { A.qaBusy = tc.busy + '…'; renderKeepScroll(); } }, 1200);
       let m = null;
-      try { m = await twinAsk(q, { area: true }); } finally { clearInterval(tick); }
+      try { m = await twinAsk(q, { area: true, display: shown, resolved: true }); } finally { clearInterval(tick); }
       A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
       A.qaBusy = null; renderKeepScroll();
       return;
@@ -1706,21 +1725,23 @@
   async function chatSend(q) {
     q = (q || '').trim();
     if (!q || S.chat.busy || !S.model) return;
+    const shown = q;
+    if (NX.intent(q).main === 'general') { S.chat.busy = 'Tahlil qilinmoqda…'; renderChat(); try { q = await smartQ(q, lastUser(S.chat.msgs)); } finally { S.chat.busy = null; } }
     const it = NX.intent(q);
     // Favqulodda vaziyat (zilzila, suv, yongʻin, evakuatsiya) — 3D egizak hisobi; natija shu xaritada ham chiziladi
     if (it.hazard || it.main === 'climate' || it.main === 'solar' || it.main === 'access') {
-      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.msgs.push({ role: 'user', text: shown });
       S.chat.busy = 'Hisoblanmoqda (relyef, binolar, koʻcha tarmogʻi)…'; renderChat();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && S.chat.busy) { S.chat.busy = tc.busy + '…'; renderChat(); } }, 1200);
       let m = null;
-      try { m = await twinAsk(q); } finally { clearInterval(tick); }
+      try { m = await twinAsk(q, { display: shown, resolved: true }); } finally { clearInterval(tick); }
       S.chat.msgs.push(m ? Object.assign({}, m, { fly: 'ann-fly' }) : { role: 'ai', text: 'Hisoblab boʻlmadi — maʼlumot hali yuklanmagan, birozdan keyin qayta soʻrang.', src: 'hisob' });
       S.chat.busy = null; renderChat();
       return;
     }
     // Yangi koʻcha / koʻchani oʻzgartirish — xaritada chiziladi, UNESCO, bosh reja, binolar boʻyicha tekshiriladi
     if (it.main === 'road') {
-      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.msgs.push({ role: 'user', text: shown });
       S.chatRoadMirror = true;
       if (S.road && S.road.res) { S.chat.busy = 'Koʻcha tahlil qilinmoqda…'; renderChat(); await roadAsk(q); return; }
       S.chat.msgs.push({ role: 'ai', text: ROAD_HINT, src: 'ai' }); renderChat();
@@ -1730,7 +1751,7 @@
     // Bosh reja, UNESCO, ruxsat savollari — zonalar xaritada, joy boʻyicha tekshiruv (hudud + aniq bino — hudud tahliliga, u ham bosh rejani tekshiradi)
     if (it.main === 'plan' && !(S.area && NX.area.parseBuild(q))) {
       const prevP = S.chat.msgs.slice(-2);
-      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.msgs.push({ role: 'user', text: shown });
       S.chat.busy = 'Bosh reja va UNESCO zonalari tekshirilmoqda…'; renderChat();
       try { S.chat.msgs.push(await planAsk(q, prevP)); } catch (e) { S.chat.msgs.push({ role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }); }
       S.chat.busy = null; renderChat();
@@ -1738,7 +1759,7 @@
     }
     // Belgilangan hudud: “nima qursam foydali” — hudud tahlili (xaritada)
     if (S.area && (it.main === 'needs' || it.main === 'build')) {
-      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.msgs.push({ role: 'user', text: shown });
       S.chat.busy = 'Hudud tahlil qilinmoqda…'; renderChat();
       await areaAsk(q);
       const last = S.area && S.area.qa[S.area.qa.length - 1];
@@ -1748,7 +1769,7 @@
     }
     // Belgilangan hudud bor va savol hudud yoki qurilish haqida — hudud tahliliga
     if (S.area && S.chatStreet == null && (NX.area.parseBuild(q) || /hudud|mahalla|bu yer/i.test(q))) {
-      S.chat.msgs.push({ role: 'user', text: q });
+      S.chat.msgs.push({ role: 'user', text: shown });
       S.chat.busy = 'Hudud tahlil qilinmoqda…'; renderChat();
       const pb = NX.area.parseBuild(q);
       if (pb) { if (pb.flats) S.area.spec.flats = pb.flats; if (pb.floors) S.area.spec.floors = pb.floors; await runBuild(); }
@@ -1758,7 +1779,7 @@
       return;
     }
     const prev = S.chat.msgs.slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
-    S.chat.msgs.push({ role: 'user', text: q });
+    S.chat.msgs.push({ role: 'user', text: shown });
     S.chat.busy = 'Oʻylayapman…';
     renderChat();
     const TYPE = { oneway: d => 'oneway-' + (d || 'A'), close: () => 'close', buslane: () => 'buslane', signal: () => 'signal', demand: () => 'demand' };

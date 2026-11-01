@@ -6,22 +6,22 @@
   const NX = window.NX;
   const A = '[ʻ\'‘’`]?';
   const R = {
-    quake: /zilzila|yer\s*qimirla|silkin|seysm/i,
-    flood: new RegExp(`yomg${A}ir|\\bjala|\\bsel\\b|sel\\s|toshqin|suv\\s*bos|suv\\s*tosh|suv\\s*to${A}pla|ko${A}lmak|\\d+\\s*mm`, 'i'),
-    fire: new RegExp(`yong${A}in|o${A}t\\s*o${A}chir|o${A}t\\s*ketsa|olov`, 'i'),
-    ambulance: /tez\s*yordam|ambulans|skoraya|kasalxona(ga)?\s*(qancha|nech|yet)|shifoxona(ga)?\s*(qancha|nech|yet)/i,
-    police: /politsiya|militsiya|\biiv\b|patrul/i,
-    evac: new RegExp(`evaku|avaku|xa[vf]{1,2}siz\\s*(yo${A}l|joy)|qayerga\\s*qoch|boshpana|panoh|yig${A}ilish\\s*joy|chiqarib\\s*yubor|ko${A}chir`, 'i'),
-    needs: /nima\s*qur|nima\s*quril|nima\s*qo[ʻ'‘`]?y|nima\s*och|nima\s*yetishma|yetishmay|qanday\s*obyekt|foydali|ehtiyoj/i,
+    quake: /zil+[zs]i?l+a|zilzil|yer\s*qimirla|yer\s*silk|silkin|seysm|землетряс|сейсм|толчк/i,
+    flood: new RegExp(`yomg${A}ir|yomgir|\\bjala|\\bsel(da|lar|ga|dan|ni)?\\b|toshqin|наводн|затоп|ливн|ливень|дожд|потоп|suv\\s*bos|suv\\s*tosh|suv\\s*to${A}pla|ko${A}lmak|\\d+\\s*mm`, 'i'),
+    fire: new RegExp(`пожар|yong${A}in|o${A}t\\s*o${A}chir|o${A}t\\s*ketsa|olov`, 'i'),
+    ambulance: /скор(ая|ой)|tez\s*yordam|ambulans|skoraya|kasalxona(ga)?\s*(qancha|nech|yet)|shifoxona(ga)?\s*(qancha|nech|yet)/i,
+    police: /полиц|politsiya|militsiya|\biiv\b|patrul/i,
+    evac: new RegExp(`эвакуац|evaku|avaku|xa[vf]{1,2}siz\\s*(yo${A}l|joy)|qayerga\\s*qoch|boshpana|panoh|yig${A}ilish\\s*joy|chiqarib\\s*yubor|ko${A}chir`, 'i'),
+    needs: /yangi\s*(maktab|bog[ʻ'‘`]?cha|poliklinika|shifoxona|park|dorixona)\s*\S*\s*(qayer|kerak)|qayerga\s*(kerak|qur)|nima\s*qur|nima\s*quril|nima\s*qo[ʻ'‘`]?y|nima\s*och|nima\s*yetishma|yetishmay|qanday\s*obyekt|foydali|ehtiyoj/i,
     build: /(\d{2,5})\s*(ta\s*)?(xonadon|kvartira|honadon)|(\d{1,2})\s*-?\s*(qavat|etaj)|\bdom\b|uy-joy|turar\s*joy\s*qur/i,
-    traffic: /prop|probk|tirban|tiqil|tig[ʻ'‘`]?iz|navbat|oqim|bir\s*tomon|yops|svetofor|polosa|yo[ʻ'‘`]?lak|chorraha|bekat|avtobus|marshrut/i,
+    traffic: /пробк|затор|дтп|авари|avariya|yo[ʻ'‘`]?l[\s-]*transport\s*hodis|prop|probk|tirban|tiqil|tig[ʻ'‘`]?iz|navbat|oqim|bir\s*tomon|yops|svetofor|polosa|yo[ʻ'‘`]?lak|chorraha|bekat|avtobus|marshrut/i,
     // Koʻcha holati: avtomobil (qoplama, tezlik, turargoh), piyoda (trotuar, oʻtish joyi), nogironlar (pandus, bordyur, qiyalik, taktil plitka)
     access: new RegExp(`trotuar|piyoda|nogiron|aravacha|ko${A}zi\\s*ojiz|ojizlar|imkoniyati\\s*cheklangan|pandus|bordyur|bordur|taktil|zinapoya|o${A}tish\\s*joy|zebra|avtoturargoh|turargoh|parkovka|to${A}xtash\\s*joy|tezlik\\s*(cheklov|chegara|belgi|me${A}yor)|qoplama|asfalt|o${A}nqir|chuqurlar|yamoq|(ko${A}cha|yo${A}l)(lar|si|i)?(ning)?\\s*holat|keksa(lar)?\\s*uchun\\s*(yo${A}l|ko${A}cha|yurish|qulay)|yurish\\s*(qulay|mumkin)|yurib\\s*bo${A}lmay|ko${A}cha\\s*audit|haydovchi(lar)?\\s*uchun|mashina(lar)?\\s*uchun\\s*qulay|avtomobil(lar)?\\s*uchun|qulay(mi|lik)|keksalar\\s*uchun\\s*(yo${A}l|ko${A}cha)|bolalar\\s*uchun\\s*xavfsiz`, 'i'),
     // Yangi koʻcha / yoʻl loyihasi yoki mavjud koʻchani oʻzgartirish — xaritada chiziladi va tekshiriladi
     road: new RegExp(`yangi\\s*(ko${A}cha|yo${A}l|ko${A}prik|tunnel|magistral|aylanma|estakada|tramvay\\s*yo${A}l|velo)|(ko${A}cha|yo${A}l)(|ni|si|sini|lar|larni)\\s+(\\S+\\s+){0,3}(och|qur|o${A}tkaz|chiz|uzaytir|kengaytir|toraytir|tutashtir|qo${A}sh|bog${A}la)|ko${A}prik|tunnel|estakada|yer\\s*osti\\s*o${A}tish|velo\\s*yo${A}l|velosiped\\s*yo${A}l|piyodalar\\s*ko${A}chasi(ga)?\\s*aylantir|ko${A}chani\\s*chiz|yo${A}lni\\s*chiz|koʻcha\\s*loyiha|yo${A}l\\s*loyiha`, 'i'),
     // Bosh reja, UNESCO, ruxsat, zonalar — xaritada zonalar va joy tekshiruvi
     plan: new RegExp(`bosh\\s*reja|unesk|yunesk|unesco|muhofaza\\s*(zona|hudud)|konservatsiya|rekonstruksiya|renovatsiya|bufer|madaniy\\s*meros|tarixiy\\s*(markaz|hudud|qiyofa|obida|bino)|qizil\\s*chiziq|ruxsat\\s*(ber|etil|bormi|kerak|olish)|(qurish|qurilish(\\s*qilish)?)(ga)?\\s*mumkin|qurilish(ga)?\\s*(ruxsat|taqiq)|merosga\\s*ta${A}sir|\\bhia\\b|afrosiyob|\\bumn\\b|\\bqmn\\b|zichlik\\s*(ko${A}rsatkich|me${A}yor)|master-?reja|batafsil\\s*rejalash|yashil\\s*belbog|2045|yodgorlik|meros\\s*agentlig`, 'i'),
-    climate: /iqlim|harorat|isish|issiq|qurg[ʻ'‘`]?oqchilik|o[ʻ'‘`]?zgidromet/i,
+    climate: /daraxt\s*ek|issiqlik\s*orol|havo\s*ifloslan|klimat|жара|iqlim|harorat|isish|issiq|qurg[ʻ'‘`]?oqchilik|o[ʻ'‘`]?zgidromet/i,
     solar: /quyosh|panel|energiya|tom(lar)?ga/i,
     image: /rasm|chiz|surat|tasvir|vizual|ko[ʻ'‘`]?rinishini/i,
     mahalla: /mahalla|har\s*bir|aholi\s*uchun|hudud(lar)?\s*uchun/i,
