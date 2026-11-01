@@ -487,6 +487,29 @@
     if (!on && b) b.remove();
   }
   const hashStr = t => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+  // Suv muammosi yechimi: koʻcha (savolda yoki tugmadan), belgilangan hudud yoki eng chuqur joy
+  async function fixRun(q, R, opts) {
+    const T = twinState();
+    if (!R || !R.frames) return null;
+    T.d40 = T.d40 || await NX.twin.grid40();
+    const roads = T.roads && T.roads.length ? T.roads : NX.twin.roadsFromModel(S.model), net = NX.twin.streetNet(T.dem, roads);
+    const fs = NX.ai.detectStreets(q, S.model)[0];
+    let os = null; try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(20000).then(() => null)]); } catch (e) { os = null; }
+    const areaScope = S.area && (opts.area || /shu\s*(yer|joy|hudud)|bu\s*(yer|joy|hudud)|belgila/i.test(q));
+    const X = await NX.drainfix.solve({ R, D: NX.twin.ground(T.d40), net, name: opts.name || (fs && fs.s.name), poly: areaScope ? S.area.st.poly : null, rainMm: (R.rain && R.rain[0] && R.rain[0].mmh) || 30, drainMm: R.drain, spaces: os && os.spaces });
+    if (!X) return null;
+    // Suv koʻchada qoladi (muammo koʻrinib tursin), yechim ustidan chiziladi; loyiha sxemasi — javobda
+    const H = { kind: 'fix', X, items: NX.hazard.waterItems(R, T.buildings).filter(a => a.kind === 'water').concat(NX.drainfix.items(X)), facts: NX.drainfix.facts(X), svg: NX.drainfix.svg(X) };
+    // Shu joyning real suratlari (Mapillary) — AI va chat uchun
+    if (NX.mly && NX.mly.available()) { try { const ph = await Promise.race([NX.mly.photos(X.site[0], X.site[1], 90), NX.sleep(10000).then(() => [])]); H.photos = (ph || []).slice(0, 3).map(p => ({ url: p.url, link: NX.mly.link(p.id), date: p.date, d: Math.round(p.d) })); if (H.photos.length) H.facts.real_suratlar = H.photos.map(p => ({ sana: p.date ? new Date(p.date).toISOString().slice(0, 10) : null, masofa_m: p.d })); } catch (e) { /* surat boʻlmasa ham */ } }
+    showHazard(H);
+    return H;
+  }
+  function fixAsk(name) {
+    if (S.tab !== 'twin') setTab('twin');
+    twinAsk(`${name} ${/koʻcha|ko'cha|yoʻl/i.test(name) ? '' : 'koʻchasida '}suv toʻplanishi muammosini qanday hal qilamiz?`);
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-fix-street]'); if (b) { e.preventDefault(); fixAsk(b.dataset.fixStreet); } });
   function hazardClear() { NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
@@ -531,7 +554,9 @@
       const sc = sc0 = rainScen(mm);
       // Asosiy javob — 2D fizik model (vaqt boʻyicha); tez solishtirish — koʻchalar boʻylab barqaror hisob
       C.busy = `${mm} mm yomgʻir — 2D model hisoblanmoqda`; renderKeepScroll();
-      R = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
+      // “Yechim” soʻralsa va natija tayyor boʻlsa — qayta hisoblanmaydi (shu ssenariy uchun yechim)
+      const prevDyn = twinState().dyn;
+      R = it.fix && prevDyn && prevDyn.frames && !mmM ? prevDyn : await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda`);
       // Simulyatsiya: boshidan — yomgʻir yogʻadi, suv koʻtariladi, keyin kamayadi (3D egizakda)
       if (R) setTimeout(() => { const T1 = twinState(); if (T1.dyn === R && !T1.playing && (!T1.hz || /water|flood/.test(T1.hz.kind))) { twinShowFrame(0); twinPlay(); } }, 900);
       extra = Object.assign(extra, { fizik_model_2d: R ? dynFacts(R) : 'hisoblanmadi', tez_solishtirish: variants });
@@ -571,7 +596,12 @@
       const W = R || sc0, wItems = W ? NX.hazard.waterItems(W, twinState().buildings) : [];
       // Ochiq manbalardagi real hodisalar — xaritada va model bilan solishtirish
       try { const rp = await NX.hazard.reportItems(twinState().roads, W); wItems.push(...rp.items); extra.real_hodisalar_oav = rp.facts; } catch (e) { /* */ }
-      if (it.evac) {
+      if (it.fix && R) {
+        // Suv toʻplanadigan joy uchun muhandislik yechimi: havza, oqim, quvur, rezervuar, bosh reja/UNESCO
+        try { H = await fixRun(q, R, opts || {}); } catch (e) { console.warn('yechim:', e); }
+        if (H) { extra.suv_yechimi = H.facts; local = NX.drainfix.summary(H.X); delete extra.real_hodisalar_oav; }
+        else H = showHazard({ kind: 'water', items: wItems });
+      } else if (it.evac) {
         try { H = await hazardRun('flood', q, W, Object.assign({}, opts, { extraItems: wItems })); } catch (e) { console.warn('xavf xaritasi:', e); }
         if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
       } else if (wItems.length) H = showHazard({ kind: 'water', items: wItems });
@@ -588,7 +618,7 @@
       catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
       if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src } })); } catch (e) { /* */ } }
     }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (/rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
@@ -1863,6 +1893,7 @@
         case 'twin-ask': twinAsk(b.dataset.q); break;
         case 'twin-fly': NX.map3d.flyTo(+b.dataset.lat, +b.dataset.lon, 18); break;
         case 'plan-show': (async () => { const PM = NX.masterplan.PLANMAP, layers = [{ sys: 'masterplan', img: { url: PM.url, bounds: [[PM.s, PM.w], [PM.n, PM.e]], opacity: 0.5 } }, { sys: 'masterplan', gj: await NX.masterplan.geo() }]; const mp = NX.systems.get('masterplan'); if (mp) layers.push({ sys: 'masterplan', gj: mp.gj }); ensureLeaflet(); NX.view.drawSystems(layers); toast('Bosh reja zonalari (sariq — konservatsiya, toʻq sariq — rekonstruksiya, binafsha — renovatsiya) va UNESCO muhofaza hududlari xaritada.', 'ok'); })(); break;
+        case 'flood-fix': fixAsk(b.dataset.name); break;
         case 'q-fill': { const ta = panel.querySelector(b.dataset.target); if (ta) { ta.value = b.dataset.q; ta.focus(); } break; }
         case 'sys-remove': if (confirm(NX.SYSTEMS[b.dataset.sys].uz + ' xaritasini oʻchirasizmi?')) NX.systems.remove(b.dataset.sys).then(() => { drawSys(); render(); toast('Oʻchirildi.', 'ok'); }, e => toast(e.message, 'bad')); break;
         case 'review-undo': reviewUndo(b.dataset.fid); break;

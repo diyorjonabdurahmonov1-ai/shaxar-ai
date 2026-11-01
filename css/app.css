@@ -832,3 +832,13 @@ html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-d
 .leaflet-container a.leaflet-popup-close-button { color: #94a3b8; }
 .place-st { color: #5eead4; }
 .place-btns .btn { background: rgba(45, 212, 191, .14); color: #ccfbf1; border: 1px solid rgba(45, 212, 191, .4); }
+/* Suv muammosi — yechim tugmasi va suratlar */
+.fixrow { display: flex; align-items: center; gap: 6px; }
+.fixrow .loc { flex: 1; }
+.fix-btn { white-space: nowrap; background: rgba(34, 211, 238, .14) !important; border: 1px solid rgba(34, 211, 238, .45) !important; color: #cffafe !important; }
+.msg-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin: 8px 0; }
+.msg-photos figure { margin: 0; border-radius: 10px; overflow: hidden; border: 1px solid rgba(94, 234, 212, .25); cursor: zoom-in; }
+.msg-photos img { width: 100%; height: 90px; object-fit: cover; display: block; }
+.msg-photos figcaption { font-size: .7rem; padding: 3px 6px; color: #94a3b8; }
+.fix-scheme { margin: 10px 0; border-radius: 12px; overflow: hidden; border: 1px solid rgba(94, 234, 212, .3); box-shadow: 0 8px 24px rgba(0, 0, 0, .4); }
+.fix-svg { display: block; width: 100%; height: auto; }

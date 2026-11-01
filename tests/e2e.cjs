@@ -52,6 +52,7 @@ async function setupRoutes(ctx, opts = {}) {
     // Ochiq joylar (yigʻilish joylari) va mahalla nomi; hudud atrofidagi xizmatlar (maktab, dorixona…)
     if (/"leisure"~"\^\(park\|garden\|pitch\|stadium/.test(body)) { const sq = (la, lo, d, tags) => ({ type: 'way', id: Math.round(la * 1e5 + lo), tags, bounds: { minlat: la, minlon: lo, maxlat: la + d, maxlon: lo + d * 1.3 }, center: { lat: la + d / 2, lon: lo + d * 0.65 } });
       return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [sq(39.6520, 66.9700, 0.0010, { leisure: 'park', name: 'Sinov bogʻi' }), sq(39.6620, 66.9620, 0.0008, { place: 'square', name: 'Sinov maydoni' }), { type: 'node', id: 5, lat: 39.6500, lon: 66.9700, tags: { place: 'neighbourhood', name: 'Sinov mahallasi' } }] }) }); }
+    if (/waterway/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'way', id: 77, tags: { waterway: 'canal', name: 'Sinov ariq' }, geometry: [{ lat: 39.6405, lon: 66.950 }, { lat: 39.6405, lon: 66.975 }, { lat: 39.6405, lon: 67.000 }] }] }) });
     if (/heritage/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [] }) });
     if (/fire_station/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 11, lat: 39.6470, lon: 66.9610, tags: { amenity: 'fire_station', name: 'Sinov oʻt oʻchirish qismi' } }, { type: 'node', id: 12, lat: 39.6560, lon: 66.9760, tags: { amenity: 'hospital', name: 'Sinov shifoxonasi' } }] }) });
     if (/"amenity"~"\^\(kindergarten/.test(body)) return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ elements: [{ type: 'node', id: 1, lat: 39.6465, lon: 66.9605, tags: { amenity: 'school', name: 'Sinov maktabi' } }, { type: 'node', id: 2, lat: 39.6700, lon: 66.9950, tags: { amenity: 'pharmacy' } }] }) });
@@ -275,6 +276,13 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 14, null, { timeout: 180000 });
   const qb = await page.evaluate(() => { const H = NX.state.twin.hz; return { show: H.show, facts: Array.isArray(H.facts.vayronadan_toʻsilishi_mumkin_koʻchalar), routes: H.items.filter(a => a.kind === 'line' && !a.style).length }; });
   ok('Zilzila “qaysi koʻchalardan oʻtib boʻlmaydi” — vayronadan toʻsiladigan koʻchalar hisobi', qb.show.blocked && qb.facts && qb.routes === 0, JSON.stringify(qb));
+  // Suv toʻplanadigan koʻcha uchun yechim: roʻyxatdagi “🛠 Yechim” → havza, oqim, quvur/rezervuar, xaritada
+  const nFix = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.evaluate(() => { const T = NX.state.twin; T.dynFrame = T.dyn.frames.indexOf(T.dyn.peak); });
+  await page.click('[data-act=flood-fix] >> nth=0');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nFix, { timeout: 240000 });
+  const fx = await page.evaluate(() => { const H = NX.state.twin.hz; return H && { kind: H.kind, basin: (H.items.find(a => a.id === 'HAVZA') || { cells: [] }).cells.length, ha: H.facts.sabab.havza_ga, q: H.facts.sabab.eng_yuqori_oqim_m3s, opts: H.facts.variantlar.map(o => o.id), best: H.facts.tavsiya, outlet: typeof H.facts.chiqish_joyi === 'object', inlets: H.items.filter(a => /^Q\d/.test(a.id)).length, text: /Variantlar|Tavsiya/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text) }; });
+  ok('Suv muammosi yechimi: havza (ga), oqim (m³/s), A/B/C/D variantlar, chiqish joyi, quduqlar — xaritada va javobda', fx && fx.kind === 'fix' && fx.basin > 0 && fx.ha > 0 && fx.q > 0 && fx.opts.length >= 2 && fx.best.length >= 1 && fx.inlets >= 1 && fx.text, JSON.stringify(fx));
   // AI yordamchi (asosiy chat) ham shu hisobga ulanadi — javob 2D xaritada
   await page.click('.tabs [data-tab=ai]');
   await page.fill('#chat textarea[name=q]', 'Suv toshsa odamlarni qaysi yoʻldan baland joyga olib chiqamiz?');

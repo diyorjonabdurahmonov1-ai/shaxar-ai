@@ -153,6 +153,7 @@
   function hzGeo() {
     const f = [];
     (data.hz || []).forEach(a => {
+      if (a.kind === 'point' && a.list === false) f.push({ type: 'Feature', properties: { t: 'dot', col: a.color || '#f59e0b' }, geometry: { type: 'Point', coordinates: [a.lon, a.lat] } });
       if (a.kind === 'zone' && a.cells && a.cells.length) {
         // Haqiqiy binolar kataklari (40 m) — xavf darajasiga qarab shaffoflik
         const dLat = 20 / 111320, dLon = 20 / (111320 * Math.cos(a.lat * Math.PI / 180));
@@ -167,7 +168,7 @@
     hzMarks.forEach(m => m.remove()); hzMarks = [];
     if (!map || !window.maplibregl.Marker) return;
     (data.hz || []).forEach((a, i) => {
-      if (a.dash || a.kind === 'water' || a.kind === 'line') return;   // yoʻllar — chiziq va oqim; belgilar faqat joylar va zonalarga
+      if (a.dash || a.kind === 'water' || a.kind === 'line' || a.list === false) return;   // mayda obyektlar (quduqlar) — faqat nuqta   // yoʻllar — chiziq va oqim; belgilar faqat joylar va zonalarga
       const el = document.createElement('div');
       el.className = 'hz-pin hz-' + a.kind; el.style.background = a.color || '#7c3aed'; el.textContent = a.id || String(i + 1); el.title = a.title;
       const m = new window.maplibregl.Marker({ element: el }).setLngLat([a.lon, a.lat]);
@@ -234,6 +235,7 @@
         let hi = 0;
         const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
         setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
+        map.addLayer({ id: 'hz-dot', type: 'circle', source: 'hz', filter: ['==', ['get', 't'], 'dot'], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 6], 'circle-color': ['get', 'col'], 'circle-stroke-color': '#fff7ed', 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
         map.addLayer({ id: 'hz-blocked', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'blocked'], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ef4444', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 7], 'line-opacity': 0.9, 'line-blur': 1 } });
         // Odamlar oqimi — yoʻllar boʻylab harakatlanuvchi nuqtalar (3D da yerga yopishgan)
         map.addSource('hz-dots', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });

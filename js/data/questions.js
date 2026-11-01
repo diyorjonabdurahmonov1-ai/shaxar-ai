@@ -7,7 +7,7 @@
   const A = '[ʻ\'‘’`]?';
   const R = {
     quake: /zilzila|yer\s*qimirla|silkin|seysm/i,
-    flood: new RegExp(`yomg${A}ir|\\bjala|\\bsel\\b|sel\\s|toshqin|suv\\s*bos|suv\\s*tosh|\\d+\\s*mm`, 'i'),
+    flood: new RegExp(`yomg${A}ir|\\bjala|\\bsel\\b|sel\\s|toshqin|suv\\s*bos|suv\\s*tosh|suv\\s*to${A}pla|ko${A}lmak|\\d+\\s*mm`, 'i'),
     fire: new RegExp(`yong${A}in|o${A}t\\s*o${A}chir|o${A}t\\s*ketsa|olov`, 'i'),
     ambulance: /tez\s*yordam|ambulans|skoraya|kasalxona(ga)?\s*(qancha|nech|yet)|shifoxona(ga)?\s*(qancha|nech|yet)/i,
     police: /politsiya|militsiya|\biiv\b|patrul/i,
@@ -27,6 +27,7 @@
     blocked: new RegExp(`to${A}sil|yopilib|yopiladi|vayrona|bloklan|o${A}tib\\s*bo${A}lmay|o${A}ta\\s*olma|o${A}tolma|kira\\s*olma`, 'i'),
     critical: new RegExp(`maktab|shifoxona|bog${A}cha|kasalxona|poliklinika`, 'i'),
     city: new RegExp(`butun\\s*shahar|shahar\\s*bo${A}yicha|barcha\\s*(aholi|odam|mahalla|hudud)|hamma\\s*(aholi|odam|mahalla)|to${A}liq\\s*reja|shahar\\s*aholisi`, 'i'),
+    fix: new RegExp(`hal\\s*qil|yechim|bartaraf|tuzat|oldini\\s*ol|nima\\s*qilish\\s*kerak|qanday\\s*qilsak|muammosini|chorasi`, 'i'),
     rescue: new RegExp(`baland\\s*(joy|nuqta)|eng\\s*baland|olib\\s*chiq|chiqarib|xavfsiz\\s*joy|qayerga\\s*(bor|ket|qoch)`, 'i'),
   };
   const HAZARD = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac'];
@@ -34,7 +35,7 @@
   function intent(q) {
     const t = String(q || '');
     const main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'road', 'plan', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
-    return { main, hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t) };
+    return { main, hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t) };
   }
 
   // Katalog: [savol, kutilgan tur]

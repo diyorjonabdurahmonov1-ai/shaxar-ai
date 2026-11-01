@@ -388,6 +388,7 @@
       // Favqulodda vaziyat natijasi: chiziq va hudud — jonli qatlamda (NX.fx); bu yerda faqat bosiladigan ixcham belgi
       if (a.fx) {
         if (a.kind === 'line' || a.kind === 'water') return;
+        if (a.list === false && a.kind === 'point') { L.circleMarker([a.lat, a.lon], { renderer, radius: 5, color: '#fff7ed', weight: 1.5, fillColor: a.color || '#f59e0b', fillOpacity: 1 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).addTo(L_.ann); return; }
         L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
         return;
       }

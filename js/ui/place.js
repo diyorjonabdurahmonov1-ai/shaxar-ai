@@ -20,7 +20,7 @@
     const st = street(a.lat, a.lon), E = NX.esc;
     return `<div class="ppop place"><b>${n ? n + '. ' : ''}${E(a.title || 'Joy')}</b>${a.note ? `<p>${E(a.note)}</p>` : ''}${st ? `<div class="place-st">📍 ${E(st)}</div>` : ''}
       <div class="ppop-photo" data-lat="${(+a.lat).toFixed(6)}" data-lon="${(+a.lon).toFixed(6)}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div>
-      <div class="place-btns">${NX.pano.btn(+a.lat, +a.lon, st || a.title, 'btn xs', '🌐 Panorama (Yandex)')}</div></div>`;
+      <div class="place-btns">${NX.pano.btn(+a.lat, +a.lon, st || a.title, 'btn xs', '🌐 Panorama (Yandex)')}${/^W\d/.test(a.id || '') || /suv/i.test(a.title || '') ? `<button type="button" class="btn xs" data-fix-street="${E((String(a.title).match(/:\s*([^—]+?)\s*—/) || [])[1] || st || '')}">🛠 Yechim</button>` : ''}</div></div>`;
   }
 
   const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyun', 'iyul', 'avg', 'sen', 'okt', 'noy', 'dek'];
@@ -56,7 +56,7 @@
     lb.hidden = false;
   }
   document.addEventListener('click', e => {
-    const img = e.target.closest('.vgen img, .ppop-photo img, .road-photos img, .vbox img, .chat-msg .bubble img');
+    const img = e.target.closest('.vgen img, .ppop-photo img, .road-photos img, .vbox img, .msg-photos img, .chat-msg .bubble img');
     if (!img) return;
     e.preventDefault();
     const a = img.closest('a'), fig = img.closest('figure'), cap = fig && fig.querySelector('figcaption');
