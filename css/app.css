@@ -885,3 +885,9 @@ html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-d
 .fl-sw .sw-amb { height: 8px; background: repeating-linear-gradient(90deg, #f43f5e 0 7px, #fff 7px 10px); }
 .fl-sw .sw-fire { height: 8px; background: repeating-linear-gradient(90deg, #f97316 0 7px, #fff 7px 10px); }
 .fl-sw .sw-blk { background: #ef4444; animation: auPulse 1s infinite; box-shadow: 0 0 8px #ef4444; }
+/* 3D obidalar yorligʻi: nur ustuni + shisha pill */
+.lm-tag { display: flex; flex-direction: column-reverse; align-items: center; cursor: pointer; pointer-events: auto; }
+.lm-tag i { width: 2px; height: 34px; background: linear-gradient(#fde68a, rgba(251, 191, 36, 0)); box-shadow: 0 0 8px #fbbf24; }
+.lm-tag span { padding: 3px 10px; border-radius: 999px; background: rgba(3, 7, 16, .78); border: 1px solid rgba(251, 191, 36, .7); color: #fde68a; font: 600 .74rem system-ui; white-space: nowrap; box-shadow: 0 0 14px rgba(251, 191, 36, .35); backdrop-filter: blur(4px); transition: transform .2s; }
+.lm-tag:hover span { transform: scale(1.08); }
+.sun-now { align-self: center; }

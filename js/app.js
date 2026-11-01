@@ -1569,6 +1569,7 @@
 
   // ---------- Xaritani oʻrgatish: tuzatishlar ----------
   // Binolar yuklanganda: OSM’da faqat nuqta boʻlgan maktablar yonida maktab binosi bormi — muammolar qayta baholanadi
+  document.addEventListener('nx:tour', () => { if (S.tab === 'twin') renderKeepScroll(); });
   document.addEventListener('nx:buildings', () => { if (S.model && S.model.schools && S.model.schools.some(o => o.ot === 'n' && !o.safe)) { NX.analysis.refresh(S.model); if (S.tab === 'problems') renderKeepScroll(); } });
   function rebuildModel() {
     if (!S.raw) return;
@@ -2000,6 +2001,7 @@
         }
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
+        case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
           const R0 = twinState().rain;

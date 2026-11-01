@@ -47,6 +47,7 @@
       ${T.err ? `<p class="small bad-text">⚠️ ${E(T.err)}</p>` : ''}
       <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('quake', '🏚 Zilzila')}${chip('plan', '🏗 Yangi bino va soya')}</div>
       <div class="row-btns">${[['twin', '✨ Raqamli egizak'], ['sat', '🛰 Sunʼiy yoʻldosh'], ['street', '🗺 Xarita']].map(([k, t]) => `<button class="btn xs${NX.map3d.base() === k ? ' primary' : ''}" data-act="twin-base" data-base="${k}">${t}</button>`).join('')}</div>
+      <div class="row-btns"><button class="btn xs${NX.map3d.touring() ? ' primary' : ''}" data-act="twin-tour">${NX.map3d.touring() ? '⏹ Sayohatni toʻxtatish' : '🎬 Obidalar boʻylab sayohat'}</button>${(() => { const sp = NX.map3d.sun(); return sp ? `<span class="small muted sun-now">${sp.alt > 0 ? `☀️ Quyosh ${Math.round(sp.alt)}° balandlikda — soyalar real vaqtda` : '🌙 Kechki shahar — derazalar yonadi'}</span>` : ''; })()}</div>
       ${b.length ? `<p class="small muted">🏙 ${F.int(b.length)} ta bino 3D da${b.some(x => x.ml) ? ` — shundan ${F.int(b.filter(x => x.ml).length)} tasi OSM’da yoʻq, sunʼiy yoʻldosh suratidan (Microsoft)` : ''}.</p>` : ''}
     </section>
     ${twinChat(S)}
