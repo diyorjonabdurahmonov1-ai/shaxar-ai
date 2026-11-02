@@ -239,15 +239,15 @@ async function roadBlock(browser) {
   await page.waitForFunction(() => NX.state.twinChat && !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 2, null, { timeout: 180000 });
   ok('3D egizak chati: savoldagi 50 mm hisoblanadi, xaritada koʻrinadi (AI ulanmagan — sayt hisobi)', /50 mm yomgʻirda/.test(await page.textContent('#twinChat .chat-msg.ai .ai-text')) && (await page.evaluate(() => NX.state.twin.dyn.label === '50 mm, 1 soatda' && NX.map3d.mode() === 'flood')));
   const wq = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H && H.kind, water: H ? H.items.filter(a => a.kind === 'water').reduce((t, a) => t + a.segs.length, 0) : 0, pins: H ? H.items.filter(a => a.kind === 'point').map(a => a.id) : [], lines: H ? H.items.filter(a => a.kind === 'line').length : -1, fx: NX.fx.active() }; });
-  ok('“Qaysi koʻchalarni suv bosadi” — evakuatsiya emas: koʻchalardagi suv (jonli) va eng chuqur koʻchalar', wq.kind === 'water' && wq.water > 0 && wq.pins.some(p => /^W/.test(p)) && wq.lines === 0 && wq.fx, JSON.stringify(wq));
+  ok('“Qaysi koʻchalarni suv bosadi” — evakuatsiya emas: koʻchalardagi suv (jonli) va eng chuqur koʻchalar', wq.kind === 'water' && wq.water > 0 && wq.pins.some(p => /^W/.test(p)) && wq.lines === 0 && !wq.fx && (await page.evaluate(() => NX.map3d.map().getSource('water-vol') && NX.state.twin.hz.origin === 'twin')), JSON.stringify(wq));
   if (process.env.SHOT15) { await page.click('.tabs [data-tab=map]'); await page.waitForTimeout(2500); await page.screenshot({ path: process.env.SHOT15 }); await page.click('.tabs [data-tab=twin]'); await page.waitForTimeout(800); }
   // Favqulodda vaziyat: zarar zonalari va evakuatsiya yoʻllari koʻcha tarmogʻida hisoblanib, xaritada chiziladi
   await page.fill('#twinChat textarea[name=tq]', '9 ballik zilzila boʻlsa qayer koʻp zarar koʻradi va evakuatsiya uchun qaysi yoʻl xavfsiz?');
   await page.click('#twinChat form button.primary');
   await page.waitForFunction(() => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === 4, null, { timeout: 180000 });
   const hz = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, scope: H.scope, I: H.I, z: H.zones.length, r: H.routes.length, pl: H.routes[0] && H.routes[0].path.length, sh: H.shelters.map(s => s.name), f3: NX.map3d.map().getSource('hz')._data.features.length, pins: document.querySelectorAll('.hz-pin').length, list: document.querySelectorAll('#twinChat .hz-list li').length, mode: NX.map3d.mode() }; });
-  const fx3 = await page.evaluate(() => ({ fx: NX.fx.active(), op: NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-opacity'), close: getComputedStyle(document.querySelector('.hz-close')).zIndex }));
-  ok('3D egizakda ham evakuatsiya yoʻllari va oqim binolar ustida (jonli qatlam 3D kamerada), binolar shaffof', fx3.fx && fx3.op === 0.5 && +fx3.close > 1050, JSON.stringify(fx3));
+  const fx3 = await page.evaluate(() => ({ fx: NX.fx.active(), dots: NX.map3d.map().getSource('hz-dots')._data.features.length, op: NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-opacity'), close: getComputedStyle(document.querySelector('.hz-close')).zIndex }));
+  ok('3D egizakda evakuatsiya yoʻllari va oqim nuqtalari (faqat 3D, 2D qatlamsiz), binolar shaffof', !fx3.fx && fx3.op === 0.5 && +fx3.close > 1050, JSON.stringify(fx3));
   ok('Zilzila: xavfli zonalar, butun shahar evakuatsiya rejasi (koʻchalar boʻylab) va yigʻilish joylari xaritada', hz.kind === 'quake' && hz.scope === 'all' && hz.I === 9 && hz.z > 0 && hz.r > 0 && hz.pl > 2 && hz.f3 >= hz.z + hz.r && hz.pins > 0 && hz.list > 0 && hz.mode === 'quake' && hz.sh.some(n => /Sinov/.test(n)), JSON.stringify(hz));
   await page.fill('#twinChat textarea[name=tq]', '50 mm yomgʻirda suv toshsa evakuatsiya uchun eng baland joy qayer?');
   await page.click('#twinChat form button.primary');
@@ -289,6 +289,20 @@ async function roadBlock(browser) {
   await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nRs, { timeout: 180000 });
   const rs = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, rescue: H.items.filter(a => a.style === 'rescue').length, amb: (H.rescue || []).every(r => r.kind === 'ambulance'), facts: Array.isArray(H.facts.qutqaruv_yoʻllari), legend: /tez yordam/.test((document.querySelector('.fix-legend') || {}).textContent || ''), text: /Qutqaruv mashinalari/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text) || NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].src === 'ai' }; });
   ok('Zilzila + tez yordam: shifoxonadan zonalarga mashina yoʻllari (TY), legendada nima va qayoqqa', rs.kind === 'quake' && rs.rescue >= 1 && rs.amb && rs.facts && rs.legend && rs.text, JSON.stringify(rs));
+  // 3D egizakda hudud chizish: AI savollarni shu hudud boʻyicha hisoblaydi; natija faqat 3D da (2D xaritaga chizilmaydi)
+  await page.click('[data-act=twin-draw]'); await page.waitForSelector('.draw3d-bar', { timeout: 5000 });
+  const cv = await page.evaluate(() => { const m = NX.map3d.map(); m.jumpTo({ center: [66.9700, 39.6520], zoom: 15.2, pitch: 0, bearing: 0 }); const r = m.getCanvas().getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await page.waitForTimeout(600);
+  for (const [dx, dy] of [[-120, -90], [120, -90], [120, 90], [-120, 90]]) { await page.mouse.click(cv.x + dx, cv.y + dy); await page.waitForTimeout(150); }
+  await page.click('.draw3d-bar [data-d=ok]'); await page.waitForTimeout(800);
+  const a3 = await page.evaluate(() => ({ area: !!(NX.state.area && NX.state.area.from3d), ha: NX.state.area && NX.state.area.st.areaHa, chip: !!document.querySelector('.twin-area') }));
+  const nA3 = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.fill('#twinChat textarea[name=tq]', 'Zilzila boʻlsa qaysi uylar zaif?');
+  await page.click('#twinChat form button.primary');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nA3, { timeout: 180000 });
+  const a3r = await page.evaluate(() => { const H = NX.state.twin.hz; return { scope: H && H.scope, origin: H && H.origin, ann2d: document.querySelectorAll('.leaflet-marker-icon.hz-ann').length }; });
+  await page.click('[data-act=twin-area-clear]'); await page.waitForTimeout(300);
+  ok('3D da hudud chizish: savol shu hudud boʻyicha hisoblanadi, natija faqat 3D da (2D xaritaga chizilmaydi)', a3.area && a3.ha > 1 && a3.chip && a3r.scope === 'area' && a3r.origin === 'twin' && a3r.ann2d === 0 && !(await page.evaluate(() => NX.state.area)), JSON.stringify([a3, a3r]));
   // Aqlli savol: davomli savollar oldingi savol bilan birlashadi; imlo xatosi va ruscha savollar ham taniladi
   const sq = await page.evaluate(async () => ({ f1: await NX.smartQ('endi butun shahar uchun', 'Zilziladan keyin aholini qanday evakuatsiya qilamiz?'), f2: await NX.smartQ('Registon-chi?', 'Toshkent koʻchasi nogironlar uchun qulaymi?'), t1: NX.intent('zilzla bolsa nima boladi').main, t2: NX.intent('наводнение какие улицы').main, t3: NX.intent('selda qaysi kochalar xavfli').main }));
   ok('Aqlli savol: “endi butun shahar uchun”, “Registon-chi?” — oldingi savol davomi; “zilzla”, ruscha, “selda” taniladi', (() => { const a = NX_I => NX_I; return /evakuatsiya/.test(sq.f1) && /butun shahar/.test(sq.f1) && /nogironlar/.test(sq.f2) && sq.t1 === 'quake' && sq.t2 === 'flood' && sq.t3 === 'flood'; })(), JSON.stringify(sq));

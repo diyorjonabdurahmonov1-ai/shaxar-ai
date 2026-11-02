@@ -301,6 +301,47 @@
     const legVis = () => { leg.hidden = !(mode === 'height' && base === 'twin'); };
     controls.legVis = legVis; legVis();
   }
+  // ---------- 3D xaritada hudud chizish: bosib-bosib nuqta qoʻyiladi, “✓ Tayyor” yoki ikki marta bosish bilan tugaydi ----------
+  let drawSt = null;
+  function areaGeo(pts, closed) {
+    const f = [];
+    if (pts.length >= 3 && closed) f.push({ type: 'Feature', properties: { t: 'fill' }, geometry: { type: 'Polygon', coordinates: [pts.concat([pts[0]]).map(p => [p[1], p[0]])] } });
+    if (pts.length >= 2) f.push({ type: 'Feature', properties: { t: 'line' }, geometry: { type: 'LineString', coordinates: (closed ? pts.concat([pts[0]]) : pts).map(p => [p[1], p[0]]) } });
+    pts.forEach(p => f.push({ type: 'Feature', properties: { t: 'pt' }, geometry: { type: 'Point', coordinates: [p[1], p[0]] } }));
+    return { type: 'FeatureCollection', features: f };
+  }
+  function ensureAreaLayers() {
+    if (map.getSource('area3d')) return;
+    map.addSource('area3d', { type: 'geojson', data: areaGeo([], false) });
+    map.addLayer({ id: 'area3d-fill', type: 'fill', source: 'area3d', filter: ['==', ['get', 't'], 'fill'], paint: { 'fill-color': '#a855f7', 'fill-opacity': 0.16 } }, 'bld');
+    map.addLayer({ id: 'area3d-line', type: 'line', source: 'area3d', filter: ['==', ['get', 't'], 'line'], paint: { 'line-color': '#c084fc', 'line-width': 3, 'line-dasharray': [2, 1.2] } });
+    map.addLayer({ id: 'area3d-pt', type: 'circle', source: 'area3d', filter: ['==', ['get', 't'], 'pt'], paint: { 'circle-radius': 5, 'circle-color': '#f5d0fe', 'circle-stroke-color': '#7e22ce', 'circle-stroke-width': 2 } });
+  }
+  function showArea(poly) { if (!map || !map.getSource) return; ensureAreaLayers(); map.getSource('area3d').setData(areaGeo(poly || [], true)); }
+  function drawPoly(done) {
+    if (!map) return;
+    ensureAreaLayers();
+    if (drawSt) drawStop();
+    const pts = [], host = map.getContainer();
+    const bar = document.createElement('div'); bar.className = 'draw3d-bar';
+    bar.innerHTML = '<span>✏️ Hudud chegarasini bosib-bosib belgilang (kamida 3 nuqta)</span><button type="button" data-d="ok" class="primary">✓ Tayyor</button><button type="button" data-d="undo">↶</button><button type="button" data-d="x">✕</button>';
+    host.appendChild(bar);
+    const upd = () => map.getSource('area3d').setData(areaGeo(pts, false));
+    const click = e => { pts.push([e.lngLat.lat, e.lngLat.lng]); upd(); };
+    const finish = () => { if (pts.length < 3) return; const poly = pts.slice(); drawStop(); map.getSource('area3d').setData(areaGeo(poly, true)); done && done(poly); };
+    const dbl = e => { e.preventDefault(); finish(); };
+    const key = e => { if (e.key === 'Escape') { drawStop(); showArea(null); } };
+    bar.addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; if (b.dataset.d === 'ok') finish(); if (b.dataset.d === 'undo') { pts.pop(); upd(); } if (b.dataset.d === 'x') { drawStop(); showArea(null); } });
+    map.on('click', click); map.on('dblclick', dbl); document.addEventListener('keydown', key);
+    map.doubleClickZoom.disable(); map.getCanvas().style.cursor = 'crosshair';
+    drawSt = { bar, click, dbl, key };
+  }
+  function drawStop() {
+    if (!drawSt) return;
+    map.off('click', drawSt.click); map.off('dblclick', drawSt.dbl); document.removeEventListener('keydown', drawSt.key);
+    drawSt.bar.remove(); map.getCanvas().style.cursor = ''; setTimeout(() => map.doubleClickZoom.enable(), 300);
+    drawSt = null;
+  }
   function init(el) {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -554,5 +595,5 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  NX.map3d = { tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  NX.map3d = { drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 })();

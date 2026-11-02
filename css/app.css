@@ -920,3 +920,11 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .g3d-spots { position: absolute; left: 12px; bottom: 36px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; max-width: 70%; }
 .g3d-spots button { padding: 6px 11px; border-radius: 999px; border: 1px solid rgba(251, 191, 36, .7); background: rgba(3, 7, 16, .8); color: #fde68a; font: 600 .76rem system-ui; cursor: pointer; }
 .g3d-btn { border-color: #fbbf24 !important; color: #fde68a !important; }
+/* Natija boshqa boʻlimga tegishli — bu boʻlimda uning tugma va legendasi koʻrinmaydi */
+.map-wrap.hz-away .hz-close, .map-wrap.hz-away .fix-legend { display: none; }
+/* 3D da hudud chizish paneli */
+.draw3d-bar { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 6; display: flex; gap: 6px; align-items: center; padding: 7px 10px; border-radius: 12px; background: rgba(3, 7, 16, .88); border: 1px solid #c084fc; color: #f3e8ff; font: 600 .8rem system-ui; box-shadow: 0 8px 22px rgba(0, 0, 0, .45); }
+.draw3d-bar button { border: 1px solid rgba(192, 132, 252, .6); background: rgba(126, 34, 206, .25); color: #f3e8ff; border-radius: 9px; padding: 5px 10px; cursor: pointer; font: inherit; }
+.draw3d-bar button.primary { background: #7e22ce; }
+.twin-area { display: flex; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 12px; background: rgba(126, 34, 206, .18); border: 1px solid rgba(192, 132, 252, .5); font-size: .82rem; margin-top: 6px; }
+.twin-area b { color: #f5d0fe; } .twin-area button { margin-left: auto; }

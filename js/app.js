@@ -246,7 +246,8 @@
     if (t === 'twin') loadTwin();
     NX.camwall.show(t === 'map' && !NX.fx.active());
     // Natija (masalan suv yechimi) 3D da olingan boʻlsa — xaritaga oʻtganda shu joyga uchadi
-    if (t === 'map' && S.twin && S.twin.hz && NX.fx.active()) setTimeout(() => { const pts = []; S.twin.hz.items.forEach(a => { if (a.kind !== 'water' && a.kind !== 'zone' && a.lat != null) pts.push([a.lat, a.lon]); }); if (pts.length) NX.view.fitPoints(pts); }, 200);
+    hzVisibility();
+    if (t === 'map' && S.twin && S.twin.hz && S.twin.hz.origin !== 'twin' && NX.fx.active()) setTimeout(() => { const pts = []; S.twin.hz.items.forEach(a => { if (a.kind !== 'water' && a.kind !== 'zone' && a.lat != null) pts.push([a.lat, a.lon]); }); if (pts.length) NX.view.fitPoints(pts); }, 200);
     if (t === 'systems' && !S.webcams && NX.ai.available()) camLoad();
     if (wasProblems !== (t === 'problems')) { NX.view.drawFixes(shownFixes()); drawSys(); }
     if (t !== 'routes') { if (S.route != null) NX.view.highlightRoute(null); S.route = null; }
@@ -422,7 +423,8 @@
   }
   function twinFacts(extra) {
     const T = twinState(), b = T.buildings || [], lv = n => b.filter(x => !x.est && x.levels >= n).length;
-    return Object.assign({
+    const A = S.area && S.area.from3d ? S.area.st : null;
+    return Object.assign(A ? { belgilangan_hudud_3d: { izoh: 'foydalanuvchi 3D xaritada chizgan hudud — javob shu hudud haqida', maydon_ga: +A.areaHa.toFixed(1), markaz: A.center.map(v => +v.toFixed(5)), koʻchalar: A.streets.filter(x => x.name).slice(0, 10).map(x => x.name), koʻcha_km: +A.streetKm.toFixed(2), bekatlar: A.stops, maktab_bogcha_ichida: A.schoolsIn.length, binolar: b.filter(x => NX.area.inside(A.poly, x.c[0], x.c[1])).length } } : {}, {
       real_yogin_prognozi: T.rain ? { keyingi_24_soat_mm: T.rain.d24, keyingi_48_soat_mm: T.rain.d48, eng_kuchli_soat_mm: T.rain.maxH } : null,
       relyef: T.dem ? { manba: T.dem.src, katak_m: T.dem.step, shahar_balandligi_m: T.flood ? [Math.round(T.flood.zmin), Math.round(T.flood.zmax)] : null, botiqlar_soni: T.flood ? T.flood.basins : null } : 'yuklanmadi',
       binolar_osm: { jami: b.length, qavati_nomaʼlum_foiz: b.length ? Math.round(b.filter(x => x.est).length / b.length * 100) : null, qavat_5_va_yuqori: lv(5), qavat_9_va_yuqori: lv(9), maktab: b.filter(x => x.kind === 'school').length, bogcha: b.filter(x => x.kind === 'kindergarten').length, shifoxona: b.filter(x => /hospital|clinic/.test(x.kind)).length },
@@ -485,18 +487,32 @@
     // Boshqa hodisa natijasi — oʻynab turgan suv simulyatsiyasi toʻxtaydi (rejimni qaytarib olmasin)
     if (!/water|flood/.test(H.kind) && dynTimer) { clearInterval(dynTimer); dynTimer = null; T.playing = false; }
     H.items.forEach(a => { a.fx = true; });
+    // Natija FAQAT savol berilgan boʻlimda: 3D egizakda soʻralsa — faqat 3D xaritada, boshqa boʻlimda — faqat 2D xaritada
+    // (ikkala xaritaga chizish kompyuterga ogʻirlik qiladi). Natija yopilmaguncha shu boʻlimda turadi.
+    H.origin = S.tab === 'twin' ? 'twin' : '2d';
     T.hz = H;
-    NX.map3d.setHazard(H.items);
     const pts = []; H.items.forEach(a => { if (a.kind === 'water') return; pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
-    NX.map3d.fitTo(pts);
-    ensureLeaflet(); NX.view.showActions(H.items);
-    // Jonli simulyatsiya xaritada (2D); boshqa belgilar xira — natija birinchi oʻrinda
-    NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter); fixLegend(H);
+    if (H.origin === 'twin') {
+      NX.map3d.setHazard(H.items); NX.map3d.fitTo(pts);
+      NX.view.showActions(null); NX.fx.clear();
+    } else {
+      NX.map3d.setHazard(null);
+      ensureLeaflet(); NX.view.showActions(H.items);
+      NX.view.clearDeltas(); NX.fx.show(H.items, H.kind, H.epicenter);
+    }
+    fixLegend(H);
     // Zilzila: xarita bir necha soniya silkinadi (simulyatsiya), 3D da kamera titraydi
     if (H.kind === 'quake') { const w = $('.map-wrap'); w.classList.remove('quake-shake'); void w.offsetWidth; w.classList.add('quake-shake'); setTimeout(() => w.classList.remove('quake-shake'), 2600); NX.map3d.shake && NX.map3d.shake(); }
     hazardFocus(true);
-    if (S.tab !== 'twin') NX.view.fitPoints(pts.filter(Boolean));
+    if (H.origin !== 'twin') NX.view.fitPoints(pts.filter(Boolean));
+    hzVisibility();
     return H;
+  }
+  // Boshqa boʻlimga oʻtilganda natija tugmalari/legendasi yashiriladi (natija oʻz boʻlimida qoladi)
+  function hzVisibility() {
+    const T = twinState(), w = $('.map-wrap'); if (!w) return;
+    const here = !T.hz || ((T.hz.origin === 'twin') === (S.tab === 'twin'));
+    w.classList.toggle('hz-away', !here);
   }
   // Natija rejimi: kamera devori yashiriladi, xaritada “✕ Natijani yopish” tugmasi
   function hazardFocus(on) {
@@ -637,7 +653,7 @@
     el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
   }
   document.addEventListener('click', e => { const b = e.target.closest('[data-fix-street]'); if (b) { e.preventDefault(); fixAsk(b.dataset.fixStreet); } });
-  function hazardClear() { const T = twinState(); T.hz = null; fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+  function hazardClear() { const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -652,6 +668,19 @@
       let m; try { m = await planAsk(q, prev); } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
       C.msgs.push(m); C.busy = null; renderKeepScroll();
       return m;
+    }
+    // 3D da hudud chizilgan boʻlsa — savollar shu hudud haqida (zilzila, suv, koʻcha holati, evakuatsiya — hudud boʻyicha)
+    if (S.area && S.area.from3d) opts = Object.assign({}, opts, { area: true });
+    // Hudud bilan bogʻliq boshqa savollar (nima yetishmaydi, qurilish, umumiy) — hudud tahlili, natija 3D xaritada
+    if (S.area && S.area.from3d && (it0.main === 'needs' || it0.main === 'build' || it0.main === 'general' || it0.main === 'traffic')) {
+      C.busy = 'Belgilangan hudud tahlil qilinmoqda'; renderKeepScroll();
+      let m = null;
+      try { await areaAsk(q); m = S.area.qa[S.area.qa.length - 1]; } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
+      const items = ((m && m.actions) || []).filter(a => a && a.lat != null).map(a => Object.assign({}, a));
+      let H = null; if (items.length) H = showHazard({ kind: 'area', items });
+      const msg = { role: 'ai', text: m ? m.text : 'Hisoblab boʻlmadi.', src: m ? m.src : 'hisob', error: m && m.error, hz: H ? H.items : null };
+      C.msgs.push(msg); C.busy = null; renderKeepScroll();
+      return msg;
     }
     C.busy = 'Maʼlumot tayyorlanmoqda'; renderKeepScroll();
     // Asosiy maʼlumot (binolar, relyef) — 40 s gacha; koʻchalar — 25 s gacha, kelmasa ularsiz davom etadi
@@ -813,20 +842,35 @@
     NX.view.cancelPick();
     if (window.matchMedia('(max-width: 820px)').matches) $('.map-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
     NX.draw.start(poly => {
-      const st = NX.area.stats(S.model, poly);
-      st.systems = NX.systems.loaded().map(k => { const gj = NX.systems.get(k).gj; return Object.assign({ sys: k, nearest: NX.systems.nearest(gj, ...st.center) }, NX.systems.inArea(gj, poly)); });
-      if (st.areaHa < 0.2) { toast('Hudud juda kichik — kattaroq chizing.', 'warn'); return; }
-      const A0 = {};
-      Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; });
-      const prev = S.area;
-      S.area = { st, spec: prev ? prev.spec : { flats: 500, floors: 9 }, A: prev ? prev.A : A0, res: null, busy: null, qa: [], qaBusy: null };
+      if (!makeArea(poly)) return;
       S.street = null; NX.view.selectStreet(null); setSegment(null);
       S.road = null; NX.view.showRoad(null);
       NX.view.clearDeltas();
       NX.view.drawArea(poly, null, true);
       render(); focusPanel();
       loadAreaLive(S.area);
-      enrichArea(S.area);
+    });
+  }
+  // Hudud obyekti (2D yoki 3D da chizilgan) — statistika, tizimlar, butun shahar maʼlumoti bilan toʻldirish
+  function makeArea(poly, from3d) {
+    const st = NX.area.stats(S.model, poly);
+    st.systems = NX.systems.loaded().map(k => { const gj = NX.systems.get(k).gj; return Object.assign({ sys: k, nearest: NX.systems.nearest(gj, ...st.center) }, NX.systems.inArea(gj, poly)); });
+    if (st.areaHa < 0.2) { toast('Hudud juda kichik — kattaroq chizing.', 'warn'); return null; }
+    const A0 = {};
+    Object.keys(NX.area.ASSUME).forEach(k => { A0[k] = NX.area.ASSUME[k].v; });
+    const prev = S.area;
+    S.area = { st, spec: prev ? prev.spec : { flats: 500, floors: 9 }, A: prev ? prev.A : A0, res: null, busy: null, qa: [], qaBusy: null, from3d: !!from3d };
+    enrichArea(S.area);
+    return S.area;
+  }
+  // 3D egizakda hudud chizish — AI shu hudud haqida javob beradi (savolda “shu yer” deyilmasa ham)
+  function drawArea3d() {
+    if (!S.model) { toast('Maʼlumot hali yuklanmoqda — birozdan keyin.', 'warn'); return; }
+    NX.map3d.drawPoly(poly => {
+      if (!makeArea(poly, true)) { NX.map3d.showArea(null); return; }
+      NX.view.drawArea(poly, null, false);
+      toast(`Hudud belgilandi (${NX.fmt.num(S.area.st.areaHa, 1)} ga) — endi savollar shu hudud haqida.`, 'ok');
+      renderKeepScroll();
     });
   }
   // Hudud transport modeli (tarixiy markaz) chegarasidan tashqarida boʻlsa — koʻchalar butun shahar faylidan,
@@ -872,7 +916,7 @@
   }
   function clearArea() {
     NX.draw.stop();
-    S.area = null;
+    S.area = null; NX.map3d.showArea && NX.map3d.showArea(null);
     NX.view.showActions(null);
     if (!S.road) NX.view.showPlace(null);
     NX.view.drawArea(null);
@@ -2107,6 +2151,8 @@
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
+        case 'twin-draw': drawArea3d(); break;
+        case 'twin-area-clear': S.area = null; NX.map3d.showArea(null); NX.view.drawArea(null); renderKeepScroll(); break;
         case 'g3d': if (NX.g3d.available()) NX.g3d.open(); else { toast('Google fotoreal 3D uchun Sozlamalarda Google Maps API kalitini kiriting (Map Tiles API yoqilgan boʻlsin).', 'warn'); openSettings(); setTimeout(() => $('#keyGoogle3d').focus(), 50); } break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
