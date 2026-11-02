@@ -46,7 +46,7 @@
   const status = t => { if (!box) return; const e = box.querySelector('.g3d-st'); e.textContent = t || ''; e.hidden = !t; };
   function srcButtons() {
     if (!box) return;
-    const can = { google: !!(gkey() || ion()) && !gFail, osm: src === 'osm', schema: true };
+    const can = { google: !!(gkey() || ion()) && !gFail, osm: false, schema: true };
     box.querySelector('.g3d-src').innerHTML = [['google', '📸 Fotoreal'], ['osm', '🏙 OSM binolar'], ['schema', '🧊 Maket']].filter(x => can[x[0]]).map(x => `<button type="button" data-src="${x[0]}" class="${src === x[0] ? 'on' : ''}">${x[1]}</button>`).join('');
   }
   // Kamera: markaz (lat, lon) atrofida, MapLibre zoom’iga mos masofa
@@ -72,13 +72,12 @@
         }
         tiles.show = true; if (osm) osm.show = false;
         viewer.scene.globe.show = false;
-        src = 'google'; srcButtons(); redraw();
+        src = 'google'; srcButtons(); redraw(); bldRefresh(true);
         status('');
         return;
       } catch (e) {
         console.warn('Google 3D: ' + ((e && (e.statusCode || e.message)) || '') + ' ' + ((e && e.response) || ''), e);
         gFail = true;
-        if (ion()) { status('Fotoreal ochilmadi (ion’da “Google Photorealistic 3D Tiles” My Assets’ga qoʻshilmagan boʻlishi mumkin) — OSM binolari.'); return setSource('osm'); }
         throw e;
       }
     }
@@ -153,8 +152,17 @@
     h.setInputAction(m => {
       if (drawSt) { const ll = pickLL(m.position); if (ll) { drawSt.pts.push(ll); drawTmp(); } return; }
       const p = viewer.scene.pick(m.position), a = p && p.id && p.id.nxItem;
-      if (a) showPop(a, m.position); else hidePop();
+      if (a) { showPop(a, m.position); return; }
+      const b = p && typeof p.id === 'string' && p.id.startsWith('b:') && bldById.get(p.id);
+      if (b) showPop(bldItem(b), m.position); else hidePop();
     }, C.ScreenSpaceEventType.LEFT_CLICK);
+    // Sichqoncha ustidagi bino yorishadi (har bir bino — alohida obyekt)
+    let hovT = 0;
+    h.setInputAction(m => {
+      const now = performance.now(); if (now - hovT < 60 || drawSt) return; hovT = now;
+      const p = viewer.scene.pick(m.endPosition), id = p && typeof p.id === 'string' && p.id.startsWith('b:') ? p.id : null;
+      hover(id);
+    }, C.ScreenSpaceEventType.MOUSE_MOVE);
     h.setInputAction(m => {
       if (drawSt) { drawFinish(); return; }
       const ll = pickLL(m.position); if (!ll) return;      // ikki marta bosish — shu joyga yaqinlashish
@@ -162,7 +170,8 @@
       look(ll[0], ll[1], Math.max(150, d * 0.45), C.Math.toDegrees(viewer.camera.heading), Math.min(-25, C.Math.toDegrees(viewer.camera.pitch)));
     }, C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
     viewer.camera.changed.addEventListener(hidePop);
-    await setSource(gkey() || ion() ? 'google' : 'osm');
+    await setSource('google');
+    viewer.camera.moveEnd.addEventListener(() => bldRefresh());
   }
   // 3D egizak boʻlimi ochilganda: token boʻlsa va foydalanuvchi “Sxema”ni tanlamagan boʻlsa — fotoreal
   function autoEmbed(el) { host = el || host; if (available() && pref() && !failed) embed(); }
@@ -179,7 +188,7 @@
         await initP;
         const m = NX.map3d.map && NX.map3d.map(), c = m && m.getCenter();
         if (D.hz) fitHz(); else if (c) look(c.lat, c.lng, zoomRange(m.getZoom()), m.getBearing(), -38, true); else look(39.6547, 66.9757, 2200, 15, -35, true);
-      } else { viewer.resize(); redraw(); }
+      } else { viewer.resize(); redraw(); bldRefresh(true); }
     } catch (e) {
       failed = true;
       const code = e && (e.statusCode || (e.response && e.response.status)), msg = (e && (e.message || '')) || '';
@@ -294,11 +303,72 @@
   }
   function fitHz() { const pts = []; (D.hz || []).forEach(a => { if (a.lat != null) pts.push([a.lat, a.lon]); (a.path || []).forEach(p => p && pts.push(p)); }); fitPts(pts); }
 
+  // ---------- Egizak qatlami: bizning 136 ming bino maʼlumoti fotoreal shahar ustida ----------
+  // Har bir bino — alohida obyekt: rejimga qarab rang (balandlik / zilzila xavfi / suv bosgan / soya / quyosh), ustiga kelsa yorishadi, bosilsa — maʼlumot va real surat.
+  const CRIT = /hospital|clinic|school|kindergarten|university|college|fire_station|police/;
+  let bldPrim = null, bldById = new Map(), bldAt = null, bldKey = '', hovId = null, hovCol = null;
+  const LV = [[1, '#1f3b4d'], [2, '#24566a'], [4, '#1f7f86'], [6, '#22a39a'], [9, '#5eead4'], [14, '#ccfbf1']];
+  function lvCol(lv) { let c = LV[0][1]; LV.forEach(([k, v]) => { if (lv >= k) c = v; }); return c; }
+  function bldColor(b) {
+    const m = D.mode;
+    if (m === 'quake') return CRIT.test(b.kind || '') ? ['#dc2626', 0.55] : b.levels >= 5 ? ['#f97316', 0.5] : b.levels >= 3 ? ['#fbbf24', 0.45] : ['#94a3b8', 0.12];
+    if (m === 'flood') return D.scen && D.scen.wetIds && D.scen.wetIds.has && D.scen.wetIds.has(b.id) ? ['#3b82f6', 0.6] : ['#94a3b8', 0.08];
+    if (m === 'plan') return D.plan && D.plan.shaded && D.plan.shaded.some(x => x.id === b.id) ? ['#0f172a', 0.55] : [lvCol(b.levels || 1), 0.18];
+    if (m === 'solar' && D.ghi && NX.twin.roofKwh) { const k = NX.twin.roofKwh(b, D.ghi); return [k > 50000 ? '#b45309' : k > 20000 ? '#f59e0b' : k > 8000 ? '#fcd34d' : '#fde68a', k > 3000 ? 0.5 : 0.15]; }
+    if (b.lmK || (b.name && /madras|masjid|maqbara|registon|bibixonim|amir|shohi/i.test(b.name))) return ['#fbbf24', 0.35];
+    return [lvCol(b.levels || 1), 0.22];
+  }
+  function bldItem(b) {
+    const c = b.ring.reduce((a, p) => [a[0] + p[1] / b.ring.length, a[1] + p[0] / b.ring.length], [0, 0]);
+    const risk = CRIT.test(b.kind || '') ? 'muhim obyekt — zilzilada birinchi tekshiriladi' : b.levels >= 5 ? 'koʻp qavatli — zilzilada yuqori xavf' : b.levels >= 3 ? 'oʻrta' : 'past uy';
+    return { lat: c[0], lon: c[1], title: `🏢 ${b.name || ({ house: 'Turar joy', residential: 'Turar joy', apartments: 'Koʻp qavatli uy', school: 'Maktab', kindergarten: 'Bogʻcha', hospital: 'Shifoxona', mosque: 'Masjid', commercial: 'Savdo binosi', retail: 'Savdo binosi', industrial: 'Sanoat binosi' }[b.kind] || 'Bino')}`, note: `${b.levels || 1} qavat · ~${Math.round(b.height || 3)} m · ${Math.round(b.area || 0)} m² · zilzila: ${risk}${b.src === 'ms' ? ' · kontur sunʼiy yoʻldosh suratidan (taxminiy)' : ''}` };
+  }
+  // Kamera atrofidagi binolar (~1.4 km) — koʻrinmaydigan binolar yuklanmaydi; kamera 600 m dan koʻp surilsa yangilanadi
+  function bldRefresh(force) {
+    if (!viewer || !active() || src !== 'google' || !D.bld || !D.bld.length) return;
+    const C = window.Cesium, r = viewer.camera.pickEllipsoid(new C.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight * 0.6));
+    const g = r ? C.Cartographic.fromCartesian(r) : viewer.camera.positionCartographic, lat = C.Math.toDegrees(g.latitude), lon = C.Math.toDegrees(g.longitude);
+    const R = Math.min(2000, Math.max(700, viewer.camera.positionCartographic.height * 1.4)), key = D.mode + ':' + (D.scen && D.scen.wetIds ? D.scen.wetIds.size : 0) + ':' + (D.plan ? 1 : 0);
+    if (!force && bldAt && key === bldKey && Math.hypot((lat - bldAt[0]) * 111320, (lon - bldAt[1]) * 85600) < 600 && Math.abs(R - bldAt[2]) < 400) return;
+    bldAt = [lat, lon, R]; bldKey = key;
+    const k = 85600, dLat = R / 111320, dLon = R / k, inst = [], map = new Map();
+    for (const b of D.bld) {
+      const p = b.ring && b.ring[0]; if (!p || Math.abs(p[1] - lat) > dLat || Math.abs(p[0] - lon) > dLon || b.ring.length < 4) continue;
+      const [cs, a] = bldColor(b); if (a < 0.1) continue;
+      const id = 'b:' + b.id; map.set(id, b);
+      inst.push(new C.GeometryInstance({ id, geometry: new C.PolygonGeometry({ polygonHierarchy: new C.PolygonHierarchy(C.Cartesian3.fromDegreesArray(b.ring.flat())) }), attributes: { color: C.ColorGeometryInstanceAttribute.fromColor(col(cs, a)) } }));
+      if (inst.length >= 30000) break;
+    }
+    const old = bldPrim;
+    bldPrim = inst.length ? viewer.scene.primitives.add(new C.GroundPrimitive({ geometryInstances: inst, appearance: new C.PerInstanceColorAppearance({ flat: true, translucent: true }), classificationType: C.ClassificationType.CESIUM_3D_TILE, asynchronous: true })) : null;
+    bldById = map; hovId = null;
+    // Eski qatlam yangisi tayyor boʻlgach olib tashlanadi (miltillamasin)
+    if (old) { const nw = bldPrim, t0 = performance.now(), rm = () => { if (!nw || nw.ready || performance.now() - t0 > 6000) { viewer.scene.primitives.remove(old); viewer.scene.requestRender(); } else setTimeout(rm, 200); }; rm(); }
+    viewer.scene.requestRender();
+  }
+  function hover(id) {
+    if (id === hovId || !bldPrim) return;
+    const C = window.Cesium;
+    try {
+      if (hovId) { const at = bldPrim.getGeometryInstanceAttributes(hovId); if (at && hovCol) at.color = hovCol; }
+      hovId = id; hovCol = null;
+      if (id) { const at = bldPrim.getGeometryInstanceAttributes(id); if (at) { hovCol = at.color.slice ? at.color.slice() : at.color; at.color = C.ColorGeometryInstanceAttribute.toValue(col('#22d3ee', 0.6)); } }
+      viewer.canvas.style.cursor = id ? 'pointer' : '';
+      viewer.scene.requestRender();
+    } catch (e) { /* primitiv hali tayyor emas */ }
+  }
+
   // Koʻprik (map3d.js): maʼlumot doim saqlanadi, fotoreal ochiq boʻlsa — chiziladi
   const live = () => { if (active()) redraw(); };
   function setHazard(list) { D.hz = list && list.length ? list : null; live(); }
-  function set(d) { if (!d) return; if ('scen' in d) D.scen = d.scen; if ('plan' in d) D.plan = d.plan; if ('scen' in d || 'plan' in d) live(); }
-  function setMode(m) { D.mode = m; live(); }
+  function set(d) {
+    if (!d) return;
+    if (d.buildings && d.buildings.length) { const nb = d.buildings !== D.bld; D.bld = d.buildings; if (nb && active()) bldRefresh(true); }
+    if (d.ghi) D.ghi = d.ghi;
+    if ('scen' in d) D.scen = d.scen; if ('plan' in d) D.plan = d.plan;
+    if ('scen' in d || 'plan' in d) { live(); if (active()) bldRefresh(true); }
+  }
+  function setMode(m) { D.mode = m; live(); if (active()) bldRefresh(true); }
   function showArea(poly) { D.area = poly && poly.length ? poly : null; live(); }
   function setOverlay(url, bbox) { D.ov = url ? { url, bbox } : null; live(); }
   function fitTo(pts) { if (pts && pts.length) fitPts(pts); }
