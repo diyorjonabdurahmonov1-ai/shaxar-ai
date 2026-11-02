@@ -69,7 +69,7 @@
     if (mode === 'flood') return ['case', ['boolean', ['feature-state', 'wet'], false], '#60a5fa', base === 'twin' ? '#334155' : '#e2e8f0'];
     if (mode === 'plan') return ['case', ['boolean', ['feature-state', 'shade'], false], '#475569', hgt];
     if (mode === 'quake') return ['case', ['==', ['get', 'cr'], 1], '#dc2626', ['>=', ['get', 'lv'], 5], '#f97316', ['>=', ['get', 'lv'], 3], '#fbbf24', base === 'twin' ? '#475569' : '#cbd5e1'];
-    return base === 'twin' ? ['case', ['==', ['get', 'lm'], 1], '#fbbf24', hgt] : hgt;
+    return base === 'twin' ? ['case', ['==', ['get', 'dl'], 1], '#d8bd93', ['==', ['get', 'lm'], 1], '#fbbf24', hgt] : ['case', ['==', ['get', 'dl'], 1], '#d8bd93', hgt];
   }
   // ---------- Kechki shahar: binolar derazalari yonib turadi (“Raqamli egizak”, balandlik rejimi) ----------
   // Uch xil devor: past uy — iliq chiroqlar kam; oʻrta — koʻp qavatli turar joy; baland — ofis oynalari (oq-moviy)
@@ -97,6 +97,8 @@
   const windowsOn = () => base === 'twin' && mode === 'height' && !isLite();
   function addWindows() {
     Object.keys(WIN).forEach(k => { if (!map.hasImage(k)) map.addImage(k, winImage(k)); });
+    // Obidalar devori: pishgan gʻisht va koshin chiziqlari (derazasiz)
+    if (!map.hasImage('wlm')) { const c = document.createElement('canvas'); c.width = c.height = WSZ; const g = c.getContext('2d'); g.fillStyle = '#cdb08a'; g.fillRect(0, 0, WSZ, WSZ); g.fillStyle = 'rgba(120,90,60,.25)'; for (let y = 0; y < WSZ; y += 4) g.fillRect(0, y, WSZ, 1); g.fillStyle = '#1f9fb8'; g.fillRect(0, WSZ - 5, WSZ, 3); map.addImage('wlm', g.getImageData(0, 0, WSZ, WSZ)); }
     // Har necha soniyada bir devor turi yangilanadi — kimdir chiroq yoqadi, kimdir oʻchiradi
     let t = 0;
     setInterval(() => { if (!windowsOn() || document.hidden || document.getElementById('map3d').hidden) return; const k = Object.keys(WIN)[t++ % 3]; try { map.updateImage(k, winImage(k)); } catch (e) { /* */ } }, 2500);
@@ -104,7 +106,7 @@
   function applyWindows() {
     if (!map || !map.getLayer('bld')) return;
     const on = windowsOn();
-    map.setPaintProperty('bld', 'fill-extrusion-pattern', on ? ['step', ['get', 'lv'], 'w1', 3, 'w2', 7, 'w3'] : undefined);
+    map.setPaintProperty('bld', 'fill-extrusion-pattern', on ? ['case', ['==', ['get', 'dl'], 1], 'wlm', ['step', ['get', 'lv'], 'w1', 3, 'w2', 7, 'w3']] : undefined);
     map.setLayoutProperty('bld-roof', 'visibility', on ? 'visible' : 'none');
   }
 
@@ -116,7 +118,7 @@
     const ghi = data.ghi && data.ghi.kwh, lite = isLite(), key = data.buildings.length + ':' + (ghi || 0) + ':' + (data.buildings[0] && data.buildings[0].id) + ':' + lite;
     if (geoCache && key === geoKey) return geoCache;
     geoKey = key;
-    geoCache = { type: 'FeatureCollection', features: (lite ? data.buildings.filter(b => b.area >= 60 || b.levels >= 3) : data.buildings).map(b => ({ type: 'Feature', id: b.id, properties: { h: b.height, lv: b.levels, id: b.id, cr: CRIT.test(b.kind) ? 1 : 0, lm: LANDMARK.test(b.kind) || (b.name && LM_NAME.test(b.name)) ? 1 : 0, kwh: ghi ? NX.twin.roofKwh(b, ghi) : 0 }, geometry: { type: 'Polygon', coordinates: b.holes ? [b.ring].concat(b.holes) : [b.ring] } })) };
+    geoCache = { type: 'FeatureCollection', features: (lite ? data.buildings.filter(b => b.area >= 60 || b.levels >= 3) : data.buildings).map(b => ({ type: 'Feature', id: b.id, properties: { h: b.height, lv: b.levels, id: b.id, cr: CRIT.test(b.kind) ? 1 : 0, lm: LANDMARK.test(b.kind) || (b.name && LM_NAME.test(b.name)) ? 1 : 0, dl: b.lmK ? 1 : 0, kwh: ghi ? NX.twin.roofKwh(b, ghi) : 0 }, geometry: { type: 'Polygon', coordinates: b.holes ? [b.ring].concat(b.holes) : [b.ring] } })) };
     return geoCache;
   }
   // Suv yetgan / soyada qolgan binolar — feature-state (minglab binoni qayta chizmasdan)
@@ -280,8 +282,7 @@
     step();
   }
   // Balandlik masshtabi (↕): binolar baland/past farqi yaqqolroq koʻrinsin (×1 — haqiqiy)
-  let hScale = 1;
-  try { hScale = +localStorage.getItem('m3d:hscale') || 1; } catch (e) { /* */ }
+  const hScale = 1;
   const HX = () => ['*', ['get', 'h'], hScale];
   function applyHeight() {
     if (!map || !map.getLayer('bld')) return;
@@ -292,24 +293,8 @@
   // ---------- 3D boshqaruv paneli (xarita ustida): katta ekran, kamera burchaklari, balandlik legendasi ----------
   function controls(el) {
     const box = document.createElement('div'); box.className = 'tw-ctl';
-    box.innerHTML = `<button type="button" data-tw="big" title="3D ni katta ekranda ochish (panel yon tomonga yigʻiladi)">⛶ <span>Katta 3D</span></button>
-      <button type="button" data-tw="top" title="Yuqoridan">⬇ Yuqoridan</button><button type="button" data-tw="tilt" title="Qiya (60°)">◢ Qiya</button><button type="button" data-tw="eye" title="Inson koʻzi balandligidan">👁 Koʻcha</button><button type="button" data-tw="spin" title="Shahar ustida aylanish">⟳ Aylanish</button><button type="button" data-tw="hx" title="Balandliklarni 2 barobar koʻrsatish (maket kabi)" class="${hScale > 1 ? 'on' : ''}">↕ Balandlik ×${hScale > 1 ? 1 : 2}</button>`;
-    el.appendChild(box);
+    box.innerHTML = '';
     const leg = document.createElement('div'); leg.className = 'tw-leg'; leg.innerHTML = '<b>Qavatlar</b><i></i><span><em>1</em><em>3</em><em>6</em><em>9</em><em>14+</em></span><small>oltin — tarixiy obidalar</small>'; el.appendChild(leg);
-    let spin = 0;
-    const stopSpin = () => { if (spin) { cancelAnimationFrame(spin); spin = 0; box.querySelector('[data-tw=spin]').classList.remove('on'); } };
-    ['dragstart', 'wheel', 'touchstart'].forEach(ev => map.on(ev, stopSpin));
-    box.addEventListener('click', e => {
-      const b = e.target.closest('[data-tw]'); if (!b || !map) return;
-      const k = b.dataset.tw;
-      if (k === 'big') { document.body.classList.toggle('big3d'); b.classList.toggle('on', document.body.classList.contains('big3d')); b.querySelector('span').textContent = document.body.classList.contains('big3d') ? 'Oddiy' : 'Katta 3D'; setTimeout(() => map.resize(), 320); return; }
-      if (k === 'hx') { hScale = hScale > 1 ? 1 : 2; try { localStorage.setItem('m3d:hscale', String(hScale)); } catch (e) { /* */ } b.classList.toggle('on', hScale > 1); b.textContent = `↕ Balandlik ×${hScale > 1 ? 1 : 2}`; applyHeight(); return; }
-      stopSpin();
-      if (k === 'top') map.easeTo({ pitch: 0, bearing: 0, duration: 1200 });
-      if (k === 'tilt') map.easeTo({ pitch: 60, duration: 1200 });
-      if (k === 'eye') map.easeTo({ pitch: 80, zoom: Math.max(map.getZoom(), 17.3), duration: 1500 });
-      if (k === 'spin') { b.classList.add('on'); let last = performance.now(); const f = t => { map.setBearing(map.getBearing() + (t - last) * 0.006); last = t; spin = requestAnimationFrame(f); }; spin = requestAnimationFrame(f); }
-    });
     const legVis = () => { leg.hidden = !(mode === 'height' && base === 'twin'); };
     controls.legVis = legVis; legVis();
   }
@@ -319,7 +304,7 @@
       if (!window.maplibregl) return reject(new Error('3D kutubxonasi yuklanmadi.'));
       const c = NX.config.center;
       map = new window.maplibregl.Map({
-        container: el, center: [c[1], c[0]], zoom: 15.6, pitch: 58, bearing: -20, maxPitch: 80, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
+        container: el, center: [66.9757, 39.6545], zoom: 16.6, pitch: 62, bearing: -20, maxPitch: 80, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
         style: (() => {
           const sources = {}, layers = [];
           Object.keys(BASE).forEach(k => { sources['base-' + k] = Object.assign({ type: 'raster', tileSize: 256 }, BASE[k]); layers.push({ id: 'base-' + k, type: 'raster', source: 'base-' + k, layout: { visibility: k === base ? 'visible' : 'none' }, paint: k === 'sat' ? { 'raster-saturation': 0.15 } : k === 'twin' ? { 'raster-brightness-max': 0.8, 'raster-contrast': 0.15 } : {} }); });
@@ -412,7 +397,7 @@
         // Birinchi ochilishda — shahar ustidan sekin aylanib koʻrsatish
         mapReady = true;
         if (pendingFit) { const p = pendingFit; pendingFit = null; setTimeout(() => fitTo(p), 50); }
-        else if (!data.hz) map.easeTo({ bearing: 25, pitch: 62, zoom: 15.9, duration: 7000, easing: t => t * (2 - t) });
+        else if (!data.hz) map.easeTo({ bearing: 25, pitch: 64, zoom: 17.2, duration: 7000, easing: t => t * (2 - t) });
       });
       map.on('error', e => console.warn('3D xarita:', e && e.error && e.error.message));
     });
@@ -472,6 +457,8 @@
     if (map.getSource('water-vol')) map.getSource('water-vol').setData(waterVolGeo());
     if (mode === 'flood' && data.rainMm) rainStart();
     if (controls.legVis) controls.legVis();
+    // Obidalarning batafsil 3D modellari (bir marta, binolar va obida belgilari tayyor boʻlganda)
+    if (!refresh.lm && NX.lm3d && mapReady && data.buildings.some(b => b.lmK)) { refresh.lm = true; NX.lm3d.attach(map, data.buildings).catch(e => { refresh.lm = false; console.warn('obidalar 3D:', e.message); }); }
     // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
     ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));
     map.getSource('plan').setData(planGeo());
