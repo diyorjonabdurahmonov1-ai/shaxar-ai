@@ -519,7 +519,7 @@
     };
     return `<div class="vbox">
       <p class="vverdict ${st[1]}">${st[0]} ${E(r.text)}</p>
-      ${r.photo ? `<a class="vphoto" href="${E(r.photo.link)}" target="_blank" rel="noopener"><img src="${E(r.photo.url)}" alt="Joyning real surati" loading="lazy"><span>📷 Real surat · ${E(r.photo.when)} · ${r.photo.d} m · Mapillary ↗</span></a>` : ''}
+      ${r.photo ? `<div class="pp-img"><a class="vphoto" href="${E(r.photo.link)}" target="_blank" rel="noopener"><img src="${E(r.photo.url)}" alt="Joyning real surati" loading="lazy"><span>📷 Real surat · ${E(r.photo.when)} · ${r.photo.d} m · Mapillary ↗</span></a>${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'pp-pano', '🌐 Panoramali surat')}</div>` : NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn sm primary', '🌐 Panoramali surat')}
       ${r.status === 'ok' && FIX ? `<button class="btn xs primary" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]} — xaritani tuzatish</button>` : ''}
       <div class="vacts">
         ${r.photo ? `<button class="btn xs" data-act="verify-ai" data-pid="${p.id}" ${v.ai && v.ai.busy ? 'disabled' : ''}>🤖 AI suratni tahlil qilsin</button>` : ''}
@@ -534,7 +534,7 @@
   function locRow(S, p) {
     const FIX = FIXBTN[p.type], v = S.verify[p.id], st = v && v.res ? VST[v.res.status] : null, open = S.verifyOpen === p.id;
     return `<li class="locrow${S.focusPid === p.id ? ' on' : ''}${open ? ' open' : ''}" data-row="${p.id}"><button class="loc" data-act="problem" data-id="${p.id}"><span aria-hidden="true">${st ? st[0] : '📍'}</span>${E(p.title)}</button>
-        <div class="loc-acts">${NX.mly.available() ? `<button class="btn xs${open ? ' primary' : ''}" data-act="verify" data-pid="${p.id}">🔎 Tekshirish</button>` : ''}${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn xs', '📷')}${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div>
+        <div class="loc-acts">${NX.mly.available() ? `<button class="btn xs${open ? ' primary' : ''}" data-act="verify" data-pid="${p.id}">🔎 Tekshirish</button>` : ''}${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn xs', '🌐 Panorama')}${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button></div>
         ${open ? verifyBox(S, p) : ''}</li>`;
   }
   function verifySummary(S, items) {
@@ -584,7 +584,7 @@
       <h4>Nima qilish kerak</h4>
       <ol class="steps">${steps.map(x => `<li>${E(x)}</li>`).join('')}</ol>
       <p class="small muted">Oʻrtacha narxi: ~${F.uzs((p.qty || 1) * meta.cost)}</p>
-      <div class="row-btns">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button>${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn xs', '📷 Yandex panorama')}</div>
+      <div class="row-btns">${FIX ? `<button class="btn xs" data-act="fix" data-fix="${FIX[0]}" data-pid="${p.id}">${FIX[1]}</button>` : ''}<button class="btn xs" data-act="fix" data-fix="dismiss" data-pid="${p.id}">Muammo emas</button>${NX.pano.btn(p.view ? p.view[0] : p.lat, p.view ? p.view[1] : p.lon, p.title, 'btn xs', '🌐 Panoramali surat')}</div>
     </section>
     ${v.sat ? `<section class="card">
       <h3>🛰 Tepadan — real sunʼiy yoʻldosh surati</h3>

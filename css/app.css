@@ -939,3 +939,9 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .mic-btn.on { background: #dc2626; color: #fff; border-color: #f87171; animation: auPulse 1s infinite; }
 .chat-form:has(.mic-btn), .ai-form:has(.mic-btn) { grid-template-columns: 1fr auto auto; }
 .composer-status { grid-column: 1 / -1; }
+/* Real surat ustida — Yandex panoramasiga kirish tugmasi */
+.pp-img { position: relative; }
+.pp-pano { position: absolute; top: 8px; right: 8px; z-index: 2; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 5px 11px; font: 600 12px/1.2 inherit; font-family: inherit; color: #fff; background: rgba(8,14,28,.72); backdrop-filter: blur(6px); cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.35); transition: transform .15s, background .15s; animation: ppPano 2.4s ease-in-out 2; }
+.pp-pano:hover { background: rgba(14,116,144,.92); transform: translateY(-1px); }
+@keyframes ppPano { 50% { box-shadow: 0 0 0 4px rgba(56,189,248,.35), 0 4px 14px rgba(0,0,0,.35); } }
+.pp-none { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

@@ -1821,6 +1821,11 @@
     S.model.problems.forEach(p => { const [px, py] = NX.geo.xy(p.lat, p.lon); const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = p; } });
     return best;
   }
+  function clickRadius(lat) {
+    const ym = NX.yandex.getMap && NX.yandex.getMap(), lf = NX.map.leaflet && NX.map.leaflet();
+    const z = ym && !document.getElementById('ymap').hidden ? ym.getZoom() : lf ? lf.getZoom() : 16;
+    return Math.max(4, 22 * 156543 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z));
+  }
   function nearestStreet(lat, lon) {
     const [x, y] = NX.geo.xy(lat, lon);
     let best = null, bd = Infinity;
@@ -1849,7 +1854,8 @@
     // Hudud panelida xaritani bosish hududni yopib yubormaydi
     if (S.tab === 'map' && S.area) return;
     // Muammolar boʻlimida — eng yaqin muammo ochiladi, boshqa boʻlimga oʻtib ketmaydi
-    if (S.tab === 'problems') { const p = nearestProblem(lat, lon, 150); if (p) openProblem(p); return; }
+    // Faqat belgining oʻzi (~22 px) bosilsa — xaritaning boshqa joyini bossa muammo ochilmaydi
+    if (S.tab === 'problems') { const p = nearestProblem(lat, lon, clickRadius(lat)); if (p) openProblem(p); return; }
     const id = streetId != null ? streetId : nearestStreet(lat, lon);
     if (id == null) return;
     if (S.tab === 'forecast') { S.fc.street = id; NX.view.selectStreet(id, false); render(); focusPanel(); return; }

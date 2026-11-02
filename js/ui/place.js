@@ -19,8 +19,8 @@
   function html(a, n) {
     const st = street(a.lat, a.lon), E = NX.esc;
     return `<div class="ppop place"><b>${n ? n + '. ' : ''}${E(a.title || 'Joy')}</b>${a.note ? `<p>${E(a.note)}</p>` : ''}${st ? `<div class="place-st">📍 ${E(st)}</div>` : ''}
-      <div class="ppop-photo" data-lat="${(+a.lat).toFixed(6)}" data-lon="${(+a.lon).toFixed(6)}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div>
-      <div class="place-btns">${NX.pano.btn(+a.lat, +a.lon, st || a.title, 'btn xs', '🌐 Panorama (Yandex)')}${/^W\d/.test(a.id || '') || /suv/i.test(a.title || '') ? `<button type="button" class="btn xs" data-fix-street="${E((String(a.title).match(/:\s*([^—]+?)\s*—/) || [])[1] || st || '')}">🛠 Yechim</button>` : ''}${a.street ? `<button type="button" class="btn xs" data-audit-street="${E(a.street)}">🔍 Batafsil tekshirish</button>` : ''}</div></div>`;
+      <div class="ppop-photo" data-lat="${(+a.lat).toFixed(6)}" data-lon="${(+a.lon).toFixed(6)}" data-title="${E(st || a.title || '')}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div>
+      <div class="place-btns">${/^W\d/.test(a.id || '') || /suv/i.test(a.title || '') ? `<button type="button" class="btn xs" data-fix-street="${E((String(a.title).match(/:\s*([^—]+?)\s*—/) || [])[1] || st || '')}">🛠 Yechim</button>` : ''}${a.street ? `<button type="button" class="btn xs" data-audit-street="${E(a.street)}">🔍 Batafsil tekshirish</button>` : ''}</div></div>`;
   }
 
   const MON = ['yan', 'fev', 'mar', 'apr', 'may', 'iyun', 'iyul', 'avg', 'sen', 'okt', 'noy', 'dek'];
@@ -40,11 +40,13 @@
   async function fill(el) {
     el.dataset.done = '1';
     const lat = +el.dataset.lat, lon = +el.dataset.lon, k = lat.toFixed(5) + ',' + lon.toFixed(5);
-    if (!NX.mly || !NX.mly.available()) { el.innerHTML = '<span class="small muted">Ochiq koʻcha surati ulanmagan — panoramani bosing.</span>'; return; }
+    const t = el.dataset.title || '', pano = cls => NX.pano.btn(lat, lon, t, cls, '🌐 Panoramali surat');
+    const none = why => { el.innerHTML = `<div class="pp-none"><span class="small muted">${why}</span>${pano('btn sm primary pp-pano-big')}</div>`; };
+    if (!NX.mly || !NX.mly.available()) { none('Ochiq koʻcha surati ulanmagan.'); return; }
     try {
       let list = cache.get(k);
       if (!list) { list = await NX.mly.photos(lat, lon, 35); if (list.length < 2) list = await NX.mly.photos(lat, lon, 80); list = rankFor(list, lat, lon); cache.set(k, list); }
-      if (!list.length) { el.innerHTML = '<span class="small muted">Aynan shu nuqtada ochiq koʻcha surati yoʻq — 🌐 panoramani bosing.</span>'; return; }
+      if (!list.length) { none('Aynan shu nuqtada ochiq koʻcha surati yoʻq.'); return; }
       // Boshqa belgida koʻrsatilgan surat — imkon boʻlsa boshqasi (60 m ichida)
       let i = list.findIndex(p => { const u = used.get(p.id); return (!u || u === k) && p.d <= 60; });
       if (i < 0) i = 0;
@@ -53,11 +55,11 @@
         const p = list[j], d = p.date ? new Date(p.date) : null;
         const far = p.d > 40 ? `<div class="small warn-text">⚠️ Eng yaqin surat ${Math.round(p.d)} m uzoqda — muammo aynan koʻrinmasligi mumkin, panoramada tekshiring.</div>` : '';
         const dir = p.f != null && p.d >= 6 ? (p.f <= 60 ? ' · 🎯 nuqtaga qaragan' : ' · ↪ boshqa tomonga qaragan') : '';
-        el.innerHTML = `<a href="${NX.mly.link(p.id)}" target="_blank" rel="noopener"><img src="${p.url}" alt="Shu nuqtaning real surati" loading="lazy"></a><div class="small muted">📍 Shu nuqtadan ${Math.round(p.d)} m${dir}${d ? ` · ${d.getFullYear()}-yil ${MON[d.getMonth()]}` : ''} · Mapillary</div>${far}${list.length > 1 ? `<div class="pp-alt">${list.slice(0, 4).map((q, n) => `<button type="button" class="${n === j ? 'on' : ''}" data-n="${n}" title="${Math.round(q.d)} m"><img src="${q.url}" alt="" loading="lazy"><i>${Math.round(q.d)} m</i></button>`).join('')}</div>` : ''}`;
+        el.innerHTML = `<div class="pp-img"><a href="${NX.mly.link(p.id)}" target="_blank" rel="noopener"><img src="${p.url}" alt="Shu nuqtaning real surati" loading="lazy"></a>${pano('pp-pano')}</div><div class="small muted">📍 Shu nuqtadan ${Math.round(p.d)} m${dir}${d ? ` · ${d.getFullYear()}-yil ${MON[d.getMonth()]}` : ''} · Mapillary</div>${far}${list.length > 1 ? `<div class="pp-alt">${list.slice(0, 4).map((q, n) => `<button type="button" class="${n === j ? 'on' : ''}" data-n="${n}" title="${Math.round(q.d)} m"><img src="${q.url}" alt="" loading="lazy"><i>${Math.round(q.d)} m</i></button>`).join('')}</div>` : ''}`;
         el.querySelectorAll('.pp-alt button').forEach(b => { b.onclick = e => { e.preventDefault(); e.stopPropagation(); show(+b.dataset.n); }; });
       };
       show(i);
-    } catch (e) { el.innerHTML = `<span class="small muted">Surat olinmadi (${NX.esc(e.message)}).</span>`; }
+    } catch (e) { none(`Surat olinmadi (${NX.esc(e.message)}).`); }
   }
   // Popup/balloon ochilganda paydo boʻlgan surat joylari avtomatik toʻldiriladi
   new MutationObserver(() => document.querySelectorAll('.ppop-photo:not([data-done])').forEach(fill)).observe(document.body, { childList: true, subtree: true });

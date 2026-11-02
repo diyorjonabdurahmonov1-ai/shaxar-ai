@@ -302,8 +302,7 @@
     // Real surat (Mapillary) — muammo nuqtasining oʻzi (maktab uchun — yonidagi koʻcha), popup ochilganda avtomatik toʻldiriladi
     const vw = p.view || [p.lat, p.lon];
     return `<div class="ppop place"><b>${meta.icon} ${NX.esc(meta.short)}</b><div>${NX.esc(p.title)}</div>${p.detail ? `<p class="${/⚠️/.test(p.detail) ? 'warn-text' : 'muted'} small">${NX.esc(p.detail)}</p>` : ''}<p>${NX.esc(meta.what)}</p><p><b>Yechim:</b> ${NX.esc(meta.fix)}</p>
-      <div class="ppop-photo" data-lat="${(+vw[0]).toFixed(6)}" data-lon="${(+vw[1]).toFixed(6)}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div>
-      <div class="fix-row">${NX.pano.btn(vw[0], vw[1], p.title, 'btn sm', '🌐 Panorama (Yandex)')}</div><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
+      <div class="ppop-photo" data-lat="${(+vw[0]).toFixed(6)}" data-lon="${(+vw[1]).toFixed(6)}" data-title="${NX.esc(p.title)}"><span class="small muted">📷 Real surat qidirilmoqda…</span></div><p class="muted small" style="margin-top:8px">Xarita notoʻgʻrimi? Oʻrgating:</p>${fixes}</div>`;
   }
   function fixPopup(x) {
     const k = NX.fixes.KIND[x.kind];

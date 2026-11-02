@@ -495,7 +495,10 @@ async function roadBlock(browser) {
   ok('Roʻyxatdagi “Muammo emas” tugmasi ishlaydi', await page.evaluate(() => NX.state.tab === 'problems'));
   await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().setView([p.lat, p.lon], 17, { animate: false }); });
   await page.waitForTimeout(300);
-  await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().fire('click', { latlng: L.latLng(p.lat + 0.0002, p.lon + 0.0002) }); });
+  await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().fire('click', { latlng: L.latLng(p.lat + 0.0012, p.lon + 0.0012) }); });
+  await page.waitForTimeout(500);
+  ok('Belgidan uzoqroq bosilsa muammo ochilmaydi', await page.evaluate(() => !NX.state.problemOpen));
+  await page.evaluate(() => { const p = NX.state.model.problems.find(x => x.type === 'junction'); NX.map.leaflet().fire('click', { latlng: L.latLng(p.lat + 0.00005, p.lon + 0.00005) }); });
   await page.waitForTimeout(900);
   ok('Muammolar boʻlimida xarita bosilsa boʻlim oʻzgarmaydi, yaqin muammo ochiladi', await page.evaluate(() => NX.state.tab === 'problems' && !!NX.state.focusPid && NX.state.problemOpen === NX.state.focusPid));
   ok('Muammo paneli: faqat shu muammo — nima qilish kerak (qadamlar) va tepadan reja', (await page.$$('#panel .prob')).length === 1 && (await page.$$('#panel .steps li')).length >= 3 && !!(await page.$('#panel .plan-svg path')) && /svetofor/.test(await page.textContent('#panel .plan-wrap + p')));
