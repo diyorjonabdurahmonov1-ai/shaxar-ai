@@ -149,7 +149,12 @@
   }
   // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
   function msgExtras(m, fly) {
-    return msgExtras0(m, fly);
+    return checkBadge(m) + msgExtras0(m, fly);
+  }
+  // Javob tekshiruvi: AI javobidagi raqamlar sayt hisobi bilan mosligi
+  function checkBadge(m) {
+    const c = m && m.check; if (!c || m.src !== 'ai') return '';
+    return c.bad.length ? `<p class="ans-check warn">⚠️ ${c.ok}/${c.n} raqam hisob bilan mos; hisobda topilmadi: ${c.bad.map(x => E(String(x))).join(', ')} — ehtiyot boʻling</p>` : `<p class="ans-check ok">✓ Javobdagi ${c.n} ta raqamning hammasi sayt hisobi bilan mos</p>`;
   }
   function msgExtras0(m, fly) {
     const list = m.hz ? m.hz.filter(a => a.kind !== 'water' && a.list !== false).slice(0, 40) : null;
@@ -697,7 +702,7 @@
     st.problems.forEach(p => { (groups[p.type] = groups[p.type] || []).push(p); });
     const tile = (v, l, warn) => `<div class="atile${warn ? ' warn' : ''}"><b>${v}</b><small>${l}</small></div>`;
     const qa = A.qa.map(m => m.role === 'user' ? `<div class="chat-msg user"><div class="bubble">${E(m.text)}</div></div>`
-      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${m.svg || (m.photos && m.photos.length) ? msgExtras({ svg: m.svg, photos: m.photos }, 'ann-fly') : ''}${annList(m)}${deepOpts(A, m)}${m.img ? msgExtras({ img: m.img }, 'ann-fly') : m.imgErr ? msgExtras({ imgErr: m.imgErr }, 'ann-fly') : ''}${!m.opts && m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div></div>`).join('');
+      : `<div class="chat-msg ai"><div class="bubble">${m.src === 'ai' ? '' : `<div class="ai-src warn small">⚠️ AI ishlamadi${m.error ? ': ' + E(m.error) : ''} — saytning oʻz hisobi.</div>`}<div class="ai-text">${NX.ai.render(m.text)}</div>${checkBadge(m)}${m.svg || (m.photos && m.photos.length) ? msgExtras0({ svg: m.svg, photos: m.photos }, 'ann-fly') : ''}${annList(m)}${deepOpts(A, m)}${m.img ? msgExtras({ img: m.img }, 'ann-fly') : m.imgErr ? msgExtras({ imgErr: m.imgErr }, 'ann-fly') : ''}${!m.opts && m.sources && m.sources.length ? `<ul class="vsrc">${m.sources.map(x => `<li><a href="${E(x.url)}" target="_blank" rel="noopener">${E(x.title)}</a></li>`).join('')}</ul>` : ''}</div></div>`).join('');
     const sugg = ['Bu yerda doim tirbandlik — nima qilsak boʻladi?', 'Soatbay bir tomonlama qilsak-chi?', 'Bu yerga 500 xonadonli 9 qavatli dom qursam nima boʻladi?'];
     const L = A.live, min = s => Math.max(1, Math.round(s / 60));
     const live = !L ? '' : L.busy ? '<p class="small muted"><span class="spinner sm"></span> Yandex’dan hozirgi yoʻl vaqtlari olinmoqda…</p>'
@@ -901,7 +906,18 @@
     const measured = M.streets.filter(s => s.tomtom).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion).slice(0, 10);
     const risky = M.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value).slice(0, 10);
     const total = recs.reduce((t, r) => t + r.total, 0);
-    return `
+    const Bf = S.brief, Ac = S.acc;
+    const briefCard = `<section class="card brief-card"><h3>📅 Ertangi xavf brifingi</h3>
+      ${Bf && Bf.busy ? `<p class="small"><span class="spinner sm"></span> ${E(Bf.busy)}…</p>` : Bf && Bf.text ? `<div class="ai-text">${NX.ai.render(Bf.text)}</div><div class="row-btns"><button class="btn xs primary" data-act="brief-tg">📤 Telegram’ga yuborish</button><button class="btn xs" data-act="brief-print">🖨 Chop etish / PDF</button><button class="btn xs" data-act="brief">↻ Yangilash</button></div>` : `<p class="small muted">Ob-havo prognozi (Open-Meteo), suv modeli, havo sifati, tirbandlik va muammolar boʻyicha hokim yigʻilishi uchun qisqa brifing.</p>${Bf && Bf.err ? `<p class="small bad-text">⚠️ ${E(Bf.err)}</p>` : ''}<button class="btn sm primary" data-act="brief">📅 Brifing tayyorlash</button>`}
+    </section>`;
+    const accCard = `<section class="card acc-card"><h3>🎯 Model aniqligi — real hodisalar bilan solishtirish</h3>
+      ${Ac && Ac.busy ? `<p class="small"><span class="spinner sm"></span> ${E(Ac.busy)}…</p>` : Ac && !Ac.busy ? `<div class="acc-grid">
+        ${Ac.flood ? `<div><b>${Ac.flood.found ? Math.round(Ac.flood.hit / Ac.flood.found * 100) : '—'}%</b><span>OAV xabar qilgan suv bosgan koʻchalardan ${Ac.flood.hit}/${Ac.flood.found} tasini suv modeli ham koʻrsatdi (${Ac.flood.rain} mm)</span></div>` : ''}
+        <div><b>${Ac.photo.n ? Math.round(Ac.photo.conf / Ac.photo.n * 100) + '%' : '—'}</b><span>muammolar real suratlarda tasdiqlandi (${Ac.photo.conf}/${Ac.photo.n}); ${Ac.photo.wrong} tasi xato chiqib, olib tashlandi</span></div>
+        <div><b>${Ac.data.lvKnown != null ? Ac.data.lvKnown + '%' : '—'}</b><span>binolarning qavati maʼlum (${F.int(Ac.data.blds)} bino); qolgani oʻlchamiga qarab taxminiy</span></div>
+      </div>${Ac.flood && Ac.flood.miss.length ? `<p class="small muted">Model koʻrsatmagan joylar: ${E(Ac.flood.miss.join(', '))} — odatda ariq/kanal tiqilishi sabab (modelda yoʻq).</p>` : ''}<button class="btn xs" data-act="acc">↻ Qayta hisoblash</button>` : `<p class="small muted">Sayt hisoblari haqiqiy hodisalar (OAV xabarlari, koʻcha suratlari) bilan qanchalik mos kelishini raqamda koʻrsatadi.</p><button class="btn sm primary" data-act="acc">🎯 Aniqlikni tekshirish</button>`}
+    </section>`;
+    return briefCard + accCard + `
     <section class="card">
       <h2>Hisobot</h2>
       <p class="muted small">Hudud: Samarqand tarixiy markazi, ${E(bboxText())}. OSM maʼlumoti: ${F.time(M.ts)}.</p>

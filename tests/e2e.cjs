@@ -43,7 +43,7 @@ async function setupRoutes(ctx, opts = {}) {
   // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)
-  if (!opts.realBuildings) await ctx.route(/data\/(buildings|roads|places)-samarqand\.json/, route => route.abort('failed'));
+  if (!opts.realBuildings) await ctx.route(/data\/(buildings|roads|places|mly)-samarqand\.json/, route => route.abort('failed'));
   // Piyoda yoʻlaklari (faqat test): Registon koʻchasi boʻylab trotuar, bitta zebra va zinapoya
   if (!opts.realBuildings) await ctx.route(/data\/walk-samarqand\.json/, route => { const S = 1e5, b = [66.86, 39.58], X = lon => Math.round((lon - b[0]) * S), Y = lat => Math.round((lat - b[1]) * S);
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ v: 1, base: b, scale: S, fw: [['sidewalk', 2, X(66.9530), Y(39.65508), X(66.9750) - X(66.9530), 0], ['crosswalk', 0, X(66.9850), Y(39.65495), 0, Y(39.65505) - Y(39.65495)], ['steps', 0, X(66.9900), Y(39.65506), X(66.9902) - X(66.9900), 0]] }) }); });
@@ -313,6 +313,23 @@ async function roadBlock(browser) {
   // Aqlli savol: davomli savollar oldingi savol bilan birlashadi; imlo xatosi va ruscha savollar ham taniladi
   const sq = await page.evaluate(async () => ({ f1: await NX.smartQ('endi butun shahar uchun', 'Zilziladan keyin aholini qanday evakuatsiya qilamiz?'), f2: await NX.smartQ('Registon-chi?', 'Toshkent koʻchasi nogironlar uchun qulaymi?'), t1: NX.intent('zilzla bolsa nima boladi').main, t2: NX.intent('наводнение какие улицы').main, t3: NX.intent('selda qaysi kochalar xavfli').main }));
   ok('Aqlli savol: “endi butun shahar uchun”, “Registon-chi?” — oldingi savol davomi; “zilzla”, ruscha, “selda” taniladi', (() => { const a = NX_I => NX_I; return /evakuatsiya/.test(sq.f1) && /butun shahar/.test(sq.f1) && /nogironlar/.test(sq.f2) && sq.t1 === 'quake' && sq.t2 === 'flood' && sq.t3 === 'flood'; })(), JSON.stringify(sq));
+  // AI javobini tekshirish: javobdagi raqamlar hisob natijalarida bormi (belgi raqamlari Z1/R2 va roʻyxat tartibi hisobga olinmaydi)
+  const ck = await page.evaluate(() => NX.ai.checkNums('Z1 hududida 1 200 kishi, R2 yoʻli 35 m, 999 ta bino.\n1. Birinchi', { odam: 1200, yol: '35 m', bino: 410 }));
+  ok('AI javobi tekshiruvi: hisobda yoʻq raqam aniqlanadi (999), mos raqamlar (1 200, 35) tasdiqlanadi', ck && ck.n === 3 && ck.ok === 2 && ck.bad[0] === 999, JSON.stringify(ck));
+  // Sunʼiy yoʻldosh: eng issiq mahallalar (Landsat), issiqlik qatlami 3D xaritada
+  const nSat = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.fill('#twinChat textarea[name=tq]', 'Shaharning eng issiq mahallalari qaysi?');
+  await page.click('#twinChat form button.primary');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nSat, { timeout: 120000 });
+  const sat = await page.evaluate(() => { const H = NX.state.twin.hz, m = NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1]; return { kind: H && H.kind, pins: H ? H.items.filter(a => /^I\d/.test(a.id)).length : 0, ov: !!NX.map3d.map().getSource('satov'), text: /°C/.test(m.text) }; });
+  ok('Sunʼiy yoʻldosh: eng issiq mahallalar (yer yuzasi harorati), issiqlik qatlami 3D xaritada', sat.kind === 'sat' && sat.pins >= 1 && sat.ov && sat.text, JSON.stringify(sat));
+  // Murakkab savol: zilzila VA yomgʻir — ikkala hisob, bitta xaritada, AI’ga ikkala qism
+  const nMul = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.fill('#twinChat textarea[name=tq]', 'Zilzila va kuchli yomgʻir bir vaqtda boʻlsa qaysi joylar xavfli?');
+  await page.click('#twinChat form button.primary');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nMul, { timeout: 300000 });
+  const mul = await page.evaluate(() => { const H = NX.state.twin.hz, m = NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1]; return { kind: H && H.kind, zone: !!(H && H.items.some(a => a.kind === 'zone')), water: !!(H && H.items.some(a => a.kind === 'water')), sep: /---/.test(m.text) || m.src === 'ai', msgs: NX.state.twinChat.msgs.length }; });
+  ok('Murakkab savol (zilzila + yomgʻir): ikkala tahlil bitta xaritada, chatga bitta savol-javob', mul.kind === 'multi' && mul.zone && mul.water && mul.sep && mul.msgs === nMul + 2, JSON.stringify(mul));
   // Suv toʻplanadigan koʻcha uchun yechim: roʻyxatdagi “🛠 Yechim” → havza, oqim, quvur/rezervuar, xaritada
   const nFix = await page.evaluate(() => NX.state.twinChat.msgs.length);
   await page.evaluate(() => { const T = NX.state.twin; T.dynFrame = T.dyn.frames.indexOf(T.dyn.peak); });

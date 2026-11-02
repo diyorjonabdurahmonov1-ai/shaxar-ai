@@ -127,13 +127,16 @@ Qoidalar:
   const markBad = m => { const b = badModels(); b[m] = Date.now(); NX.store.set('ai:bad', b); };
   async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
     let lastErr = null;
-    const bad = badModels(), list = (models || NX.config.openaiModels).filter(m => !bad[m]);
+    // Sozlamalarda tanlangan model (Claude/Gemini — faqat sayt Worker’i orqali) birinchi sinab koʻriladi
+    const pref = NX.store.get('ai:pref', ''), base = (models || NX.config.openaiModels).slice();
+    if (pref && (!key || /^gpt-/.test(pref)) && (models === NX.config.openaiDeep || /^gpt-/.test(pref))) { const i = base.indexOf(pref); if (i >= 0) base.splice(i, 1); base.unshift(pref); }
+    const bad = badModels(), list = base.filter(m => !bad[m]);
     for (const model of (list.length ? list : NX.config.openaiModels)) {
       onModel && onModel(model);
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
       const body = { model, messages: messages || [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
-      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else { body.max_completion_tokens = 900; body.temperature = 0.3; }
+      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else if (!/^gpt-/.test(model)) body.max_completion_tokens = 2500; else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       // Prompt caching: oʻzgarmas qism (system) boshida turadi; bir xil turdagi soʻrovlar bitta kalit bilan — takroriy kirish arzonroq
       body.prompt_cache_key = 'cityjam-' + (cacheKey || 'chat');
       let r;
@@ -150,6 +153,7 @@ Qoidalar:
         continue;
       }
       const code = err && (err.code || err.type);
+      if (code === 'provider_off' || code === 'provider_error') { if (code === 'provider_off') markBad(model); lastErr = new Error(`“${model}” ishlamadi.`); continue; }
       if (code === 'proxy_rate_limit') throw new Error('Bir soatda juda koʻp savol berildi. Birozdan keyin qayta urinib koʻring.');
       if (code === 'forbidden_origin' || code === 'no_server_key') throw new Error('AI xizmati hozircha sozlanmagan.');
       if (r.status === 401 && !key) throw new Error('AI xizmati hozircha ishlamayapti (server kaliti notoʻgʻri).');
@@ -252,7 +256,7 @@ Qoidalar:
     if (!aiAvailable()) return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: 'AI ulanmagan.' }, meta);
     try {
       const r = await callOpenAI(key, ctx, opts.onModel, opts.history || []);
-      return Object.assign({ text: r.text, src: 'ai', model: r.model }, meta);
+      return Object.assign({ text: r.text, src: 'ai', model: r.model, check: checkNums(r.text, ctx) }, meta);
     } catch (e) {
       return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: e.message }, meta);
     }
@@ -523,7 +527,7 @@ ${MAPRULE}
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: DEEP }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
     const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'deep');
-    return { text: r.text, src: 'ai', model: r.model };
+    return { text: r.text, src: 'ai', model: r.model, check: checkNums(r.text, facts) };
   }
   // 3D egizak: suv toshqini, zilzila, quyosh — stsenariy natijalari asosida
   const TWIN = `Sen Samarqand shahar hokimiyati uchun favqulodda vaziyatlar va shahar infratuzilmasi boʻyicha bosh tahlilchisan. Javobing rahbariyatga koʻrsatiladi.
@@ -535,6 +539,9 @@ Qoidalar:
 - “muhofaza” berilgan boʻlsa va koʻcha UNESCO zonasida — kengaytirish, yangi polosa, buzish kabi yechimlarda Madaniy meros agentligi kelishuvi kerakligini ayt; UNESCO asosiy hududida (Temuriylar, Yevropa qismi, Afrosiyob) koʻchani kengaytirish yoki binolarni buzishni tavsiya qilma — tashkiliy yechimlarni (svetofor, bir tomonlama, jamoat transporti) taklif qil.
 - “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
 - “real_hodisalar_oav” berilgan boʻlsa (Samarqandda haqiqatda suv bosgan koʻchalar, OAV): **Real hodisalar bilan solishtirish** — har biri uchun bir qator: koʻcha, sana, model ham koʻrsatdimi. Model koʻrsatmagan joyda sabab odatda ariq/kanal tiqilishi ekanini ayt (xaritada 📰 H belgilar).
+- “sunʼiy_yoʻldosh” berilgan boʻlsa (Landsat yer yuzasi harorati, Sentinel-2 yashillik): raqamlar bilan javob ber — eng issiq mahallalar (I1…), salqinlari (S…), daraxt ekish ustuvor joylar (D1…), yashil hudud gektari 2019 va 2025, yangi qurilish joylari (Q1…). Harorat — YUZA harorati ekanini, yangi qurilish — taxminiy ekanini bir gapda ayt. Yechim: daraxt, soya, favvora/suv, oq tom, yashil botiq — aniq mahallalar bilan.
+- “havo_sifati” berilgan boʻlsa: AQI va PM2.5 raqamlari, daraja, keyingi 24 soat; bu model ekani (oʻlchov stansiyasi emas).
+- “murakkab_savol” berilgan boʻlsa — savolda bir nechta xavf bor (masalan zilzila VA yomgʻir): har bir qism uchun alohida hisob berilgan. Javobni BIRLASHTIRIB yoz: 1-qator — umumiy xulosa; keyin har bir xavf qisqa (raqamlar bilan); eng muhimi — **Ikkalasi birga boʻlsa**: qaysi joylar ikki marta xavfli (bir xil koʻcha/mahalla ikkala roʻyxatda boʻlsa — nomi bilan), evakuatsiya yoʻli suv bosgan koʻchadan oʻtmasligi, xizmatlar qaysi yoʻldan borishi; ustuvorlik tartibi.
 - “belgilangan_hudud_suv” berilgan boʻlsa — savol foydalanuvchi chizgan hudud haqida: javobni FAQAT shu hududdagi koʻchalar bilan boshla (roʻyxat shu yerda); shahar boʻyicha raqamlarni bir gapda qoʻsh.
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
 - Zilzila soʻralsa: “xavf_xaritasi” dagi zonalar va raqamlar asosida javob ber; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt. Raqam oʻylab topma.
@@ -576,6 +583,21 @@ Faqat aniq koʻringan narsani yoz; koʻrinmasa — “noaniq”. Taxmin qilma.`;
     const m = r.text.match(/\{[\s\S]*\}/);
     try { return m ? JSON.parse(m[0]) : null; } catch (e) { return null; }
   }
+  // ---------- AI javobini tekshirish: javobdagi har bir raqam hisob natijalarida (facts) bormi ----------
+  // Belgi raqamlari (Z1, R12, I3), roʻyxat tartibi (1., 2.) va kichik sonlar (≤ 12) hisobga olinmaydi; 2% yoki yaxlitlash farqi — mos.
+  function checkNums(text, facts) {
+    if (!text || !facts) return null;
+    const pool = [];
+    const walk = v => { if (v == null) return; if (typeof v === 'number') { if (isFinite(v)) pool.push(v); return; } if (typeof v === 'string') { (v.match(/-?\d[\d\s ]*(?:[.,]\d+)?/g) || []).forEach(t => { const x = parseFloat(t.replace(/[\s ]/g, '').replace(',', '.')); if (isFinite(x)) pool.push(x); }); return; } if (Array.isArray(v)) v.forEach(walk); else if (typeof v === 'object') Object.values(v).forEach(walk); };
+    walk(facts);
+    const clean = String(text).replace(/\b[A-Za-zʻ]{1,3}\d+[a-z]?\b/g, ' ').replace(/^\s*[-•]?\s*\d+[.)]\s/gm, ' ').replace(/[①②③④⑤]/g, ' ');
+    const toks = clean.match(/-?\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?/g) || [];
+    const nums = [...new Set(toks.map(t => parseFloat(t.replace(/[\s\u00a0]/g, '').replace(',', '.'))).filter(x => isFinite(x) && Math.abs(x) > 12))];
+    if (!nums.length) return null;
+    const near = x => pool.some(p => Math.abs(p - x) <= Math.max(1, Math.abs(p) * 0.02) || Math.abs(p * 100 - x) <= 1 || Math.abs(Math.round(p) - x) < 0.6 || Math.abs(p / 1000 - x) <= Math.max(0.1, Math.abs(p / 1000) * 0.02) || Math.abs(p / 1e4 - x) <= Math.max(0.1, Math.abs(p / 1e4) * 0.03));
+    const bad = nums.filter(x => !near(x));
+    return { n: nums.length, ok: nums.length - bad.length, bad: bad.slice(0, 6) };
+  }
   // Savol turini aniqlash (regex topa olmaganda): engil model, faqat bitta soʻz qaytaradi
   const ROUTE_TYPES = ['quake', 'flood', 'evac', 'fire', 'ambulance', 'police', 'access', 'traffic', 'needs', 'build', 'plan', 'road', 'climate', 'solar', 'general'];
   const ROUTER = `Sen Samarqand hokimiyati saytining savol yoʻnaltiruvchisisan. Savol oʻzbek, rus yoki aralash tilda, imlo xatolari bilan boʻlishi mumkin.
@@ -597,7 +619,7 @@ Oldingi savol berilgan boʻlsa va yangi savol uning davomi boʻlsa (“u-chi?”
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
     const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'twin');
-    return { text: r.text, src: 'ai' };
+    return { text: r.text, src: 'ai', check: checkNums(r.text, facts) };
   }
 
   // Chatdan rasm: savol + natijalar → rasm modeli uchun inglizcha tavsif → rasm (3D koʻrinish asos boʻlishi mumkin)
@@ -656,7 +678,7 @@ No text, no labels, no logos. Output only the prompt.`;
     if (!aiAvailable()) return { text: local(), src: 'hisob', error: 'AI ulanmagan.' };
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
     const messages = [{ role: 'system', content: AREA }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
-    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai' }; }
+    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai', check: checkNums(r.text, facts) }; }
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
@@ -695,5 +717,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

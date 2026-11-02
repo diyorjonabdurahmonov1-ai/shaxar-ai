@@ -125,7 +125,30 @@
   // ---------- Chatlar: faqat oxirgi savol-javob ochiq, eskilari yigʻiladi; yangi javob kelganda panel uning boshiga oʻtadi ----------
   // Sahifa (window) aylantirilmaydi — xarita va chizma joyida qoladi.
   const chatSeen = new Map(), chatOpen = new Set(), chatAnsAt = new Map();
+  // ---------- 🎤 Ovozli savol (brauzer nutqni tanish: oʻzbekcha, boʻlmasa ruscha) ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recog = null;
+  function addMics(root) {
+    if (!SR) return;
+    root.querySelectorAll('form textarea').forEach(ta => {
+      const form = ta.closest('form'); if (!form || form.querySelector('.mic-btn')) return;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn mic-btn'; b.title = 'Ovoz bilan soʻrash (oʻzbekcha)'; b.textContent = '🎤';
+      b.disabled = ta.disabled;
+      const send = form.querySelector('button.primary'); if (send) send.before(b); else form.appendChild(b);
+      b.addEventListener('click', () => {
+        if (recog) { recog.stop(); return; }
+        recog = new SR(); recog.lang = 'uz-UZ'; recog.interimResults = true; recog.continuous = false;
+        const base = ta.value ? ta.value.trim() + ' ' : '';
+        b.classList.add('on'); b.textContent = '⏺';
+        recog.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; ta.value = base + t; };
+        recog.onerror = e => { if (e.error === 'language-not-supported' && recog.lang === 'uz-UZ') toast('Brauzer oʻzbek tilini tanimadi — ruscha gapiring yoki Chrome ishlating.', 'warn'); else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Mikrofon: ' + e.error, 'warn'); };
+        recog.onend = () => { recog = null; b.classList.remove('on'); b.textContent = '🎤'; if (ta.value.trim()) ta.focus(); };
+        try { recog.start(); } catch (e) { recog = null; b.classList.remove('on'); b.textContent = '🎤'; }
+      });
+    });
+  }
   function enhanceChats(root) {
+    addMics(root);
     root.querySelectorAll('.chat-log').forEach(log => {
       const box = log.closest('section') || log, id = box.id || 'chat';
       const items = [...log.children].filter(x => x.classList.contains('chat-msg'));
@@ -490,6 +513,7 @@
     // Natija FAQAT savol berilgan boʻlimda: 3D egizakda soʻralsa — faqat 3D xaritada, boshqa boʻlimda — faqat 2D xaritada
     // (ikkala xaritaga chizish kompyuterga ogʻirlik qiladi). Natija yopilmaguncha shu boʻlimda turadi.
     H.origin = S.tab === 'twin' ? 'twin' : '2d';
+    if (H.kind !== 'sat') satOverlay(null);
     T.hz = H;
     const pts = []; H.items.forEach(a => { if (a.kind === 'water') return; pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
     if (H.origin === 'twin') {
@@ -653,16 +677,92 @@
     el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
   }
   document.addEventListener('click', e => { const b = e.target.closest('[data-fix-street]'); if (b) { e.preventDefault(); fixAsk(b.dataset.fixStreet); } });
-  function hazardClear() { const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+  // Sunʼiy yoʻldosh qatlami — natija boʻlimiga qarab (3D yoki 2D)
+  let ov2d = null;
+  function satOverlay(url, bbox, origin) {
+    if (ov2d) { try { NX.map.leaflet().removeLayer(ov2d); } catch (e) { /* */ } ov2d = null; }
+    NX.map3d.setOverlay(null);
+    if (!url) return;
+    if (origin === 'twin') NX.map3d.setOverlay(url, bbox);
+    else { ensureLeaflet(); ov2d = window.L.imageOverlay(url, [[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { opacity: 0.7, interactive: false }).addTo(NX.map.leaflet()); }
+  }
+  // Havo sifati (Open-Meteo Air Quality, CAMS modeli): hozir va keyingi 24 soat
+  async function airQuality() {
+    try {
+      const c = NX.config.center, r = await NX.fetchJSON(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${c[0]}&longitude=${c[1]}&current=pm2_5,pm10,us_aqi,dust&hourly=pm2_5,us_aqi&forecast_days=2&timezone=Asia%2FSamarkand`, {}, 12000);
+      if (!r.ok || !r.data || !r.data.current) return null;
+      const cur = r.data.current, h = r.data.hourly || {}, nx = (h.us_aqi || []).slice(0, 24), mx = nx.length ? Math.max(...nx.filter(v => v != null)) : null;
+      const lvl = v => (v == null ? '—' : v <= 50 ? 'yaxshi' : v <= 100 ? 'oʻrtacha' : v <= 150 ? 'sezgir odamlar uchun zararli' : v <= 200 ? 'zararli' : 'juda zararli');
+      return { manba: 'Open-Meteo havo sifati (CAMS modeli, taxminiy)', pm2_5: cur.pm2_5, pm10: cur.pm10, chang: cur.dust, aqi: cur.us_aqi, daraja: lvl(cur.us_aqi), keyingi_24_soat_eng_yomon_aqi: mx, keyingi_daraja: lvl(mx) };
+    } catch (e) { return null; }
+  }
+  // ---------- 📅 Ertangi xavf brifingi: ob-havo prognozi → suv toʻplanadigan koʻchalar, havo sifati, tirbandlik, muammolar ----------
+  async function makeBrief() {
+    if (S.brief && S.brief.busy) return;
+    S.brief = { busy: 'Prognoz olinmoqda' }; renderKeepScroll();
+    const L = [], d = new Date(Date.now() + 86400e3), day = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+    try {
+      const rn = await NX.twin.rain().catch(() => null), aq = await airQuality(), W = S.weather && S.weather.data;
+      L.push(`**Samarqand — xavf brifingi (${new Date().toLocaleDateString('uz-UZ')}, ertaga ${day} uchun)**`);
+      if (W) L.push(`🌤 Hozir: ${Math.round(W.temp)}°C, ${NX.weather.codeText(W.code)[0]}, shamol ${Math.round(W.wind)} km/soat.`);
+      if (rn) {
+        L.push(`🌧 Yogʻin: 24 soatda ${rn.d24} mm, 48 soatda ${rn.d48} mm; eng kuchli soat ${rn.maxH} mm${rn.maxAt ? ` (${new Date(rn.maxAt).toLocaleString('uz-UZ', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })})` : ''}.`);
+        if (rn.maxH >= 3 || rn.d24 >= 8) {
+          S.brief.busy = 'Suv toʻplanadigan koʻchalar hisoblanmoqda'; renderKeepScroll();
+          await Promise.race([loadTwin(), NX.sleep(60000)]);
+          const mm = Math.max(rn.maxH * 2, rn.d24 / 2), sc = twinState().dem ? rainScen(Math.round(mm)) : null;
+          if (sc && sc.streets.length) L.push(`⚠️ Suv toʻplanishi mumkin (model, ~${Math.round(mm)} mm/soat): ${sc.streets.slice(0, 8).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.`, '→ Nasoslar va ariqlarni tozalash brigadalarini shu koʻchalarga oldindan yuborish.');
+          else L.push('✅ Model boʻyicha koʻchalarda jiddiy suv toʻplanmaydi.');
+        } else L.push('✅ Kuchli yomgʻir kutilmayapti — suv toshqini xavfi past.');
+      }
+      if (aq) L.push(`🌫 Havo sifati: AQI ${aq.aqi} (${aq.daraja}), PM2.5 ${aq.pm2_5} µg/m³; 24 soatda eng yomoni AQI ${aq.keyingi_24_soat_eng_yomon_aqi} (${aq.keyingi_daraja}).${aq.keyingi_24_soat_eng_yomon_aqi > 100 ? ' → Sezgir guruhlar (bolalar, keksalar) ochiq havoda kamroq boʻlsin.' : ''}`);
+      const lvl = S.yandexState && S.yandexState.level;
+      const slow = S.model ? S.model.streets.filter(x => x.tomtom && Date.now() - x.tomtom.ts < 3600e3).sort((a, b) => b.tomtom.congestion - a.tomtom.congestion).slice(0, 4) : [];
+      if (lvl != null || slow.length) L.push(`🚗 Tirbandlik: ${lvl != null ? `hozir ${lvl} ball (Yandex)` : ''}${slow.length ? `; eng sekin: ${slow.map(x => `${x.name} ${Math.round(x.tomtom.currentSpeed)} km/soat`).join(', ')}` : ''}.`);
+      const pr = S.model ? S.model.problems.slice(0, 4) : [];
+      if (pr.length) L.push(`🛠 Ustuvor muammolar: ${pr.map(p => `${NX.PROBLEM[p.type].short} — ${p.title}`).join('; ')}.`);
+      S.brief = { ts: Date.now(), text: L.join('\n\n') };
+    } catch (e) { S.brief = { err: e.message }; }
+    renderKeepScroll();
+  }
+  function briefShare(kind) {
+    const b = S.brief; if (!b || !b.text) return;
+    const plain = b.text.replace(/\*\*/g, '');
+    if (kind === 'tg') window.open(`https://t.me/share/url?url=${encodeURIComponent(location.href.split('#')[0])}&text=${encodeURIComponent(plain.slice(0, 3500))}`, '_blank', 'noopener');
+    else { const w = window.open('', '_blank'); if (!w) return; w.document.write(`<!doctype html><meta charset="utf-8"><title>Xavf brifingi</title><body style="font:15px/1.6 system-ui;max-width:760px;margin:30px auto">${NX.ai.render(b.text)}<p style="color:#666;font-size:12px">City Jam — Samarqand raqamli egizagi. Prognoz va model natijalari taxminiy.</p></body>`); w.document.close(); w.print(); }
+  }
+  // ---------- 🎯 Model aniqligi: real hodisalar va suratlar bilan solishtirish ----------
+  async function makeAccuracy() {
+    if (S.acc && S.acc.busy) return;
+    S.acc = { busy: 'Suv modeli hisoblanmoqda (50 mm)' }; renderKeepScroll();
+    const out = {};
+    try {
+      const T = twinState();
+      const R = T.dyn && T.dyn.frames ? T.dyn : await twinFlood2d([{ t0: 0, t1: 3600, mmh: 50 }], '50 mm, 1 soatda');
+      if (R) {
+        const rp = await NX.hazard.reportItems(T.roads, R), F = rp.facts || [], found = F.filter(f => f.model_natijasi !== 'xaritada topilmadi'), hit = found.filter(f => /model ham suv/.test(f.model_natijasi));
+        out.flood = { total: F.length, found: found.length, hit: hit.length, miss: found.filter(f => !/model ham suv/.test(f.model_natijasi)).map(f => f.koʻcha), rain: (R.rain && R.rain[0] && R.rain[0].mmh) || 50 };
+      }
+    } catch (e) { out.floodErr = e.message; }
+    const V = Object.values(S.verify || {}).filter(v => v && v.res);
+    out.photo = { n: V.length, conf: V.filter(v => v.res.status === 'bad').length, wrong: V.filter(v => v.res.status === 'ok').length, unk: V.filter(v => v.res.status === 'unknown' || v.res.status === 'info').length };
+    const B = twinState().buildings || [];
+    out.data = { blds: B.length, lvKnown: B.length ? Math.round(B.filter(b => !b.est).length / B.length * 100) : null, roads: (twinState().roads || []).length };
+    S.acc = out; renderKeepScroll();
+  }
+  function hazardClear() {
+    satOverlay(null); const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
-    if (!q || C.busy) return;
+    // silent: murakkab savolning bir qismi — chatga yozilmaydi, AI chaqirilmaydi, faqat hisob ({ H, extra, local }) qaytadi
+    const silent = !!(opts && opts.silent);
+    if (!q || (C.busy && !silent)) return;
     const prev = C.msgs.slice(-2), prevQ = lastUser(C.msgs);
-    C.msgs.push({ role: 'user', text: (opts && opts.display) || q });
-    if (!(opts && opts.resolved)) { C.busy = 'Tahlil qilinmoqda'; renderKeepScroll(); q = await smartQ(q, prevQ); C.busy = null; }
+    if (!silent) C.msgs.push({ role: 'user', text: (opts && opts.display) || q });
+    if (!silent && !(opts && opts.resolved)) { C.busy = 'Tahlil qilinmoqda'; renderKeepScroll(); q = await smartQ(q, prevQ); C.busy = null; }
     const it0 = NX.intent(q);
-    if (it0.main === 'plan' || it0.main === 'road') {
+    if (!silent && (it0.main === 'plan' || it0.main === 'road')) {
       if (it0.main === 'road') { C.msgs.push({ role: 'ai', text: ROAD_HINT, src: 'ai' }); renderKeepScroll(); drawRoad(q); return null; }
       C.busy = 'Bosh reja va UNESCO zonalari tekshirilmoqda'; renderKeepScroll();
       let m; try { m = await planAsk(q, prev); } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
@@ -672,7 +772,7 @@
     // 3D da hudud chizilgan boʻlsa — savollar shu hudud haqida (zilzila, suv, koʻcha holati, evakuatsiya — hudud boʻyicha)
     if (S.area && S.area.from3d) opts = Object.assign({}, opts, { area: true });
     // Hudud bilan bogʻliq boshqa savollar (nima yetishmaydi, qurilish, umumiy) — hudud tahlili, natija 3D xaritada
-    if (S.area && S.area.from3d && (it0.main === 'needs' || it0.main === 'build' || it0.main === 'general' || it0.main === 'traffic')) {
+    if (!silent && S.area && S.area.from3d && (it0.main === 'needs' || it0.main === 'build' || it0.main === 'general' || it0.main === 'traffic')) {
       C.busy = 'Belgilangan hudud tahlil qilinmoqda'; renderKeepScroll();
       let m = null;
       try { await areaAsk(q); m = S.area.qa[S.area.qa.length - 1]; } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
@@ -702,10 +802,34 @@
     } finally { clearInterval(busyTick); }
     const n = q.toLowerCase();
     const mmM = n.match(/(\d+(?:[.,]\d+)?)\s*(mm|millimetr)/);
-    const it = NX.intent(q), accQ = it.main === 'access';
-    const rainQ = !accQ && (mmM || /yomg|jala|sel|toshqin|suv bos/.test(n) || NX.intent.R.flood.test(q));
-    const quakeQ = !accQ && (it.main === 'quake' || /zilzila|yer qimirla|silkin|seysm/.test(n));
-    const svcQ = ['fire', 'ambulance', 'police'].includes(it.main);
+    const it = NX.intent(q);
+    let accQ = it.main === 'access';
+    let rainQ = !accQ && (mmM || /yomg|jala|sel|toshqin|suv bos/.test(n) || NX.intent.R.flood.test(q));
+    let quakeQ = !accQ && (it.main === 'quake' || /zilzila|yer qimirla|silkin|seysm/.test(n));
+    let svcQ = ['fire', 'ambulance', 'police'].includes(it.main);
+    // Murakkab savolning bir qismi: faqat shu tahlil (force)
+    const force = opts && opts.force;
+    if (force) { it.main = force; accQ = force === 'access'; rainQ = force === 'flood'; quakeQ = force === 'quake'; svcQ = ['fire', 'ambulance', 'police'].includes(force); }
+    // Murakkab savol (bir nechta xavf: masalan zilzila VA yomgʻir, yongʻin VA koʻcha holati) — har biri alohida hisoblanadi,
+    // natijalar bitta xaritada birlashtiriladi, AI ularni birga tahlil qiladi
+    let multiH = null, multiParts = null;
+    if (!silent && !force) {
+      const RX = NX.intent.R, types = [];
+      if (quakeQ) types.push('quake');
+      if (rainQ && !accQ) types.push('flood');
+      if (RX.fire.test(q)) types.push('fire'); else if (RX.ambulance.test(q) && !quakeQ) types.push('ambulance');
+      if (RX.access.test(q) && (quakeQ || rainQ)) types.push('access');
+      if (types.length >= 2) {
+        multiParts = [];
+        for (const [k, t] of types.slice(0, 3).entries()) {
+          C.busy = `Murakkab savol: ${k + 1}/${Math.min(3, types.length)} — ${{ quake: 'zilzila', flood: 'suv toshqini', fire: 'yongʻin xizmati', ambulance: 'tez yordam', access: 'koʻchalar holati' }[t]}`; renderKeepScroll();
+          try { const r = await twinAsk(q, Object.assign({}, opts, { silent: true, force: t, resolved: true })); if (r) multiParts.push(Object.assign({ t }, r)); } catch (e) { console.warn('qism:', t, e); }
+        }
+        const items = []; multiParts.forEach(p => { if (p.H && p.H.items) p.H.items.forEach(a => items.push(Object.assign({}, a))); });
+        if (items.length) multiH = showHazard({ kind: 'multi', items });
+        rainQ = quakeQ = svcQ = accQ = false;
+      }
+    }
     // Evakuatsiya / xavfsiz yoʻl / baland joy / xavfli zona — natija xaritada chiziladi
     const evacQ = /evaku|avaku|xavfsiz|xafsiz|qoch|panoh|boshpana|yig[ʻ'‘`]?il|qutqar|baland|zarar|vayron|xavfli joy|qayer/.test(n);
     let extra = {}, local = '', R = null, sc0 = null;
@@ -750,6 +874,11 @@
     if (quakeQ) { NX.map3d.setMode('quake'); extra.zilzila_rejimi = 'binolar rangi: qizil — maktab/bogʻcha/shifoxona, toʻq sariq — 5+ qavat, sariq — 3–4 qavat'; }
     // Xavf zonalari va evakuatsiya yoʻllari — koʻcha tarmogʻida hisoblanadi va xaritada chiziladi
     let H = null;
+    if (multiParts) {
+      H = multiH;
+      extra.murakkab_savol = multiParts.map(p => Object.assign({ tahlil: { quake: 'zilzila', flood: 'suv toshqini', fire: 'yongʻin xizmati', ambulance: 'tez yordam', access: 'koʻchalar holati' }[p.t] }, p.extra));
+      local = multiParts.map(p => p.local).filter(Boolean).join('\n\n---\n\n');
+    }
     if (accQ) {
       C.busy = 'Koʻchalar tekshirilmoqda'; renderKeepScroll();
       try { H = await auditRun(q, Object.assign({}, opts, { busy: t => { C.busy = t; renderKeepScroll(); } })); } catch (e) { console.warn('koʻcha auditi:', e); }
@@ -797,7 +926,26 @@
       extra.quyosh_tahlili = { yillik_nurlanish_kvt_soat_m2: T0.ghi.kwh, eng_foydali_tomlar: top.map((x, i) => ({ id: 'Q' + (i + 1), nomi: x.b.name || KUZ(x.b.kind), tom_m2: Math.round(x.b.area), yillik_mvt_soat: Math.round(x.kwh / 1000) })), barcha_tomlar_jami_gvt_soat: tot };
       local = `**Eng foydali tomlar** (yillik quyosh nurlanishi ${NX.fmt.int(T0.ghi.kwh)} kVt·soat/m², real arxiv):\n${top.slice(0, 8).map((x, i) => `- **Q${i + 1}** ${x.b.name || KUZ(x.b.kind)} — tom ~${NX.fmt.int(x.b.area)} m², yiliga ~${NX.fmt.int(Math.round(x.kwh / 1000))} MVt·soat`).join('\n')}\n\nShahar boʻyicha barcha tomlarga panel qoʻyilsa — yiliga ~${NX.fmt.int(tot)} GVt·soat (taxminiy). Xaritada sariq Q belgilar, 3D da binolar quyosh salohiyati boʻyicha boʻyalgan.`;
     }
-    if (!H && it.main === 'climate' && T0.climate) {
+    // Sunʼiy yoʻldosh: issiqlik orollari, yashillik, yangi qurilish — xaritada qatlam va belgilar
+    if (!H && it.main === 'climate' && /issiq|harorat|salqin|orol|daraxt|yashil|ko[ʻ'‘`]?kalamzor|park|qurilish|yo[ʻ'‘`]?ldosh|ekolog/i.test(q)) {
+      C.busy = 'Sunʼiy yoʻldosh maʼlumoti tahlil qilinmoqda'; renderKeepScroll();
+      let os = null; try { os = await Promise.race([NX.hazard.openSpaces(), NX.sleep(15000).then(() => null)]); } catch (e) { os = null; }
+      const R = await NX.sat.analyze(q, os && os.places);
+      if (R) {
+        H = showHazard({ kind: 'sat', items: R.items });
+        satOverlay(R.type === 'build' ? null : R.overlay, R.bbox, H.origin);
+        extra.sunʼiy_yoʻldosh = R.facts;
+        const f = R.facts;
+        local = R.type === 'heat' ? `**Eng issiq mahallalar** (yer yuzasi harorati, Landsat 9, 2025-08-09 ~11:00; shahar oʻrtachasi ${f.shahar_yuza_harorati_ortacha_c}°C):\n${f.eng_issiq_mahallalar.slice(0, 6).map((x, i) => `- **I${i + 1} ${x.mahalla}** — ${x.harorat_c}°C (yashillik ${x.yashillik_ndvi})`).join('\n')}\n\n**Eng salqin:** ${f.eng_salqin_mahallalar.map(x => `${x.mahalla} (${x.harorat_c}°C)`).join(', ')}.\n\n**Daraxt ekish birinchi navbatda:** ${f.daraxt_ekish_ustuvor.join(', ')}. Xaritada — issiqlik xaritasi (koʻk → qizil).`
+          : R.type === 'green' ? `**Yashil hudud (Sentinel-2, NDVI > 0.4):** 2019 — ${NX.fmt.int(f.yashil_hudud_ga['2019'])} ga, 2025 — ${NX.fmt.int(f.yashil_hudud_ga['2025'])} ga (${f.yashil_hudud_ga.farq_ga >= 0 ? '+' : ''}${NX.fmt.int(f.yashil_hudud_ga.farq_ga)} ga).\n\n**Daraxt ekish ustuvor mahallalar** (issiq va yashilligi past):\n${f.daraxt_ekish_ustuvor_mahallalar.slice(0, 6).map((x, i) => `- **D${i + 1} ${x.mahalla}** — ${x.harorat_c}°C, NDVI ${x.ndvi}`).join('\n')}\n\nXaritada: qizil — yashillik yoʻqolgan, yashil — paydo boʻlgan joylar (2019→2025).`
+          : `**Sunʼiy yoʻldosh boʻyicha yangi qurilishlar (2019→2025, taxminiy):**\n${f.yangi_qurilish_joylari.map(x => `- **${x.id}** — ${x.maydon_ga} ga, hozir ~${x.binolar_hozir} ta bino`).join('\n') || '- aniqlanmadi'}\n\nFaqat avval yashil boʻlib, hozir binolar turgan joylar; ruxsatnomalar bazasi bilan solishtirish kerak.`;
+      }
+    }
+    if (it.main === 'climate' && /havo|chang|pm|ifloslan|nafas/i.test(q)) {
+      const aq = await airQuality();
+      if (aq) { extra.havo_sifati = aq; local = `**Havo sifati hozir:** AQI ${aq.aqi} — ${aq.daraja}; PM2.5 ${aq.pm2_5} µg/m³, PM10 ${aq.pm10} µg/m³, chang ${aq.chang} µg/m³. Keyingi 24 soatda eng yomoni: AQI ${aq.keyingi_24_soat_eng_yomon_aqi} (${aq.keyingi_daraja}). Manba — model (taxminiy), shahar oʻlchov stansiyasi emas.` + (local ? '\n\n' + local : ''); }
+    }
+    if (!H && !local && it.main === 'climate' && T0.climate) {
       const c = T0.climate, ys = c.years.slice(-5);
       local = `**Samarqand iqlimi (real arxiv, 1991-yildan):** oʻrtacha harorat meʼyori ${c.tNorm}°C, yillik yogʻin ${c.pNorm} mm; isish — har 10 yilda ~${c.trend10}°C.\n\n**Oxirgi yillar:**\n${ys.map(o => `- ${o.y}: ${o.t}°C, ${o.p} mm (eng kuchli kun ${o.pmax} mm)`).join('\n')}\n\n**Eng kuchli yomgʻirli kunlar:** ${c.top.slice(0, 3).map(t => `${t.t} — ${t.p} mm`).join(', ')}.`;
     }
@@ -807,6 +955,7 @@
       C.busy = 'Oʻtgan hodisalar maʼlumoti qoʻshilmoqda'; renderKeepScroll();
       try { const w = await Promise.race([webP, NX.sleep(12000).then(() => null)]); if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) }; } catch (e) { /* qidiruv ishlamadi */ }
     }
+    if (silent) return { H, extra, local };
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
     // Bir xil savol (shu hudud, shu hisob) — bir xil javob: AI javobi 24 soat saqlanadi; “qayta” deyilsa — yangidan
@@ -818,9 +967,9 @@
       // AI 80 s ichida javob bermasa — tayyor hisob natijasi koʻrsatiladi (cheksiz “Tahlil qilinmoqda” boʻlmasin)
       try { r = NX.ai.available() ? await Promise.race([NX.ai.twinAsk(q, twinFacts(extra), prev), NX.sleep(80000).then(() => { throw new Error('AI javobi kechikdi — hisob natijasi'); })]) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
       catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
-      if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src } })); } catch (e) { /* */ } }
+      if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src, check: r.check } })); } catch (e) { /* */ } }
     }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (!accQ && /rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
@@ -1250,7 +1399,7 @@
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && A.qaBusy) { A.qaBusy = tc.busy + '…'; renderKeepScroll(); } }, 1200);
       let m = null;
       try { m = await twinAsk(q, { area: true, display: shown, resolved: true }); } finally { clearInterval(tick); }
-      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
+      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, check: m.check, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
       A.qaBusy = null; renderKeepScroll();
       return;
     }
@@ -1323,7 +1472,7 @@
     r.text = pa.text;
     pa.actions = (needQ ? needMapPoints(A) : areaMapPoints(A)).concat(pa.actions.filter(a => !(needQ && a.id && /^L/.test(a.id)))).slice(0, 14);
     if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
-    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, opts: r.opts, sources: r.sources, actions: pa.actions });
+    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;
     if (S.tab === 'map' && S.area === A) renderKeepScroll();
   }
@@ -1720,6 +1869,8 @@
   // Binolar yuklanganda: OSM’da faqat nuqta boʻlgan maktablar yonida maktab binosi bormi — muammolar qayta baholanadi
   document.getElementById('panelTab').addEventListener('click', () => { document.body.classList.toggle('panel-hide'); });
   document.addEventListener('nx:tour', () => { if (S.tab === 'twin') renderKeepScroll(); });
+  // Mapillary obyektlari yuklanganda: suratda svetofor/zebra koʻringan joylar muammolar roʻyxatidan chiqadi
+  document.addEventListener('nx:mly', () => { if (S.model) { NX.analysis.refresh(S.model); if (S.tab === 'problems' || S.tab === 'map') renderKeepScroll(); NX.view.drawProblems && NX.view.drawProblems(); } });
   document.addEventListener('nx:buildings', () => { if (S.model && S.model.schools && S.model.schools.some(o => o.ot === 'n' && !o.safe)) { NX.analysis.refresh(S.model); if (S.tab === 'problems') renderKeepScroll(); } });
   function rebuildModel() {
     if (!S.raw) return;
@@ -1927,7 +2078,7 @@
           const localDeep = () => { const st = S.model.streets[dp.sid], lv = ['✅ tavsiya etiladi', '⚠️ ehtiyotkorlik bilan', '⛔ tavsiya etilmaydi']; return { text: `**${st ? st.name : 'Koʻcha'} — ${dp.opts.length} ta variant hisoblandi** (talab ${NX.fmt.int(S.demand)} safar/soat, taxminiy model):\n${dp.opts.map(o => `- ${o === dp.best ? '⭐ ' : ''}**${o.label}** — umumiy yoʻl vaqti ${NX.fmt.signed(o.r.ttChangePct, 1)}%, ortiqcha yuklangan koʻchalar: ${o.r.overloadedCount}; ${lv[o.v.level] || ''}. ${(o.v.why || [])[0] || ''}`).join('\n')}\n\n**Eng yaxshi variant:** ${dp.best.label}. Xaritada — shu variantda qaysi koʻchalarga mashina koʻpayadi (qizil) va kamayadi (yashil).`, src: 'hisob' }; };
           const r = NX.ai.available() ? await NX.ai.deepAsk(q, Object.assign({ shahar_tizimlari: NX.ai.systemsFacts() }, dp.facts), prev.map(m => ({ role: m.role, text: m.content }))).catch(() => localDeep()) : localDeep();
           S.sim.last = { street: dp.sid, type: dp.best.type, label: dp.best.label, demand: S.demand, result: dp.best.r, verdict: dp.best.v, iters: 10 };
-          S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src || 'ai', sim: simSummary(S.sim.last) });
+          S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src || 'ai', check: r.check, sim: simSummary(S.sim.last) });
           S.chat.busy = null; renderChat();
           return;
         }
@@ -1946,7 +2097,7 @@
         state: S, history: prev,
       });
       if (res.street && S.chatStreet == null) S.chatStreet = res.street.id;
-      const msg = { role: 'ai', text: res.text, src: res.src, error: res.error, sim: res.sim ? simSummary(res.sim) : null };
+      const msg = { role: 'ai', text: res.text, src: res.src, error: res.error, check: res.check, sim: res.sim ? simSummary(res.sim) : null };
       S.chat.msgs.push(msg);
       // “rasmini chiz” — javob asosida AI rasm
       if (it.image && NX.ai.available()) {
@@ -2028,6 +2179,7 @@
     $('#keyTomtom').value = NX.store.get('key:tomtom', '');
     $('#keyOpenai').value = NX.store.get('key:openai', '');
     $('#keyGoogle3d').value = NX.store.get('key:google3d', '');
+    $('#aiPref').value = NX.store.get('ai:pref', '');
     $('#fixPin').value = NX.store.get('fixes:pin', '');
     const fl = NX.fixes.list();
     $('#fixInfo').textContent = `Xaritaga ${fl.length} ta tuzatish kiritilgan (${fl.filter(x => x.shared).length} tasi hamma uchun).` + (NX.fixes.status() === false ? ' Server ombori hali ulanmagan.' : '');
@@ -2062,6 +2214,7 @@
       NX.store.set('key:tomtom', $('#keyTomtom').value.trim());
       NX.store.set('key:openai', $('#keyOpenai').value.trim());
       NX.store.set('key:google3d', $('#keyGoogle3d').value.trim());
+      NX.store.set('ai:pref', $('#aiPref').value); { const b = NX.store.get('ai:bad', {}); delete b[$('#aiPref').value]; NX.store.set('ai:bad', b); }
       NX.store.set('fixes:pin', $('#fixPin').value.trim());
       if ($('#fixPin').value.trim()) NX.fixes.syncLocal().then(n => { if (n) { toast(`${n} ta tuzatish hamma uchun saqlandi.`, 'ok'); NX.fixes.loadShared().then(rebuildModel); } });
       closeSettings(); toast('Sozlamalar saqlandi (faqat shu brauzerda).', 'ok');
@@ -2160,6 +2313,10 @@
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
+        case 'brief': makeBrief(); break;
+        case 'brief-tg': briefShare('tg'); break;
+        case 'brief-print': briefShare('print'); break;
+        case 'acc': makeAccuracy(); break;
         case 'twin-draw': drawArea3d(); break;
         case 'twin-area-clear': S.area = null; NX.map3d.showArea(null); NX.view.drawArea(null); renderKeepScroll(); break;
         case 'g3d': if (NX.g3d.available()) NX.g3d.open(); else { toast('Google fotoreal 3D uchun Sozlamalarda Google Maps API kalitini kiriting (Map Tiles API yoqilgan boʻlsin).', 'warn'); openSettings(); setTimeout(() => $('#keyGoogle3d').focus(), 50); } break;

@@ -7,9 +7,9 @@
   <meta name="description" content="Samarqand tarixiy markazi uchun koʻcha harakati va jamoat transporti tahlili hamda bashorati: OpenStreetMap, TomTom, “Agar…?” simulyatsiyasi.">
   <meta name="theme-color" content="#0f766e">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M22.5 10.5a8 8 0 1 0 0 11' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102n">
-  <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=20261102n">
-  <link rel="stylesheet" href="css/app.css?v=20261102n">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102r">
+  <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=20261102r">
+  <link rel="stylesheet" href="css/app.css?v=20261102r">
 <script>try { if (localStorage.getItem('lite') === '1' || (localStorage.getItem('lite') == null && (navigator.hardwareConcurrency || 8) <= 2)) document.documentElement.classList.add('lite'); } catch (e) { /* */ }</script>
 </head>
 <body>
@@ -57,6 +57,9 @@
         <small class="muted" id="fixInfo"></small></label>
       <label class="field"><span>Google Maps API kaliti — “🌐 Google fotoreal 3D” uchun (<a href="https://developers.google.com/maps/documentation/tile/3d-tiles" target="_blank" rel="noopener">Map Tiles API</a>; kalitni sayt manziliga cheklang)</span>
         <span class="pass"><input id="keyGoogle3d" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…"><button type="button" class="btn sm" data-toggle-pass="#keyGoogle3d">Koʻrsatish</button></span></label>
+      <label class="field"><span>AI modeli — asosiy tahlil uchun (ishlamasa avtomatik zaxira modelga oʻtadi)</span>
+        <select id="aiPref"><option value="">Avtomatik (GPT-6 Sol)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5 (eng chuqur)</option><option value="gemini-2.5-pro">Gemini 2.5 Pro</option><option value="gpt-5.5">GPT-5.5</option></select>
+        <small class="muted">Claude/Gemini — Worker’da ANTHROPIC_API_KEY / GEMINI_API_KEY maxfiy kaliti qoʻyilgan boʻlsa.</small></label>
       <details class="more"><summary>Texnik sozlamalar (odatda kerak emas)</summary>
       <p class="muted small">AI va xaritalar sayt serveri orqali ishlaydi — bu kalitlar kerak emas. Faqat sinov uchun.</p>
       <label class="field"><span>TomTom API kaliti <a href="https://developer.tomtom.com/" target="_blank" rel="noopener">(bepul olish)</a></span>
@@ -79,48 +82,50 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="vendor/leaflet/leaflet.js?v=20261102n"></script>
-  <script src="vendor/maplibre/maplibre-gl.js?v=20261102n"></script>
-  <script src="js/keys.js?v=20261102n"></script>
-  <script src="js/core.js?v=20261102n"></script>
-  <script src="js/data/weather.js?v=20261102n"></script>
-  <script src="js/data/yandex.js?v=20261102n"></script>
-  <script src="js/data/panorama.js?v=20261102n"></script>
-  <script src="js/data/mapillary.js?v=20261102n"></script>
-  <script src="js/data/fixes.js?v=20261102n"></script>
-  <script src="js/data/systems.js?v=20261102n"></script>
-  <script src="js/data/masterplan.js?v=20261102n"></script>
-  <script src="js/data/webcams.js?v=20261102n"></script>
-  <script src="js/data/buildings.js?v=20261102n"></script>
-  <script src="js/analysis/forecast.js?v=20261102n"></script>
-  <script src="js/data/osm.js?v=20261102n"></script>
-  <script src="js/data/tomtom.js?v=20261102n"></script>
-  <script src="js/analysis/model.js?v=20261102n"></script>
-  <script src="js/analysis/segment.js?v=20261102n"></script>
-  <script src="js/analysis/area.js?v=20261102n"></script>
-  <script src="js/analysis/roadcheck.js?v=20261102n"></script>
-  <script src="js/analysis/twin.js?v=20261102n"></script>
-  <script src="js/data/questions.js?v=20261102n"></script>
-  <script src="js/analysis/hazard.js?v=20261102n"></script>
-  <script src="js/analysis/drainfix.js?v=20261102n"></script>
-  <script src="js/analysis/streetaudit.js?v=20261102n"></script>
-  <script src="js/sim/simcore.js?v=20261102n"></script>
-  <script src="js/sim/client.js?v=20261102n"></script>
-  <script src="js/sim/flood2d.js?v=20261102n"></script>
-  <script src="js/map.js?v=20261102n"></script>
-  <script src="js/ymap.js?v=20261102n"></script>
-  <script src="js/ui/chart.js?v=20261102n"></script>
-  <script src="js/ui/draw.js?v=20261102n"></script>
-  <script src="js/ui/plan.js?v=20261102n"></script>
-  <script src="js/ui/map3d.js?v=20261102n"></script>
-  <script src="js/ui/landmarks3d.js?v=20261102n"></script>
-  <script src="js/ui/camwall.js?v=20261102n"></script>
-  <script src="js/ai.js?v=20261102n"></script>
-  <script src="js/ui/views.js?v=20261102n"></script>
-  <script src="js/ui/place.js?v=20261102n"></script>
-  <script src="js/ui/fx.js?v=20261102n"></script>
-  <script src="js/ui/backdrop.js?v=20261102n"></script>
-  <script src="js/ui/google3d.js?v=20261102n"></script>
-  <script src="js/app.js?v=20261102n"></script>
+  <script src="vendor/leaflet/leaflet.js?v=20261102r"></script>
+  <script src="vendor/maplibre/maplibre-gl.js?v=20261102r"></script>
+  <script src="js/keys.js?v=20261102r"></script>
+  <script src="js/core.js?v=20261102r"></script>
+  <script src="js/data/weather.js?v=20261102r"></script>
+  <script src="js/data/yandex.js?v=20261102r"></script>
+  <script src="js/data/panorama.js?v=20261102r"></script>
+  <script src="js/data/mapillary.js?v=20261102r"></script>
+  <script src="js/data/mlyfeat.js?v=20261102r"></script>
+  <script src="js/data/fixes.js?v=20261102r"></script>
+  <script src="js/data/systems.js?v=20261102r"></script>
+  <script src="js/data/masterplan.js?v=20261102r"></script>
+  <script src="js/data/webcams.js?v=20261102r"></script>
+  <script src="js/data/buildings.js?v=20261102r"></script>
+  <script src="js/analysis/forecast.js?v=20261102r"></script>
+  <script src="js/data/osm.js?v=20261102r"></script>
+  <script src="js/data/tomtom.js?v=20261102r"></script>
+  <script src="js/analysis/model.js?v=20261102r"></script>
+  <script src="js/analysis/segment.js?v=20261102r"></script>
+  <script src="js/analysis/area.js?v=20261102r"></script>
+  <script src="js/analysis/roadcheck.js?v=20261102r"></script>
+  <script src="js/analysis/twin.js?v=20261102r"></script>
+  <script src="js/data/questions.js?v=20261102r"></script>
+  <script src="js/analysis/hazard.js?v=20261102r"></script>
+  <script src="js/analysis/drainfix.js?v=20261102r"></script>
+  <script src="js/analysis/streetaudit.js?v=20261102r"></script>
+  <script src="js/analysis/satellite.js?v=20261102r"></script>
+  <script src="js/sim/simcore.js?v=20261102r"></script>
+  <script src="js/sim/client.js?v=20261102r"></script>
+  <script src="js/sim/flood2d.js?v=20261102r"></script>
+  <script src="js/map.js?v=20261102r"></script>
+  <script src="js/ymap.js?v=20261102r"></script>
+  <script src="js/ui/chart.js?v=20261102r"></script>
+  <script src="js/ui/draw.js?v=20261102r"></script>
+  <script src="js/ui/plan.js?v=20261102r"></script>
+  <script src="js/ui/map3d.js?v=20261102r"></script>
+  <script src="js/ui/landmarks3d.js?v=20261102r"></script>
+  <script src="js/ui/camwall.js?v=20261102r"></script>
+  <script src="js/ai.js?v=20261102r"></script>
+  <script src="js/ui/views.js?v=20261102r"></script>
+  <script src="js/ui/place.js?v=20261102r"></script>
+  <script src="js/ui/fx.js?v=20261102r"></script>
+  <script src="js/ui/backdrop.js?v=20261102r"></script>
+  <script src="js/ui/google3d.js?v=20261102r"></script>
+  <script src="js/app.js?v=20261102r"></script>
 </body>
 </html>

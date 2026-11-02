@@ -108,6 +108,9 @@
     const J = junctions(o.roads || ways), myCore = coreName(name);
     ways.forEach(w => w.ll.forEach(p => { if (!inBB(p)) return; const v = J.get(p[0].toFixed(5) + ',' + p[1].toFixed(5)); if (v && [...v].some(nm => nm !== myCore)) crossPts.push({ c: p, src: 'chorraha', junc: true }); }));
     (o.extraCross || []).forEach(c => crossPts.push(c));
+    // Mapillary suratlarida aniqlangan zebra/svetofor (butun shahar boʻyicha oldindan yigʻilgan)
+    const mlyOn = NX.mlyf && NX.mlyf.ready();
+    if (mlyOn) ways.forEach(w => NX.mlyf.alongLine(w.ll, 22, 'ZS').forEach(f => crossPts.push({ c: [f.lat, f.lon], src: 'surat', sig: f.c === 'S' })));
     const cr = []; crossPts.forEach(c => { const h = onStreet(c.c); if (h && !cr.some(x => Math.abs(x.s - h.s) < 25)) cr.push(Object.assign({}, c, { s: h.s })); });
     cr.sort((a, b) => a.s - b.s);
     const gaps = []; let prev = 0; cr.concat([{ s: S0.L, end: true }]).forEach(c => { gaps.push({ from: prev, to: c.s, len: c.s - prev }); prev = c.s; });
@@ -120,6 +123,13 @@
     const parking = osm ? osm.filter(x => x.t.amenity === 'parking').length : null;
     // Zinapoyalar (piyoda yoʻlagida) 30 m ichida
     const steps = wk._steps.filter(x => x.pts.some(p => inBB(p) && onStreet(p))).map(x => x.pts[Math.floor(x.pts.length / 2)]);
+    // Koʻcha chiroqlari va tezlik belgilari (suratlar boʻyicha). Surat boʻlmagan koʻchada “chiroq yoʻq” deyilmaydi — qamrov tekshiriladi
+    let lights = null, lightKm = null, mlyCov = 0, speedSign = null;
+    if (mlyOn) {
+      const all = ways.flatMap(w => NX.mlyf.alongLine(w.ll, 25, null)); mlyCov = all.length;
+      lights = all.filter(f => f.c === 'L').length; lightKm = S0.L > 50 ? +(lights / (S0.L / 1000)).toFixed(1) : null;
+      const vs = all.filter(f => f.c === 'V' && f.v).map(f => f.v); if (vs.length) { const cnt = {}; vs.forEach(v => { cnt[v] = (cnt[v] || 0) + 1; }); speedSign = +Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0]; }
+    }
     // Qiyalik (yer sathi, 40 m): har namuna uchun ±30 m da balandlik farqi
     let steep5 = 0, steep8 = 0, maxSlope = 0; const steepSegs = [];
     if (o.D) {
@@ -165,9 +175,10 @@
     if (steep5) { issues.push({ cat: 'acc', t: `${F(steep5 * 20)} m qismda qiyalik 5% dan katta (eng koʻpi ~${maxSlope.toFixed(1)}%)` }); fixes.push({ cat: 'acc', t: `qiya qismlarda har 30 m da dam olish maydonchasi, tutqichlar; ${steep8 ? '8% dan qiya joylarda muqobil yoʻl yoki lift/pandus' : 'pandus qiyaligi ≤ 5%'}` }); }
     if (kerbRaised) { issues.push({ cat: 'acc', t: `${kerbRaised} ta oʻtish joyida baland bordyur` }); fixes.push({ cat: 'acc', t: `${kerbRaised} ta joyda bordyurni pastlatish (≤ 1.5 sm)` }); }
     if (!(kerbLow + kerbRaised)) issues.push({ cat: 'acc', t: 'bordyur va taktil plitka haqida ochiq maʼlumot yoʻq — suratlar boʻyicha tekshiriladi' });
+    if (lightKm != null && mlyCov >= 8 && lightKm < 12) { issues.push({ cat: 'ped', t: `koʻcha chiroqlari kam: ~${lightKm} ta/km (suratlar boʻyicha; meʼyor ~25–30 ta/km)` }); fixes.push({ cat: 'ped', t: `koʻcha yoritishini kuchaytirish: ~${Math.max(0, Math.round((25 - lightKm) * S0.L / 1000))} ta yangi chiroq (har ~35–40 m)` }); }
     if (steps.length) { issues.push({ cat: 'acc', t: `${steps.length} ta zinapoya (aravacha oʻta olmaydi)` }); fixes.push({ cat: 'acc', t: `${steps.length} ta zinapoya yoniga pandus` }); }
     return {
-      name, hw, main, L: Math.round(S0.L), width: ROAD_W[hw] || 8, speed, speedKnown: !!spKnown, surface: sfKnownLen ? SF_UZ[sfd.find(x => x[0] > 0)[0]] : 'nomaʼlum', unpaved: Math.round(unpaved),
+      name, hw, main, L: Math.round(S0.L), width: ROAD_W[hw] || 8, speed: !spKnown && speedSign ? speedSign : speed, speedKnown: !!spKnown || !!speedSign, speedSrc: spKnown ? 'OSM belgisi' : speedSign ? 'suratdagi tezlik belgisi' : 'belgi yoʻq — shahar meʼyori', lights, lightKm, mlyCov, surface: sfKnownLen ? SF_UZ[sfd.find(x => x[0] > 0)[0]] : 'nomaʼlum', unpaved: Math.round(unpaved),
       swCov, swYes, swNo, crossings: cr, gaps, maxGap, kerbLow, kerbRaised, tactYes, tactNo, signals: sigNodes, parking, steps, steep5: steep5 * 20, steep8: steep8 * 20, maxSlope: +maxSlope.toFixed(1), steepSegs,
       pois: poiUniq, poiNoCross, proposals, scores: { car, ped, acc }, issues, fixes, osmOk: !!osm, ways, samplePts: S0.list.filter((q, i) => i % Math.max(1, Math.floor(S0.list.length / 4)) === 0).slice(0, 4).map(q => q.p),
     };
@@ -224,7 +235,7 @@
     return {
       koʻcha: A.name, sinfi: A.hw, uzunlik_m: A.L, qatnov_qismi_kengligi_m_taxminiy: A.width,
       ballar_100dan: { avtomobil: A.scores.car, piyoda: A.scores.ped, nogironlar_uchun: A.scores.acc },
-      avtomobil: { tezlik_km_soat: A.speed, tezlik_manba: A.speedKnown ? 'OSM belgisi' : 'belgi yoʻq — shahar meʼyori', qoplama: A.surface, qoplamasiz_m: A.unpaved, svetoforlar_osm: A.signals, avtoturargohlar_atrofda_osm: A.parking },
+      avtomobil: { tezlik_km_soat: A.speed, tezlik_manba: A.speedSrc || (A.speedKnown ? 'OSM belgisi' : 'belgi yoʻq — shahar meʼyori'), koʻcha_chiroqlari_suratlarda: A.lights != null ? { soni: A.lights, km_ga: A.lightKm, suratlar_qamrovi: A.mlyCov >= 8 ? 'yetarli' : 'kam — xulosa ishonchsiz' } : 'maʼlumot yoʻq', qoplama: A.surface, qoplamasiz_m: A.unpaved, svetoforlar_osm: A.signals, avtoturargohlar_atrofda_osm: A.parking },
       piyoda: { trotuar_osm: A.swNo ? `${A.swNo} qismda “yoʻq” deb belgilangan` : A.swYes ? `${A.swYes} qismda bor` : `trotuar/piyoda yoʻlagi 18 m ichida — uzunlikning ${A.swCov}% i (OSM toʻliq emas)`, oʻtish_joylari: A.crossings.length, eng_katta_oraliq_m: A.maxGap, meyor_m: A.main ? 300 : 500, muhim_joylar: A.pois.map(p => p.kind + (p.name ? ' ' + p.name : '')), oʻtish_joyi_yoʻq_muhim_joylar: A.poiNoCross.map(p => p.kind + (p.name ? ' ' + p.name : '')) },
       nogironlar: { qiyalik_5foizdan_m: A.steep5, qiyalik_8foizdan_m: A.steep8, eng_katta_qiyalik_foiz: A.maxSlope, qiyalik_izoh: 'relyef ~30 m boʻyicha taxminiy (≥120 m oraliqda oʻrtacha)', pastlatilgan_bordyur: A.kerbLow, baland_bordyur: A.kerbRaised, taktil_plitka_bor: A.tactYes, taktil_plitka_yoʻq: A.tactNo, zinapoyalar: A.steps.length, izoh: A.kerbLow + A.kerbRaised ? null : 'bordyur/plitka OSM’da belgilanmagan' },
       suratlardan_aniqlangan_mapillary: ml ? ml.det : 'Mapillary ulanmagan',
@@ -241,7 +252,7 @@
   function summary(A, ml, vis) {
     const sc = A.scores, bar = v => (v >= 70 ? '🟢' : v >= 45 ? '🟡' : '🔴');
     const L = [`**${A.name}** — ${F(A.L)} m: ${bar(sc.car)} avtomobil ${sc.car}/100 · ${bar(sc.ped)} piyoda ${sc.ped}/100 · ${bar(sc.acc)} nogironlar ${sc.acc}/100.`];
-    L.push('', '**🚗 Avtomobil**', `- Tezlik ${A.speed} km/soat (${A.speedKnown ? 'belgi' : 'belgi yoʻq, shahar meʼyori'}), qoplama: ${A.surface}${A.unpaved ? `, ${F(A.unpaved)} m qoplamasiz` : ''}${A.signals != null ? `, svetofor ${A.signals}` : ''}${A.parking != null ? `, atrofda ${A.parking} ta turargoh` : ''}.`);
+    L.push('', '**🚗 Avtomobil**', `- Tezlik ${A.speed} km/soat (${A.speedSrc || (A.speedKnown ? 'belgi' : 'belgi yoʻq, shahar meʼyori')}), qoplama: ${A.surface}${A.unpaved ? `, ${F(A.unpaved)} m qoplamasiz` : ''}${A.signals != null ? `, svetofor ${A.signals}` : ''}${A.parking != null ? `, atrofda ${A.parking} ta turargoh` : ''}.`, ...(A.lights != null && A.mlyCov >= 8 ? [`- 💡 Koʻcha chiroqlari (suratlarda): ${A.lights} ta, ~${A.lightKm} ta/km.`] : []));
     L.push('', '**🚶 Piyoda**', `- Oʻtish imkoniyatlari: ${A.crossings.length} ta (zebra ${A.crossings.filter(c => !c.sig && !c.junc).length}, svetofor ${A.crossings.filter(c => c.sig).length}, yirik chorraha ${A.crossings.filter(c => c.junc).length}), eng katta oraliq ${F(A.maxGap)} m (meʼyor ≤ ${A.main ? 300 : 500} m).`, ...(A.dropped && A.dropped.length ? [`- Suratlar bilan tekshirildi: ${A.dropped.length} ta taklif olib tashlandi (${A.dropped.map(p => p.why2).join(', ')}).`] : []), `- Trotuar: ${A.swNo ? `${A.swNo} qismda yoʻq` : A.swYes ? 'bor (OSM)' : `ochiq maʼlumot ${A.swCov}% (to‘liq emas)`}.`, A.poiNoCross.length ? `- Oʻtish joyi yoʻq muhim joylar: ${A.poiNoCross.map(p => p.kind + (p.name ? ' ' + p.name : '')).join(', ')}.` : '- Maktab, bekat va shifoxonalar yonida oʻtish joyi bor yoki ular yoʻq.');
     L.push('', '**♿ Nogironlar uchun**', `- Qiyalik (taxminiy): ${A.steep5 ? `${F(A.steep5)} m da 5% dan katta (eng koʻpi ~${A.maxSlope}%)` : '5% dan oshmaydi'}.`, `- Bordyur: ${A.kerbLow + A.kerbRaised ? `${A.kerbLow} ta pastlatilgan, ${A.kerbRaised} ta baland` : 'maʼlumot yoʻq'}; taktil plitka: ${A.tactYes + A.tactNo ? `${A.tactYes} bor / ${A.tactNo} yoʻq` : 'maʼlumot yoʻq'}; zinapoya: ${A.steps.length}.`);
     if (ml) L.push('', `**📷 Suratlardan (Mapillary):** zebra ${ml.det.crosswalk}, svetofor ${ml.det.light}, piyoda belgisi ${ml.det.ped_sign}, tezlik belgisi ${ml.det.speed_sign}.`);
@@ -275,7 +286,7 @@
   const nm0 = t => String(t || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/[-–]/g, ' ');
   const coreName = t => nm0(t).replace(/\s+(kochasi|shoh kochasi|tor kochasi|yoli|mavzesi|massivi|berk kochasi)\b.*$/, '').replace(/\s+/g, ' ').trim();
   const lenM = ll => { let l = 0; for (let i = 1; i < ll.length; i++) { const a = xy(ll[i - 1]), b = xy(ll[i]); l += Math.hypot(b[0] - a[0], b[1] - a[1]); } return l; };
-  const FOCUS_UZ = { car: '🚗 avtomobil', ped: '🚶 piyoda', acc: '♿ nogironlar', all: 'umumiy' };
+  const FOCUS_UZ = { car: '🚗 avtomobil', ped: '🚶 piyoda', acc: '♿ nogironlar', light: '💡 koʻcha yoritishi (suratlar boʻyicha)', all: 'umumiy' };
   // o: { roads, D, M, blds, poly (hudud), focus: car|ped|acc|null }
   async function rank(o) {
     const inP = o.poly ? p => NX.area.inside(o.poly, p[0], p[1]) : null, groups = new Map();
@@ -296,15 +307,18 @@
       if (A && !A.notFound) out.push(A);
       if (out.length >= 220) break;
     }
-    const f = o.focus || 'all', sc = A => (f === 'all' ? Math.round((A.scores.car + A.scores.ped + A.scores.acc) / 3) : A.scores[f]);
+    const f = o.focus || 'all';
+    // Yoritish: suratlar yetarli koʻchalarda chiroq/km (25+/km = 100 ball); suratlar kam koʻchalar reytingdan chiqadi
+    const sc = A => (f === 'light' ? (A.lightKm != null && A.mlyCov >= 8 ? Math.min(100, Math.round(A.lightKm * 4)) : null) : f === 'all' ? Math.round((A.scores.car + A.scores.ped + A.scores.acc) / 3) : A.scores[f]);
     out.forEach(A => { A.score = sc(A); });
+    for (let i = out.length - 1; i >= 0; i--) if (out[i].score == null) out.splice(i, 1);
     out.sort((a, b) => a.score - b.score || b.L - a.L);
     const km = out.reduce((t, A) => t + A.L, 0) / 1000;
     return { list: out, focus: f, area: !!inP, n: out.length, km: +km.toFixed(1), avg: out.length ? Math.round(out.reduce((t, A) => t + A.score, 0) / out.length) : 0,
       tot: { proposals: out.reduce((t, A) => t + A.proposals.length, 0), steps: out.reduce((t, A) => t + A.steps.length, 0), steepM: out.reduce((t, A) => t + A.steep5, 0), unpavedM: out.reduce((t, A) => t + A.unpaved, 0), poiNoCross: out.reduce((t, A) => t + A.poiNoCross.length, 0) } };
   }
   const scoreCol = v => (v >= 70 ? '#22c55e' : v >= 45 ? '#facc15' : v >= 25 ? '#f97316' : '#ef4444');
-  const topIssue = (A, f) => { const l = A.issues.filter(x => f === 'all' || x.cat === f); return (l[0] || A.issues[0] || { t: 'jiddiy muammo topilmadi' }).t; };
+  const topIssue = (A, f) => { if (f === 'light') return `~${A.lightKm} ta chiroq/km (suratlarda ${A.lights} ta)`; const l = A.issues.filter(x => f === 'all' || x.cat === f); return (l[0] || A.issues[0] || { t: 'jiddiy muammo topilmadi' }).t; };
   function rankItems(Rk) {
     const out = [], worst = Rk.list.slice(0, 10);
     // Barcha tekshirilgan koʻchalar — balliga qarab rang (yashil → qizil); eng yomon 10 tasi raqamli

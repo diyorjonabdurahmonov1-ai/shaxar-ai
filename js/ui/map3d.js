@@ -343,6 +343,18 @@
     drawSt.bar.remove(); map.getCanvas().style.cursor = ''; setTimeout(() => map.doubleClickZoom.enable(), 300);
     drawSt = null;
   }
+  // Sunʼiy yoʻldosh qatlami (issiqlik / yashillik) — rasm manbasi, binolar ostida
+  let ovUrl = null;
+  function setOverlay(url, bbox) {
+    ovUrl = url || null;
+    if (!map || !map.getStyle) return;
+    if (map.getLayer('satov')) map.removeLayer('satov');
+    if (map.getSource('satov')) map.removeSource('satov');
+    if (!url) return;
+    const [w, s, e, n] = bbox;
+    map.addSource('satov', { type: 'image', url, coordinates: [[w, n], [e, n], [e, s], [w, s]] });
+    map.addLayer({ id: 'satov', type: 'raster', source: 'satov', paint: { 'raster-opacity': 0.72, 'raster-resampling': 'linear' } }, map.getLayer('roads-glow') ? 'roads-glow' : 'bld');
+  }
   function init(el) {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -596,5 +608,5 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  NX.map3d = { drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  NX.map3d = { setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 })();

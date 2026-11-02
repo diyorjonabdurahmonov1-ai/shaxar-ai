@@ -16,12 +16,12 @@
     build: /(\d{2,5})\s*(ta\s*)?(xonadon|kvartira|honadon)|(\d{1,2})\s*-?\s*(qavat|etaj)|\bdom\b|uy-joy|turar\s*joy\s*qur/i,
     traffic: /пробк|затор|дтп|авари|avariya|yo[ʻ'‘`]?l[\s-]*transport\s*hodis|prop|probk|tirban|tiqil|tig[ʻ'‘`]?iz|navbat|oqim|bir\s*tomon|yops|svetofor|polosa|yo[ʻ'‘`]?lak|chorraha|bekat|avtobus|marshrut/i,
     // Koʻcha holati: avtomobil (qoplama, tezlik, turargoh), piyoda (trotuar, oʻtish joyi), nogironlar (pandus, bordyur, qiyalik, taktil plitka)
-    access: new RegExp(`trotuar|piyoda|nogiron|aravacha|ko${A}zi\\s*ojiz|ojizlar|imkoniyati\\s*cheklangan|pandus|bordyur|bordur|taktil|zinapoya|o${A}tish\\s*joy|zebra|avtoturargoh|turargoh|parkovka|to${A}xtash\\s*joy|tezlik\\s*(cheklov|chegara|belgi|me${A}yor)|qoplama|asfalt|o${A}nqir|chuqurlar|yamoq|(ko${A}cha|yo${A}l)(lar|si|i)?(ning)?\\s*holat|keksa(lar)?\\s*uchun\\s*(yo${A}l|ko${A}cha|yurish|qulay)|yurish\\s*(qulay|mumkin)|yurib\\s*bo${A}lmay|ko${A}cha\\s*audit|haydovchi(lar)?\\s*uchun|mashina(lar)?\\s*uchun\\s*qulay|avtomobil(lar)?\\s*uchun|qulay(mi|lik)|keksalar\\s*uchun\\s*(yo${A}l|ko${A}cha)|bolalar\\s*uchun\\s*xavfsiz`, 'i'),
+    access: new RegExp(`ko${A}cha\\s*chiro|chiroq(lar)?\\s*(yo${A}q|kam|yonmay|o${A}rnat)|yoritish|yoritil|qorong${A}i\\s*(ko${A}cha|joy)|trotuar|piyoda|nogiron|aravacha|ko${A}zi\\s*ojiz|ojizlar|imkoniyati\\s*cheklangan|pandus|bordyur|bordur|taktil|zinapoya|o${A}tish\\s*joy|zebra|avtoturargoh|turargoh|parkovka|to${A}xtash\\s*joy|tezlik\\s*(cheklov|chegara|belgi|me${A}yor)|qoplama|asfalt|o${A}nqir|chuqurlar|yamoq|(ko${A}cha|yo${A}l)(lar|si|i)?(ning)?\\s*holat|keksa(lar)?\\s*uchun\\s*(yo${A}l|ko${A}cha|yurish|qulay)|yurish\\s*(qulay|mumkin)|yurib\\s*bo${A}lmay|ko${A}cha\\s*audit|haydovchi(lar)?\\s*uchun|mashina(lar)?\\s*uchun\\s*qulay|avtomobil(lar)?\\s*uchun|qulay(mi|lik)|keksalar\\s*uchun\\s*(yo${A}l|ko${A}cha)|bolalar\\s*uchun\\s*xavfsiz`, 'i'),
     // Yangi koʻcha / yoʻl loyihasi yoki mavjud koʻchani oʻzgartirish — xaritada chiziladi va tekshiriladi
     road: new RegExp(`yangi\\s*(ko${A}cha|yo${A}l|ko${A}prik|tunnel|magistral|aylanma|estakada|tramvay\\s*yo${A}l|velo)|(ko${A}cha|yo${A}l)(|ni|si|sini|lar|larni)\\s+(\\S+\\s+){0,3}(och|qur|o${A}tkaz|chiz|uzaytir|kengaytir|toraytir|tutashtir|qo${A}sh|bog${A}la)|ko${A}prik|tunnel|estakada|yer\\s*osti\\s*o${A}tish|velo\\s*yo${A}l|velosiped\\s*yo${A}l|piyodalar\\s*ko${A}chasi(ga)?\\s*aylantir|ko${A}chani\\s*chiz|yo${A}lni\\s*chiz|koʻcha\\s*loyiha|yo${A}l\\s*loyiha`, 'i'),
     // Bosh reja, UNESCO, ruxsat, zonalar — xaritada zonalar va joy tekshiruvi
     plan: new RegExp(`bosh\\s*reja|unesk|yunesk|unesco|muhofaza\\s*(zona|hudud)|konservatsiya|rekonstruksiya|renovatsiya|bufer|madaniy\\s*meros|tarixiy\\s*(markaz|hudud|qiyofa|obida|bino)|qizil\\s*chiziq|ruxsat\\s*(ber|etil|bormi|kerak|olish)|(qurish|qurilish(\\s*qilish)?)(ga)?\\s*mumkin|qurilish(ga)?\\s*(ruxsat|taqiq)|merosga\\s*ta${A}sir|\\bhia\\b|afrosiyob|\\bumn\\b|\\bqmn\\b|zichlik\\s*(ko${A}rsatkich|me${A}yor)|master-?reja|batafsil\\s*rejalash|yashil\\s*belbog|2045|yodgorlik|meros\\s*agentlig`, 'i'),
-    climate: /daraxt\s*ek|issiqlik\s*orol|havo\s*ifloslan|klimat|жара|iqlim|harorat|isish|issiq|qurg[ʻ'‘`]?oqchilik|o[ʻ'‘`]?zgidromet/i,
+    climate: /daraxt\s*ek|issiqlik\s*orol|havo\s*ifloslan|havo\s*sifati|chang|pm2|klimat|жара|iqlim|yashil\s*hudud.{0,30}(qisqar|kamay|o[ʻ'‘`]?zgar|ko[ʻ'‘`]?pay)|ko[ʻ'‘`]?kalamzor|sun[ʻ'‘`]?iy\s*yo[ʻ'‘`]?ldosh|(yangi|noqonuniy|o[ʻ'‘`]?zboshimcha)\s*qurilish(lar)?\s*(qayer|aniqla|ko[ʻ'‘`]?payd|bormi|ro[ʻ'‘`]?yxat|xarita)|eng\s*issiq\s*(joy|mahalla|hudud)|salqin|harorat|isish|issiq|qurg[ʻ'‘`]?oqchilik|o[ʻ'‘`]?zgidromet/i,
     solar: /quyosh|panel|energiya|tom(lar)?ga/i,
     image: /rasm|chiz|surat|tasvir|vizual|ko[ʻ'‘`]?rinishini/i,
     mahalla: /mahalla|har\s*bir|aholi\s*uchun|hudud(lar)?\s*uchun/i,
@@ -41,7 +41,7 @@
     let main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'road', 'plan', 'access', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
     // “dom qurilsa avtoturargoh yetadimi” — qurilish hisobi
     if (main === 'access' && R.build.test(t) && !/trotuar|piyoda|nogiron|pandus/i.test(t)) main = 'build';
-    const fm = [['acc', /nogiron|aravacha|ojiz|pandus|bord[yu]*r|taktil|zinapoya|imkoniyati|keksa/i], ['ped', /piyoda|trotuar|o[ʻ'‘’`]?tish\s*joy|zebra|bolalar/i], ['car', /avtomobil|mashina|haydovchi|qoplama|asfalt|tezlik|turargoh|parkovka|o[ʻ'‘’`]?nqir|chuqurlar|yamoq|transport/i]].filter(x => x[1].test(t)).map(x => x[0]);
+    const fm = [['light', /chiroq|yorit|qorong/i], ['acc', /nogiron|aravacha|ojiz|pandus|bord[yu]*r|taktil|zinapoya|imkoniyati|keksa/i], ['ped', /piyoda|trotuar|o[ʻ'‘’`]?tish\s*joy|zebra|bolalar/i], ['car', /avtomobil|mashina|haydovchi|qoplama|asfalt|tezlik|turargoh|parkovka|o[ʻ'‘’`]?nqir|chuqurlar|yamoq|transport/i]].filter(x => x[1].test(t)).map(x => x[0]);
     return { main, focus: fm.length === 1 ? fm[0] : 'all', hazard: HAZARD.includes(main), image: R.image.test(t), mahalla: R.mahalla.test(t), evac: R.evac.test(t) || R.rescue.test(t), blocked: R.blocked.test(t), critical: R.critical.test(t), city: R.city.test(t), fix: R.fix.test(t), resp: R.resp.test(t) };
   }
 
@@ -282,6 +282,15 @@
       ['Gagarin koʻchasining holatini tekshir', 'access'],
       ['Keksalar uchun yurish qulay boʻlmagan koʻchalar qaysi?', 'access'],
       ['Avtoturargoh yetishmaydigan koʻchalar qaysi?', 'access'],
+      ['Qaysi koʻchalarda koʻcha chiroqlari kam, qorongʻi?', 'access'],
+    ] },
+    { g: '🛰 Sunʼiy yoʻldosh: issiqlik, yashillik, yangi qurilish', q: [
+      ['Shaharning eng issiq mahallalari qaysi?', 'climate'],
+      ['Issiqlik orollari qayerda va qayerga daraxt ekish kerak?', 'climate'],
+      ['Yashil hududlar 2019-yildan beri qisqardimi?', 'climate'],
+      ['Sunʼiy yoʻldosh boʻyicha yangi qurilishlar qayerda?', 'climate'],
+      ['Koʻkalamzor qayerda kamaydi?', 'climate'],
+      ['Havo sifati qanday, chang koʻpmi?', 'climate'],
     ] },
     { g: '☀️ Quyosh energiyasi', q: [
       ['Qaysi binolar tomiga quyosh paneli qoʻyish foydali?', 'solar'],

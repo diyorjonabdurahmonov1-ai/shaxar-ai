@@ -383,6 +383,7 @@
     const schoolBld = o => blds.some(b => /school|kindergarten|college/.test(b.kind) && Math.hypot(...G.xy(b.c[0], b.c[1]).map((v, i) => v - (i ? o.y : o.x))) < 80);
     M.schools.forEach(o => {
       if (o.safe) return;
+      if (NX.mlyf && NX.mlyf.ready() && NX.mlyf.near(o.lat, o.lon, R.schoolSafe, 'ZS').length) return;   // suratlarda zebra/svetofor bor
       const conf = o.ot && o.ot !== 'n' ? 'osm-hudud' : schoolBld(o) ? 'bino' : o.ot === 'n' ? 'nuqta' : 'nomaʼlum';
       const kindUz = o.kind === 'kindergarten' ? 'Bogʻcha' : 'Maktab';
       // Real surat va koʻrik — maktab nuqtasi emas, bolalar kesib oʻtadigan eng yaqin koʻcha (avval yirik koʻcha) ustidagi nuqta
@@ -397,8 +398,12 @@
         title: kindUz + (o.name ? ': ' + o.name : '') + (unconf ? ' (tasdiqlanmagan)' : ''),
         detail: unconf ? `⚠️ ${kindUz} OpenStreetMap’da faqat nuqta bilan belgilangan — binosi chizilmagan va boshqa manbada tasdiqlanmadi (Yandex xaritada koʻrinmasligi mumkin). Joyida tekshiring; maktab boʻlmasa “Bu muammo emas” ni bosing. ${R.schoolSafe} m ichida piyoda oʻtish joyi ham belgilanmagan.` : `${R.schoolSafe} m ichida piyoda oʻtish joyi yoki svetofor belgilanmagan.` });
     });
+    // Mapillary suratlarida aniqlangan svetofor / ustuvorlik belgisi bor chorrahalar — muammo deb chiqarilmaydi
+    const mly = NX.mlyf && NX.mlyf.ready() ? NX.mlyf : null;
     M.junctions.forEach(j => {
       if (j.signalised) return;
+      if (mly && j.r2 >= 5 && mly.near(j.lat, j.lon, 35, 'S').length) return;
+      if (mly && j.r2 < 5 && mly.near(j.lat, j.lon, 35, 'PS').length) return;
       const kind = j.kind === 'T' ? 'T-shaklidagi chorraha (bir koʻcha ikkinchisiga ulanadi)' : j.kind === 'X' ? `${j.legs.length} tarmoqli chorraha` : 'chorraha';
       const mj = M.streets[j.major], mn = M.streets[j.minor];
       const who = mj && mn ? `${mj.name || 'nomsiz yoʻl'} (${NX.HW[mj.hw].uz.toLowerCase()}) va ${mn.name || 'nomsiz yoʻl'} (${NX.HW[mn.hw].uz.toLowerCase()})` : '';
@@ -427,7 +432,8 @@
       if (s.rank < 5 || s.length < 300) return;
       // Oʻtish imkoniyatlari: zebra + svetofor + boshqa yirik koʻcha bilan chorraha (odamlar chorrahada kesib oʻtadi)
       const jx = M.junctions.filter(j => j.streets && j.streets.includes(s.id) && j.streets.some(t => t !== s.id && M.streets[t] && M.streets[t].rank >= NX.MAJOR_RANK));
-      const n = new Set(s.crossings.concat(s.signals, jx).map(o => Math.round(o.x / 15) + ',' + Math.round(o.y / 15))).size;
+      const ph = NX.mlyf && NX.mlyf.ready() ? s.ways.flatMap(wi => NX.mlyf.alongLine(M.ways[wi].ll, 20, 'ZS')) : [];
+      const n = new Set(s.crossings.concat(s.signals, jx, ph).map(o => Math.round(o.x / 15) + ',' + Math.round(o.y / 15))).size;
       const perKm = n / (s.length / 1000);
       if (perKm < R.crossingsPerKm) add('crossings', { lat: s.center[0], lon: s.center[1], sev: perKm < 1 ? 2 : 1, title: nameOf(s), detail: `${NX.fmt.num(perKm, 1)} ta oʻtish imkoniyati/km (zebra, svetofor va yirik chorrahalar — ${n} ta, ${NX.fmt.km(s.length)}). OSM’da chizilmagan zebralar boʻlishi mumkin — real suratda tekshiring.`, street: s.id, perKm });
     });

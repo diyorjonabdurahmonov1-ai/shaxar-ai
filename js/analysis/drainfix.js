@@ -165,7 +165,9 @@
     (o.spaces || []).forEach(s => { if (/hovli/.test(s.kind)) return; const zs0 = NX.masterplan ? NX.masterplan.zoneAt(s.c[0], s.c[1]) : null; if (zs0 === 'afrosiyob' || zs0 === 'temur') return; const [x, y] = G.xy(s.c[0], s.c[1]), dd = Math.hypot(x - sx0, y - sy0), z = zAt(s.c[0], s.c[1]); if (dd < 1200 && s.area >= retV / 2.5 * 0.6 && (!isFinite(z) || z <= zPit + 3) && (!basinSite || dd < basinSite.dd)) basinSite = { name: s.name || s.kind, kind: s.kind, area: s.area, c: s.c, dd: Math.round(dd) }; });
     const tankArea = Math.round(retV / 2.5);   // 2.5 m chuqur yer osti rezervuari
     // 7) Panjarali quduqlar (dojdepriyomnik): har 40–50 m, bittasi ~0.03 m³/s
-    const inlets = Math.max(2, Math.ceil(wetLen / 45));
+    // Mavjud yomgʻir suvi quduqlari — Mapillary suratlarida aniqlangan (koʻcha boʻylab 25 m): yangi quduq soni shunga kamayadi
+    const basinsMly = NX.mlyf && NX.mlyf.ready() ? new Set(segs.flatMap(x => NX.mlyf.near(x.sg.mid[0], x.sg.mid[1], 25, 'C').map(f => f.x.toFixed(0) + ':' + f.y.toFixed(0)))).size : null;
+    const inlets = Math.max(2, Math.ceil(wetLen / 45) - (basinsMly || 0));
     // 8) Bosh reja va UNESCO cheklovlari (muammo joyi, chiqish yoʻli, rezervuar)
     const P = NX.masterplan, zSite = P ? P.zoneAt(site[0], site[1]) : null;
     // Yoʻl zonalari (muammo joyining oʻzidan 150 m keyin — boshlanish nuqtasi zonasi alohida hisobga olingan)
@@ -205,7 +207,7 @@
     const chosen = [o_('P'), C0, main].filter(Boolean);
     return {
       name, site, depth: top.d, wetLen, vol, zPit: Math.round(zPit), zTop: Math.round(zTop), basin, Aha: +Aha.toFixed(1), tc, Q: +Q.toFixed(2), Qex: +Qex.toFixed(2), Qneed: +Qneed.toFixed(2),
-      outlet, pipe, lotok, pumpN, nearWW, streetDitch, retV, tankArea, basinSite, inlets, segs, lim, opts, best: chosen.map(x => x.id), main: main ? main.id : null, Qd: +Qd.toFixed(2), iD, altOutlets, zones: { joy: zSite, yoʻl: zRoute, rezervuar: zBasin, rezervuar_bosh_reja: pzBasin }, rain: i, drain: o.drainMm || 10,
+      outlet, pipe, lotok, pumpN, nearWW, streetDitch, retV, tankArea, basinSite, inlets, basinsMly, segs, lim, opts, best: chosen.map(x => x.id), main: main ? main.id : null, Qd: +Qd.toFixed(2), iD, altOutlets, zones: { joy: zSite, yoʻl: zRoute, rezervuar: zBasin, rezervuar_bosh_reja: pzBasin }, rain: i, drain: o.drainMm || 10,
       cellLL, step,
     };
   }
@@ -258,7 +260,7 @@
       sabab: { havza_ga: X.Aha, havza_eng_baland_m: X.zTop, oqim_toʻplanish_vaqti_daq: X.tc, yomgir_mm_soat: X.rain, eng_yuqori_oqim_m3s: X.Q, mavjud_tizim_oladi_m3s: X.Qex, qoʻshimcha_kerak_m3s: X.Qneed },
       mavjud_ariqlar: { shu_koʻchada: X.streetDitch.length ? [...new Set(X.streetDitch.map(w => (w.kind + ' ' + (w.name || '')).trim()))] : 'shu koʻcha boʻyida ariq ochiq xaritada (OSM) belgilanmagan — joyida tekshirish kerak', atrofda: [...new Map(X.nearWW.map(w => [w.kind + '|' + w.name, { turi: w.kind, nomi: w.name, masofa_m: w.d }])).values()] },
       chiqish_joyi: X.outlet ? { turi: X.outlet.kind, nomi: X.outlet.name, balandligi_m: Math.round(X.outlet.z), masofa_koʻcha_boʻylab_m: X.outlet.route.L, koʻchalar: X.outlet.route.streets } : 'yaqin atrofda pastroq ariq/kanal topilmadi',
-      quvur: X.pipe, lotok: X.lotok, rezervuar: { hajm_m3: X.retV, maydon_m2: X.tankArea, joy: X.basinSite }, panjarali_quduqlar: X.inlets, koʻchma_nasoslar: X.pumpN,
+      quvur: X.pipe, lotok: X.lotok, rezervuar: { hajm_m3: X.retV, maydon_m2: X.tankArea, joy: X.basinSite }, panjarali_quduqlar: X.inlets, mavjud_quduqlar_suratlarda: X.basinsMly, koʻchma_nasoslar: X.pumpN,
       cheklovlar_bosh_reja_unesco: X.lim.length ? X.lim : ['muammo joyi va yoʻl UNESCO hududidan tashqarida'], zonalar: X.zones,
       hisobiy_yomgir: { meyoriy_mm_soat: X.iD, doimiy_inshoot_oqimi_m3s: X.Qd, izoh: 'Doimiy inshoot meʼyoriy yomgʻirga (≈25 mm/soat, ~2 yilda bir) hisoblanadi; undan kuchli jalada — koʻchma nasoslar. Har koʻchaga ulkan quvur tortilmaydi.' },
       variantlar: X.opts.map(o => Object.assign({}, o, { narx_taxminiy: o.narx != null ? MLN(o.narx) : null })), tavsiya: X.best, tanlov_sababi: 'yetarli variantlar ichida eng arzoni; eng yaqin ariq/kanal birinchi koʻriladi',

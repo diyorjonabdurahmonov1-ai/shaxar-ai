@@ -17,7 +17,9 @@
    bir IP manzildan soatiga cheklangan miqdordagi savol. Qoʻshimcha himoya uchun OpenAI panelida oylik budjet limitini qoʻying. */
 const ALLOWED_ORIGINS = ['https://diyorjonabdurahmonov1-ai.github.io'];
 // Ruxsat etilgan modellar. GPT-6 Sol — asosiy, Luna — arzon (koʻp sonli oddiy soʻrovlar), qolganlari — zaxira
-const MODELS = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'];
+const MODELS = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini',
+  // Ixtiyoriy: Claude (maxfiy ANTHROPIC_API_KEY) va Gemini (maxfiy GEMINI_API_KEY). Kalit qoʻyilmasa — 503, sayt OpenAI’ga qaytadi.
+  'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const LIGHT = ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'];
 const PER_IP_PER_HOUR = 20;
 const MAX_BODY_CHARS = 30000;
@@ -93,10 +95,12 @@ export default {
     }
     const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user', content: cleanContent(m.content) })) };
     out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 2500);
-    if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = 'low'; else out.temperature = 0.3;
+    if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = 'low'; else if (/^gpt-/.test(body.model)) out.temperature = 0.3;
     // Prompt caching: bir turdagi soʻrovlar bitta kalit bilan (oʻzgarmas system prompt boshida)
     if (typeof body.prompt_cache_key === 'string') out.prompt_cache_key = body.prompt_cache_key.slice(0, 64);
 
+    if (/^claude-/.test(body.model)) return anthropic(out, env, cors);
+    if (/^gemini-/.test(body.model)) return gemini(out, env, cors);
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
@@ -105,6 +109,33 @@ export default {
     return new Response(await r.text(), { status: r.status, headers: Object.assign({ 'Content-Type': 'application/json' }, cors) });
   },
 };
+
+// ---------- Boshqa AI provayderlari (javob OpenAI “choices” shakliga keltiriladi — sayt oʻzgarmaydi) ----------
+const asOpenAI = (text, model, cors) => json({ model, choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }] }, 200, cors);
+async function anthropic(out, env, cors) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: { code: 'provider_off', message: 'Claude kaliti qoʻyilmagan' } }, 503, cors);
+  const sys = out.messages.filter(m => m.role === 'system').map(m => (typeof m.content === 'string' ? m.content : m.content.map(x => x.text || '').join('\n'))).join('\n\n');
+  const msgs = out.messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.map(x => (x.type === 'text' ? { type: 'text', text: x.text } : { type: 'image', source: { type: 'url', url: x.image_url.url } })) }));
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: out.model, system: sys ? [{ type: 'text', text: sys, cache_control: { type: 'ephemeral' } }] : undefined, messages: msgs, max_tokens: out.max_completion_tokens, temperature: 0.3 }),
+  });
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !d) return json({ error: { code: 'provider_error', message: (d && d.error && d.error.message) || 'Claude javob bermadi' } }, r.status || 502, cors);
+  return asOpenAI((d.content || []).filter(x => x.type === 'text').map(x => x.text).join(''), out.model, cors);
+}
+async function gemini(out, env, cors) {
+  if (!env.GEMINI_API_KEY) return json({ error: { code: 'provider_off', message: 'Gemini kaliti qoʻyilmagan' } }, 503, cors);
+  // Gemini OpenAI-mos manzili; suratlar faqat matn sifatida (tashqi URL qoʻllanmaydi)
+  const messages = out.messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.filter(x => x.type === 'text').map(x => x.text).join('\n') }));
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.GEMINI_API_KEY },
+    body: JSON.stringify({ model: out.model, messages, max_tokens: out.max_completion_tokens, temperature: 0.3 }),
+  });
+  return new Response(await r.text(), { status: r.status, headers: Object.assign({ 'Content-Type': 'application/json' }, cors) });
+}
 
 // ---------- Xarita tuzatishlari ----------
 const KINDS = ['signal', 'crossing', 'stop', 'dismiss'];
