@@ -13,7 +13,9 @@
   const gkey = () => (NX.store.get('key:google3d', '') || K().google3d || '').trim();
   const ion = () => (NX.store.get('key:cesiumIon', '') || K().cesiumIon || '').trim();
   const pref = () => NX.store.get('g3d:on', true) !== false;
-  let viewer = null, loading = null, box = null, src = '', tiles = null, osm = null, failed = false, host = null;
+  let gFail = false, viewer = null, loading = null, box = null, src = '', tiles = null, osm = null, failed = false, host = null;
+  // Samarqand shahri: faqat shu hudud koʻrsatiladi (atrofi qirqiladi), kamera shu yerdan chiqib ketmaydi
+  const CITY = [66.875, 39.595, 67.045, 39.715], PAD = 0.05;
   const D = { hz: null, scen: null, plan: null, mode: 'height', area: null, ov: null };
   let hzPrims = [], waterPrim = null, ovLayer = null, drawSt = null;
 
@@ -44,8 +46,8 @@
   const status = t => { if (!box) return; const e = box.querySelector('.g3d-st'); e.textContent = t || ''; e.hidden = !t; };
   function srcButtons() {
     if (!box) return;
-    const can = { google: !!(gkey() || ion()), osm: !!ion(), schema: true };
-    box.querySelector('.g3d-src').innerHTML = [['google', '📸 Fotoreal'], ['osm', '🏙 OSM binolar'], ['schema', '🧊 Sxema']].filter(x => can[x[0]]).map(x => `<button type="button" data-src="${x[0]}" class="${src === x[0] ? 'on' : ''}">${x[1]}</button>`).join('');
+    const can = { google: !!(gkey() || ion()) && !gFail, osm: src === 'osm', schema: true };
+    box.querySelector('.g3d-src').innerHTML = [['google', '📸 Fotoreal'], ['osm', '🏙 OSM binolar'], ['schema', '🧊 Maket']].filter(x => can[x[0]]).map(x => `<button type="button" data-src="${x[0]}" class="${src === x[0] ? 'on' : ''}">${x[1]}</button>`).join('');
   }
   // Kamera: markaz (lat, lon) atrofida, MapLibre zoom’iga mos masofa
   function look(lat, lon, range, heading, pitch, instant) {
@@ -63,7 +65,8 @@
         if (!tiles) {
           status('Fotoreal 3D plitalar yuklanmoqda…');
           C.GoogleMaps.defaultApiKey = gkey() || undefined;    // kalit boʻlmasa — Cesium ion orqali
-          tiles = await C.createGooglePhotorealistic3DTileset(undefined, { maximumScreenSpaceError: 12 });
+          tiles = await C.createGooglePhotorealistic3DTileset(undefined, { maximumScreenSpaceError: 14 });
+          try { tiles.clippingPolygons = cityClip(); } catch (e) { /* eski Cesium */ }
           tiles.tileFailed.addEventListener(e => status('Plita yuklanmadi: ' + ((e && e.message) || 'kalitni tekshiring')));
           viewer.scene.primitives.add(tiles);
         }
@@ -74,6 +77,7 @@
         return;
       } catch (e) {
         console.warn('Google 3D: ' + ((e && (e.statusCode || e.message)) || '') + ' ' + ((e && e.response) || ''), e);
+        gFail = true;
         if (ion()) { status('Fotoreal ochilmadi (ion’da “Google Photorealistic 3D Tiles” My Assets’ga qoʻshilmagan boʻlishi mumkin) — OSM binolari.'); return setSource('osm'); }
         throw e;
       }
@@ -85,6 +89,7 @@
         style: new C.Cesium3DTileStyle({ color: { conditions: [["${feature['cesium#estimatedHeight']} >= 30", "color('#fbbf24', 0.95)"], ["${feature['cesium#estimatedHeight']} >= 15", "color('#5eead4', 0.92)"], ['true', "color('#cbd5e1', 0.9)"]] } }),
       });
       viewer.scene.primitives.add(osm);
+      try { osm.clippingPolygons = cityClip(); viewer.scene.globe.clippingPolygons = cityClip(); } catch (e) { /* */ }
     }
     osm.show = true; if (tiles) tiles.show = false;
     viewer.scene.globe.show = true;
@@ -92,14 +97,55 @@
     status('');
   }
 
+  function cityClip() {
+    const C = window.Cesium, [w, s, e, n] = CITY;
+    return new C.ClippingPolygonCollection({ polygons: [new C.ClippingPolygon({ positions: C.Cartesian3.fromDegreesArray([w, s, e, s, e, n, w, n]) })], inverse: true });
+  }
+  // Boshqaruv 3D egizakdagidek: chap — surish, oʻng (yoki Ctrl+chap) — burish/qiyalatish, gʻildirak — yaqinlashtirish
+  function controls() {
+    const C = window.Cesium, sc = viewer.scene, c = sc.screenSpaceCameraController, T = C.CameraEventType;
+    c.minimumZoomDistance = 60; c.maximumZoomDistance = 16000;
+    c.zoomEventTypes = [T.WHEEL, T.PINCH];
+    c.tiltEventTypes = [T.RIGHT_DRAG, T.MIDDLE_DRAG, T.PINCH, { eventType: T.LEFT_DRAG, modifier: C.KeyboardEventModifier.CTRL }];
+    c.lookEventTypes = [{ eventType: T.LEFT_DRAG, modifier: C.KeyboardEventModifier.SHIFT }];
+    viewer.canvas.addEventListener('contextmenu', e => e.preventDefault());
+    // Kamera Samarqanddan chiqib ketmasin
+    const [w, s, e, n] = CITY;
+    sc.preRender.addEventListener(() => {
+      const g = viewer.camera.positionCartographic, lon = C.Math.toDegrees(g.longitude), lat = C.Math.toDegrees(g.latitude);
+      const L = Math.min(e + PAD, Math.max(w - PAD, lon)), B = Math.min(n + PAD, Math.max(s - PAD, lat)), H = Math.min(17000, g.height);
+      const P = Math.min(-0.2, viewer.camera.pitch);   // ufqqa yotib qolmasin (kamida ~12° pastga)
+      if (L !== lon || B !== lat || H !== g.height || P !== viewer.camera.pitch) viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(L, B, H), orientation: { heading: viewer.camera.heading, pitch: P, roll: 0 } });
+      if (compass) compass.style.transform = `rotate(${-C.Math.toDegrees(viewer.camera.heading)}deg)`;
+    });
+    // Kompas: bosilsa — shimolga qaratiladi
+    const cb = document.createElement('button'); cb.type = 'button'; cb.className = 'g3d-compass'; cb.title = 'Shimolga qaratish';
+    cb.innerHTML = '<i>N</i>'; compass = cb.querySelector('i');
+    cb.onclick = () => {
+      const r = viewer.camera.pickEllipsoid(new C.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2));
+      if (!r) return;
+      const g = C.Cartographic.fromCartesian(r), d = C.Cartesian3.distance(viewer.camera.position, r);
+      look(C.Math.toDegrees(g.latitude), C.Math.toDegrees(g.longitude), d, 0, C.Math.toDegrees(viewer.camera.pitch));
+    };
+    box.appendChild(cb);
+    // Boshqarish boʻyicha qisqa yoʻriqnoma — 8 soniyadan keyin yoʻqoladi
+    const tip = document.createElement('div'); tip.className = 'g3d-tip';
+    tip.innerHTML = '🖱 <b>Chap</b> — surish · <b>Oʻng</b> — burish va qiyalatish · <b>Gʻildirak</b> — yaqinlashtirish · <b>Ikki marta</b> — shu joyga';
+    box.appendChild(tip); setTimeout(() => tip.classList.add('out'), 8000);
+  }
+  let compass = null;
   async function init() {
     status('3D shahar yuklanmoqda…');
     const C = await loadCesium();
     if (ion()) C.Ion.defaultAccessToken = ion();
     const imagery = ion() ? C.ImageryLayer.fromWorldImagery({ style: C.IonWorldImageryStyle.AERIAL }) : false;
     viewer = new C.Viewer('g3dView', { baseLayer: imagery, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, timeline: false, animation: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: true, maximumRenderTimeChange: Infinity });
-    viewer.scene.skyAtmosphere.show = true;
+    // Qorongʻi fon: faqat shahar “maket” kabi koʻrinadi
+    viewer.scene.skyAtmosphere.show = false; if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+    viewer.scene.backgroundColor = C.Color.fromCssColorString('#030712');
+    viewer.scene.globe.baseColor = C.Color.fromCssColorString('#030712');
     viewer.scene.globe.depthTestAgainstTerrain = true;
+    controls();
     viewer.clock.currentTime = C.JulianDate.now(); viewer.clock.shouldAnimate = false;   // quyosh — hozirgi vaqt
     viewer.shadows = true; viewer.shadowMap.softShadows = true; viewer.shadowMap.size = 2048;
     viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
@@ -109,14 +155,19 @@
       const p = viewer.scene.pick(m.position), a = p && p.id && p.id.nxItem;
       if (a) showPop(a, m.position); else hidePop();
     }, C.ScreenSpaceEventType.LEFT_CLICK);
-    h.setInputAction(() => { if (drawSt) drawFinish(); }, C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+    h.setInputAction(m => {
+      if (drawSt) { drawFinish(); return; }
+      const ll = pickLL(m.position); if (!ll) return;      // ikki marta bosish — shu joyga yaqinlashish
+      const d = C.Cartesian3.distance(viewer.camera.position, C.Cartesian3.fromDegrees(ll[1], ll[0], 700));
+      look(ll[0], ll[1], Math.max(150, d * 0.45), C.Math.toDegrees(viewer.camera.heading), Math.min(-25, C.Math.toDegrees(viewer.camera.pitch)));
+    }, C.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
     viewer.camera.changed.addEventListener(hidePop);
     await setSource(gkey() || ion() ? 'google' : 'osm');
   }
   // 3D egizak boʻlimi ochilganda: token boʻlsa va foydalanuvchi “Sxema”ni tanlamagan boʻlsa — fotoreal
   function autoEmbed(el) { host = el || host; if (available() && pref() && !failed) embed(); }
   let initP = null, embedding = false;
-  const btnSync = () => { const b = document.querySelector('[data-act=g3d]'); if (b) { b.classList.toggle('primary', !box.hidden); b.textContent = box.hidden ? '📸 Fotoreal 3D' : '🧊 Sxematik 3D'; } if (box.parentNode) box.parentNode.classList.toggle('g3d-on', !box.hidden); };
+  const btnSync = () => { const b = document.querySelector('[data-act=g3d]'); if (b) { b.classList.toggle('primary', !box.hidden); b.textContent = box.hidden ? '📸 Fotoreal 3D' : '🧊 Maket 3D'; } if (box.parentNode) box.parentNode.classList.toggle('g3d-on', !box.hidden); };
   async function embed() {
     overlay(host).hidden = false; btnSync();
     if (embedding) return;                       // 3D boʻlimi qayta chizilganda bir necha marta chaqiriladi — bitta yuklash
@@ -127,7 +178,7 @@
         if (!initP) initP = init();
         await initP;
         const m = NX.map3d.map && NX.map3d.map(), c = m && m.getCenter();
-        if (D.hz) fitHz(); else if (c) look(c.lat, c.lng, zoomRange(m.getZoom()), m.getBearing(), -38, true); else look(39.6547, 66.9757, 650, 200, -28, true);
+        if (D.hz) fitHz(); else if (c) look(c.lat, c.lng, zoomRange(m.getZoom()), m.getBearing(), -38, true); else look(39.6547, 66.9757, 2200, 15, -35, true);
       } else { viewer.resize(); redraw(); }
     } catch (e) {
       failed = true;
