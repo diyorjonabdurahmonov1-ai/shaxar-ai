@@ -517,7 +517,7 @@
     T.hz = H;
     const pts = []; H.items.forEach(a => { if (a.kind === 'water') return; pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
     if (H.origin === 'twin') {
-      NX.map3d.setHazard(H.items); NX.map3d.fitTo(pts);
+      NX.map3d.setHazard(H.items); NX.map3d.fitTo(pts); NX.g3d.setHazard(H.items);
       NX.view.showActions(null); NX.fx.clear();
     } else {
       NX.map3d.setHazard(null);
@@ -751,7 +751,7 @@
     S.acc = out; renderKeepScroll();
   }
   function hazardClear() {
-    satOverlay(null); const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+    satOverlay(null); const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); NX.g3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -2185,6 +2185,7 @@
     $('#keyTomtom').value = NX.store.get('key:tomtom', '');
     $('#keyOpenai').value = NX.store.get('key:openai', '');
     $('#keyGoogle3d').value = NX.store.get('key:google3d', '');
+    $('#keyCesium').value = NX.store.get('key:cesiumIon', '');
     $('#aiPref').value = NX.store.get('ai:pref', '');
     $('#fixPin').value = NX.store.get('fixes:pin', '');
     const fl = NX.fixes.list();
@@ -2220,6 +2221,7 @@
       NX.store.set('key:tomtom', $('#keyTomtom').value.trim());
       NX.store.set('key:openai', $('#keyOpenai').value.trim());
       NX.store.set('key:google3d', $('#keyGoogle3d').value.trim());
+      NX.store.set('key:cesiumIon', $('#keyCesium').value.trim());
       NX.store.set('ai:pref', $('#aiPref').value); { const b = NX.store.get('ai:bad', {}); delete b[$('#aiPref').value]; NX.store.set('ai:bad', b); }
       NX.store.set('fixes:pin', $('#fixPin').value.trim());
       if ($('#fixPin').value.trim()) NX.fixes.syncLocal().then(n => { if (n) { toast(`${n} ta tuzatish hamma uchun saqlandi.`, 'ok'); NX.fixes.loadShared().then(rebuildModel); } });
@@ -2325,7 +2327,7 @@
         case 'acc': makeAccuracy(); break;
         case 'twin-draw': drawArea3d(); break;
         case 'twin-area-clear': S.area = null; NX.map3d.showArea(null); NX.view.drawArea(null); renderKeepScroll(); break;
-        case 'g3d': if (NX.g3d.available()) NX.g3d.open(); else { toast('Google fotoreal 3D uchun Sozlamalarda Google Maps API kalitini kiriting (Map Tiles API yoqilgan boʻlsin).', 'warn'); openSettings(); setTimeout(() => $('#keyGoogle3d').focus(), 50); } break;
+        case 'g3d': if (NX.g3d.available()) { const T = twinState(); NX.g3d.setHazard(T.hz && T.hz.origin === 'twin' ? T.hz.items : null); NX.g3d.open(); } else { toast('Fotoreal 3D uchun Sozlamalarda Cesium ion tokenini (bepul, ion.cesium.com) yoki Google Maps API kalitini kiriting.', 'warn'); openSettings(); setTimeout(() => $('#keyCesium').focus(), 50); } break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
           const R0 = twinState().rain;

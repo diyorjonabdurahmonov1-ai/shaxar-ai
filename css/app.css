@@ -945,3 +945,13 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .pp-pano:hover { background: rgba(14,116,144,.92); transform: translateY(-1px); }
 @keyframes ppPano { 50% { box-shadow: 0 0 0 4px rgba(56,189,248,.35), 0 4px 14px rgba(0,0,0,.35); } }
 .pp-none { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* Fotoreal 3D (Cesium): manba tugmalari, natija legendasi, belgi popup’i */
+.g3d-src { display: flex; gap: 6px; }
+.g3d-src button { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(94,234,212,.4); background: rgba(15,23,42,.7); color: #cbd5e1; font: 600 .74rem system-ui; cursor: pointer; }
+.g3d-src button.on { background: linear-gradient(135deg,#0e7490,#0f766e); color: #fff; border-color: #5eead4; }
+.g3d-hz { position: absolute; right: 12px; top: 64px; z-index: 2; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 12px; background: rgba(3,7,16,.82); border: 1px solid rgba(251,191,36,.45); color: #fde68a; backdrop-filter: blur(6px); animation: g3dIn .4s ease; }
+.g3d-hz .small { color: #cbd5e1; }
+.g3d-pop { position: absolute; z-index: 3; width: 320px; max-height: 70%; overflow: auto; padding: 10px 12px; border-radius: 14px; background: rgba(3,7,16,.94); border: 1px solid rgba(94,234,212,.4); color: #e2e8f0; box-shadow: 0 18px 40px rgba(0,0,0,.55); animation: g3dIn .25s ease; }
+.g3d-pop-x { position: absolute; top: 6px; right: 8px; border: 0; background: none; color: #94a3b8; font-size: 16px; cursor: pointer; }
+@keyframes g3dIn { from { opacity: 0; transform: translateY(6px); } }
+@media (max-width: 820px) { .g3d-top .g3d-st { display: none; } .g3d-pop { width: calc(100% - 24px); left: 12px !important; } }
