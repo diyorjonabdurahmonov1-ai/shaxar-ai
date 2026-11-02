@@ -517,7 +517,7 @@
     T.hz = H;
     const pts = []; H.items.forEach(a => { if (a.kind === 'water') return; pts.push([a.lat, a.lon]); if (a.path) pts.push(a.path[0], a.path[a.path.length - 1]); });
     if (H.origin === 'twin') {
-      NX.map3d.setHazard(H.items); NX.map3d.fitTo(pts); NX.g3d.setHazard(H.items);
+      NX.map3d.setHazard(H.items); NX.map3d.fitTo(pts);
       NX.view.showActions(null); NX.fx.clear();
     } else {
       NX.map3d.setHazard(null);
@@ -751,7 +751,7 @@
     S.acc = out; renderKeepScroll();
   }
   function hazardClear() {
-    satOverlay(null); const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); NX.g3d.setHazard(null); hazardFocus(false); }
+    satOverlay(null); const T = twinState(); T.hz = null; $('.map-wrap') && $('.map-wrap').classList.remove('hz-away'); fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -2327,7 +2327,7 @@
         case 'acc': makeAccuracy(); break;
         case 'twin-draw': drawArea3d(); break;
         case 'twin-area-clear': S.area = null; NX.map3d.showArea(null); NX.view.drawArea(null); renderKeepScroll(); break;
-        case 'g3d': if (NX.g3d.available()) { const T = twinState(); NX.g3d.setHazard(T.hz && T.hz.origin === 'twin' ? T.hz.items : null); NX.g3d.open(); } else { toast('Fotoreal 3D uchun Sozlamalarda Cesium ion tokenini (bepul, ion.cesium.com) yoki Google Maps API kalitini kiriting.', 'warn'); openSettings(); setTimeout(() => $('#keyCesium').focus(), 50); } break;
+        case 'g3d': if (NX.g3d.available()) { NX.g3d.toggle(); renderKeepScroll(); } else { toast('Fotoreal 3D uchun Sozlamalarda Cesium ion tokenini (bepul, ion.cesium.com) yoki Google Maps API kalitini kiriting.', 'warn'); openSettings(); setTimeout(() => $('#keyCesium').focus(), 50); } break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
           const R0 = twinState().rain;

@@ -2,6 +2,8 @@
 (function () {
   'use strict';
   const NX = window.NX;
+  // 3D koʻrinishi yashirin yoki ustida fotoreal (Cesium) — animatsiyalar toʻxtaydi
+  const m3off = () => { const e = document.getElementById('map3d'); return !e || e.hidden || e.classList.contains('g3d-on'); };
   let map = null, ready = null, mode = 'height', data = { buildings: [], ghi: null, flood: null, plan: null, scen: null, hz: null, onView: null };
   let hzMarks = [];
   const BASE = {
@@ -98,7 +100,7 @@
     if (!map.hasImage('wlm')) { const c = document.createElement('canvas'); c.width = c.height = WSZ; const g = c.getContext('2d'); g.fillStyle = '#cdb08a'; g.fillRect(0, 0, WSZ, WSZ); g.fillStyle = 'rgba(120,90,60,.25)'; for (let y = 0; y < WSZ; y += 4) g.fillRect(0, y, WSZ, 1); g.fillStyle = '#1f9fb8'; g.fillRect(0, WSZ - 5, WSZ, 3); map.addImage('wlm', g.getImageData(0, 0, WSZ, WSZ)); }
     // Har necha soniyada bir devor turi yangilanadi — kimdir chiroq yoqadi, kimdir oʻchiradi
     let t = 0;
-    setInterval(() => { if (!windowsOn() || document.hidden || document.getElementById('map3d').hidden) return; const k = Object.keys(WIN)[t++ % 3]; try { map.updateImage(k, winImage(k)); } catch (e) { /* */ } }, 2500);
+    setInterval(() => { if (!windowsOn() || document.hidden || m3off()) return; const k = Object.keys(WIN)[t++ % 3]; try { map.updateImage(k, winImage(k)); } catch (e) { /* */ } }, 2500);
   }
   function applyWindows() {
     if (!map || !map.getLayer('bld')) return;
@@ -383,7 +385,7 @@
         map.addLayer({ id: 'water-vol', type: 'fill-extrusion', source: 'water-vol', paint: { 'fill-extrusion-pattern': ['get', 'k'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.86, 'fill-extrusion-vertical-gradient': false } });
         let wt = 0;
         setInterval(() => {
-          if (mode !== 'flood' || !map.getLayer('water-vol') || document.getElementById('map3d').hidden || document.hidden) return;
+          if (mode !== 'flood' || !map.getLayer('water-vol') || m3off() || document.hidden) return;
           wt++;
           WATER.forEach(w => { try { map.updateImage(w.id, waterFrame(w, wt)); } catch (e) { /* */ } });
         }, 110);
@@ -391,7 +393,7 @@
         // Oqim effekti: shtrixlar oqim yoʻnalishida suriladi
         const DASH = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
         let di = 0;
-        setInterval(() => { if (mode === 'flood' && map.getLayer('water-flow') && !document.getElementById('map3d').hidden) { di = (di + 1) % DASH.length; map.setPaintProperty('water-flow', 'line-dasharray', DASH[di]); } }, 90);
+        setInterval(() => { if (mode === 'flood' && map.getLayer('water-flow') && !m3off()) { di = (di + 1) % DASH.length; map.setPaintProperty('water-flow', 'line-dasharray', DASH[di]); } }, 90);
         map.on('moveend', () => { if (data.onView && map.getZoom() >= 14.3) { const b = map.getBounds(); data.onView({ s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }); } });
         // Koʻchalar nuri (faqat “Raqamli egizak” fonida)
         map.addSource('roads', { type: 'geojson', data: roadsGeo() });
@@ -421,7 +423,7 @@
         map.addLayer({ id: 'hz-flow', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'route'], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1.2, 17, 3], 'line-opacity': 0.9, 'line-dasharray': [0, 4, 3] } });
         let hi = 0;
         const HD = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
-        setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !document.getElementById('map3d').hidden) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
+        setInterval(() => { if (data.hz && map.getLayer('hz-flow') && !m3off()) { hi = (hi + 1) % HD.length; map.setPaintProperty('hz-flow', 'line-dasharray', HD[hi]); } }, 80);
         map.addLayer({ id: 'hz-dot', type: 'circle', source: 'hz', filter: ['==', ['get', 't'], 'dot'], paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 17, 6], 'circle-color': ['get', 'col'], 'circle-stroke-color': '#fff7ed', 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
         map.addLayer({ id: 'hz-seg-glow', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'seg'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', 7, ['get', 'w']], 17, ['*', 18, ['get', 'w']]], 'line-opacity': 0.35, 'line-blur': 4 } });
         map.addLayer({ id: 'hz-seg', type: 'line', source: 'hz', filter: ['==', ['get', 't'], 'seg'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'col'], 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', 2.5, ['get', 'w']], 17, ['*', 7, ['get', 'w']]], 'line-opacity': 0.95 } });
@@ -551,7 +553,7 @@
   function dotsTick() {
     if (!map || !map.getSource('hz-dots') || document.hidden) return;
     const host = document.getElementById('map3d');
-    if (!host || host.hidden) return;
+    if (!host || m3off()) return;
     if (!dotRoutes.length) { if (dotsTick.had) { map.getSource('hz-dots').setData({ type: 'FeatureCollection', features: [] }); dotsTick.had = false; } return; }
     const T = (performance.now() - dotT0) / 1000, f = [];
     dotRoutes.forEach(r => {
@@ -609,4 +611,13 @@
     } catch (e) { return null; }
   }
   NX.map3d = { setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+
+  // ---------- Fotoreal 3D (Cesium, js/ui/google3d.js) — 3D egizakning asosiy koʻrinishi (token boʻlsa) ----------
+  // Barcha natijalar ikkala koʻrinishga beriladi: fotoreal ochiq boʻlsa — u yerda, “🧊 Sxema” da — MapLibre’da.
+  const M3 = NX.map3d, G3 = () => NX.g3d, on3 = () => G3() && G3().active();
+  ['setHazard', 'setOverlay', 'showArea', 'setMode'].forEach(k => { const f = M3[k]; M3[k] = function () { const r = f.apply(null, arguments); if (G3() && G3()[k]) G3()[k].apply(null, arguments); return r; }; });
+  const set0 = M3.set; M3.set = d => { set0(d); if (G3()) G3().set(d); };
+  ['fitTo', 'flyTo'].forEach(k => { const f = M3[k]; M3[k] = function () { if (on3()) G3()[k].apply(null, arguments); return f.apply(null, arguments); }; });
+  const draw0 = M3.drawPoly; M3.drawPoly = done => (on3() ? G3().drawPoly(done) : draw0(done));
+  const show0 = M3.show; M3.show = async (el, d) => { const r = await show0(el, d); if (G3()) { G3().set(data); G3().autoEmbed(el); } return r; };
 })();
