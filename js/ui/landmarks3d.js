@@ -129,13 +129,28 @@
       sides(o).slice(0, 2).forEach(s => [s.c1, s.c2].forEach(p => minaret(p[0] - Math.sign(p[0] - o.cx) * 3, p[1] - Math.sign(p[1] - o.cy) * 3, 30, 3)));
     }
     // Goʻri Amir: maqbara ustida baland boʻgʻiz va qovurgʻali gumbaz (64 qovurgʻa oʻrniga koʻrinish uchun 24)
-    const ga = loc(39.64833, 66.96889);
+    const gaB = bl.find(b => b.name && /go.?ri\s*amir/i.test(b.name)), ga = gaB ? loc(gaB.c[0], gaB.c[1]) : loc(39.64861, 66.96917);
     dome(ga[0], ga[1], 11, 11, 8.5, 24, mat.tile);
+    // Nomi boʻyicha obidalar: maqbaralar (gumbaz), Qoʻshgumbaz, Chorsu, Hazrati Xizr, Ulugʻbek rasadxonasi poydevori
+    bl.forEach(b => {
+      if (!b.ring || !b.lmK) return;
+      const o = obb(b.ring), base = b.height || 8, rmin = Math.min(o.hu, o.hv);
+      if (b.lmK === 'gumbaz') dome(o.cx, o.cy, base, 3, Math.max(3, Math.min(8, rmin * 0.8)), 12, mat.tile);
+      if (b.lmK === 'gumbaz2') [-0.45, 0.45].forEach(t => dome(o.cx + o.ux * o.hu * t, o.cy + o.uy * o.hu * t, base, 2.5, Math.max(2.5, Math.min(6, o.hv * 0.75)), 0, mat.deep));
+      if (b.lmK === 'chorsu') { dome(o.cx, o.cy, base, 4, Math.max(5, rmin * 0.6), 0, mat.tile); [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([a, c]) => dome(o.cx + (o.ux * a * o.hu + o.vx * c * o.hv) * 0.55, o.cy + (o.uy * a * o.hu + o.vy * c * o.hv) * 0.55, base, 1, Math.max(1.8, rmin * 0.18), 0, mat.brickD)); }
+      if (b.lmK === 'xizr') { dome(o.cx, o.cy, base, 3, Math.max(3.5, Math.min(7, rmin * 0.7)), 0, mat.tile); const sth = sides(o).reduce((a, x) => (x.my < a.my ? x : a)); minaret(sth.c1[0], sth.c1[1], 20, 1.9); }
+      if (b.lmK === 'rasadxona') {
+        // XV asr rasadxonasining aylana poydevori (~46 m) va yer ostidagi meridian yoyi (sekstant) joyi
+        const sh = new THREE.Shape(); sh.absarc(0, 0, 23, 0, Math.PI * 2, false); const hole = new THREE.Path(); hole.absarc(0, 0, 20.5, 0, Math.PI * 2, true); sh.holes.push(hole);
+        const ring = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 1.6, bevelEnabled: false, curveSegments: 64 }), mat.brickD); const g = new THREE.Group(); g.position.set(o.cx, o.cy, 0); g.add(ring); scene.add(g);
+        const arc = new THREE.Mesh(new THREE.TorusGeometry(20, 0.9, 8, 40, Math.PI / 2), mat.tile); arc.rotation.x = Math.PI / 2; arc.rotation.y = -Math.PI / 4; const g2 = new THREE.Group(); g2.position.set(o.cx, o.cy - 20, 0.5); g2.add(arc); scene.add(g2);
+      }
+    });
     // Shohi Zinda: xiyobon boʻylab kichik maqbaralar — har biriga kichik gumbaz (kontur kattaligiga mos)
     const A = loc(39.6612, 66.9866), B = loc(39.6641, 66.9894), ABx = B[0] - A[0], ABy = B[1] - A[1], ABL = Math.hypot(ABx, ABy);
     let n = 0;
     bl.forEach(b => {
-      if (n > 40 || !b.ring || b.area < 25 || b.area > 450) return;
+      if (n > 40 || !b.ring || b.area < 25 || b.area > 450 || (b.lmK && b.lmK !== 'shohizinda')) return;
       const [x, y] = loc(b.c[0], b.c[1]), t = ((x - A[0]) * ABx + (y - A[1]) * ABy) / (ABL * ABL); if (t < 0 || t > 1) return;
       const d = Math.abs((x - A[0]) * ABy - (y - A[1]) * ABx) / ABL; if (d > 22) return;
       const o = obb(b.ring), r = Math.max(2.5, Math.min(6, o.hv * 0.85));

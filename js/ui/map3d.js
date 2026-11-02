@@ -41,9 +41,6 @@
       const vis = v => (v ? 'visible' : 'none');
       VEC.forEach(l => map.addLayer(Object.assign({}, l, { layout: Object.assign({}, l.layout, { visibility: vis(base === 'twin') }) }), 'roads-glow'));
       LABELS.forEach(l => map.addLayer(Object.assign({}, l, { layout: Object.assign({}, l.layout, { visibility: vis(base !== 'street') }) }), 'hz-zone'));
-      // Bogʻlar va daraxtzorlar — yashil hajm (daraxt tojlari ~7 m), binolar oldidan
-      map.addLayer({ id: 'v-trees', type: 'fill-extrusion', source: 'omt', 'source-layer': 'landcover', minzoom: 14, filter: ['match', ['get', 'class'], ['wood', 'forest'], true, false], layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#0f5132' : '#2f6b3a', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 7], 'fill-extrusion-opacity': 0.45, 'fill-extrusion-vertical-gradient': true } }, 'bld');
-      map.addLayer({ id: 'v-parks3d', type: 'fill-extrusion', source: 'omt', 'source-layer': 'park', minzoom: 14, layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#11603a' : '#3b7a45', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 2], 'fill-extrusion-opacity': 0.28, 'fill-extrusion-vertical-gradient': true } }, 'bld');
     } catch (e) { console.warn('Vektor fon:', e.message); }
   }
   // Fon turiga qarab: Raqamli egizak — vektor qatlamlar hammasi; sunʼiy yoʻldosh — faqat nomlar; xarita — hech biri
@@ -51,7 +48,7 @@
     if (!map || !map.getLayer('base-twin')) return;
     Object.keys(BASE).forEach(k => map.setLayoutProperty('base-' + k, 'visibility', k === base ? 'visible' : 'none'));
     VEC.forEach(l => map.getLayer(l.id) && map.setLayoutProperty(l.id, 'visibility', base === 'twin' ? 'visible' : 'none'));
-    LABELS.concat([{ id: 'v-trees' }, { id: 'v-parks3d' }]).forEach(l => map.getLayer(l.id) && map.setLayoutProperty(l.id, 'visibility', base === 'street' ? 'none' : 'visible'));
+    LABELS.forEach(l => map.getLayer(l.id) && map.setLayoutProperty(l.id, 'visibility', base === 'street' ? 'none' : 'visible'));
   }
   let base = 'twin';
   try { base = localStorage.getItem('m3d:base') || 'twin'; } catch (e) { /* */ }
@@ -250,14 +247,20 @@
     } catch (e) { /* eski versiya */ }
   }
   // ---------- Obidalar: 3D yorliqlar va kinematik sayohat ----------
+  // Yorliqlar — OSM’dagi haqiqiy kontur markazlari
   const LANDMARKS = [
-    { n: 'Registon', c: [39.6547, 66.9757], b: 200, z: 17.2 },
-    { n: 'Bibixonim masjidi', c: [39.6606, 66.9794], b: 120, z: 17.3 },
-    { n: 'Siyob bozori', c: [39.6620, 66.9818], b: 60, z: 17 },
-    { n: 'Shohi Zinda', c: [39.6628, 66.9880], b: 330, z: 17.4 },
-    { n: 'Afrosiyob', c: [39.6680, 66.9890], b: 20, z: 15.8 },
-    { n: 'Ulugʻbek rasadxonasi', c: [39.6745, 67.0059], b: 250, z: 16.8 },
-    { n: 'Goʻri Amir', c: [39.6485, 66.9690], b: 160, z: 17.4 },
+    { n: 'Registon', c: [39.6550, 66.9757], b: 200, z: 17.2 },
+    { n: 'Chorsu', c: [39.65632, 66.97812], b: 230, z: 17.6 },
+    { n: 'Bibixonim masjidi', c: [39.6607, 66.9808], b: 100, z: 17.1 },
+    { n: 'Siyob bozori', c: [39.6614, 66.9800], b: 60, z: 17 },
+    { n: 'Hazrati Xizr', c: [39.66345, 66.98336], b: 300, z: 17.5 },
+    { n: 'Shohi Zinda', c: [39.6625, 66.9880], b: 330, z: 17.4 },
+    { n: 'Afrosiyob muzeyi', c: [39.66941, 66.99334], b: 20, z: 16.4 },
+    { n: 'Ulugʻbek rasadxonasi', c: [39.67523, 67.00552], b: 250, z: 17.2 },
+    { n: 'Goʻri Amir', c: [39.64865, 66.96915], b: 160, z: 17.4 },
+    { n: 'Ruhobod', c: [39.65085, 66.96819], b: 40, z: 17.6 },
+    { n: 'Viloyat hokimligi', c: [39.65585, 66.96543], b: 200, z: 17 },
+    { n: 'Shahar hokimligi', c: [39.64666, 66.95989], b: 200, z: 17 },
   ];
   let lmMarks = [];
   function landmarks() {

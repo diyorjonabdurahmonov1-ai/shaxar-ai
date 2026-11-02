@@ -74,11 +74,29 @@
     { c: [39.6608, 66.9806], r: 120, h: 18, k: 'bibixonim', n: 'Bibixonim masjidi (peshtoq ~35 m, gumbaz ~40 m)' },
     { c: [39.6486, 66.9692], r: 60, h: 11, k: 'goriamir', n: 'Goʻri Amir maqbarasi (gumbaz ~34 m)' },
     { c: [39.6627, 66.9880], r: 220, h: 9, k: 'shohizinda', n: 'Shohi Zinda maqbaralari' },
-    { c: [39.6591, 66.9745], r: 60, h: 12, k: 'xizr', n: 'Hazrati Xizr masjidi' },
+  ];
+  // Nomi boʻyicha aniq obidalar va muhim binolar: balandlik (ochiq manbalar, taxminiy), d — gumbaz/minora modeli
+  const NAMED = [
+    { re: /ruhobod maqbara/i, h: 11, k: 'gumbaz', n: 'Ruhobod maqbarasi (XIV asr)' },
+    { re: /oqsaroy/i, h: 10, k: 'gumbaz', n: 'Oqsaroy maqbarasi (XV asr)' },
+    { re: /ishrat/i, h: 12, k: 'xaroba', n: 'Ishratxona maqbarasi (XV asr, gumbazi qulagan)' },
+    { re: /bibi\s*xonim maqbara/i, h: 10, k: 'gumbaz', n: 'Bibixonim maqbarasi' },
+    { re: /makhdumi|maxdumi/i, h: 8, k: 'gumbaz', n: 'Maxdumi Xorazmiy maqbarasi' },
+    { re: /moturid/i, h: 9, k: 'gumbaz', n: 'Imom Moturidiy maqbarasi' },
+    { re: /chupan ata|choʻpon ota|cho'pon ota/i, h: 9, k: 'gumbaz', n: 'Choʻponota maqbarasi' },
+    { re: /qosh gumbaz/i, h: 9, k: 'gumbaz2', n: 'Qoʻshgumbaz maqbarasi' },
+    { re: /^chorsu$/i, h: 10, k: 'chorsu', n: 'Chorsu savdo gumbazi (XVIII asr)' },
+    { re: /hazrati xizr/i, h: 9, k: 'xizr', n: 'Hazrati Xizr masjidi' },
+    { re: /rasadxona|observator/i, h: 5, k: 'rasadxona', n: 'Ulugʻbek rasadxonasi (XV asr; poydevori ~46 m)' },
+    { re: /hokimligi|hokimiyati|хокимият/i, h: 17, lv: 5, n: 'hokimlik binosi (5 qavat)' },
+    { re: /afrasiab museum|afrosiyob muzey/i, h: 9, lv: 2, n: 'Afrosiyob muzeyi' },
+    { re: /ruhobod madrasa|do.?smatbay madrasa|nodir devon begi|panjob madrasa/i, h: 9, k: 'madrasa', n: 'madrasa' },
   ];
   const LM_KIND = /mosque|religious|cathedral|church|temple|shrine/, LM_NAME = /madras|masjid|maqbara|mausole|registon|bibixonim|go.?ri.?amir|shohi.?zinda|xonaqoh|мадраса|мечеть|мавзолей/i;
   function refine(list) {
     list.forEach(b => {
+      const nm = b.name && NAMED.find(x => x.re.test(b.name));
+      if (nm) { b.height = nm.h; b.levels = nm.lv || Math.max(1, Math.round(nm.h / 4)); b.est = !nm.lv; b.lmH = nm.n; if (nm.k) b.lmK = nm.k; return; }
       const lmk = LM_KIND.test(b.kind) || (b.name && LM_NAME.test(b.name));
       const [x, y] = G.xy(b.c[0], b.c[1]);
       const spot = LM.find(l => { const [lx, ly] = G.xy(l.c[0], l.c[1]); return Math.hypot(lx - x, ly - y) < l.r; });
