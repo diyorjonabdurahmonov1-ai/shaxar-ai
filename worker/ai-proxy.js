@@ -119,9 +119,10 @@ async function anthropic(out, env, cors) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: out.model, system: sys ? [{ type: 'text', text: sys, cache_control: { type: 'ephemeral' } }] : undefined, messages: msgs, max_tokens: out.max_completion_tokens, temperature: 0.3 }),
+    body: JSON.stringify({ model: out.model, system: sys ? [{ type: 'text', text: sys, cache_control: { type: 'ephemeral' } }] : undefined, messages: msgs, max_tokens: 8000, output_config: { effort: 'low' } }),
   });
   const d = await r.json().catch(() => null);
+  // Claude 5.5 da temperature yoʻq, fikrlash doim yoqiq — chuqurlik effort bilan; javob max_tokens’ga sigʻmasa ham matn qaytariladi
   if (!r.ok || !d) return json({ error: { code: 'provider_error', message: (d && d.error && d.error.message) || 'Claude javob bermadi' } }, r.status || 502, cors);
   return asOpenAI((d.content || []).filter(x => x.type === 'text').map(x => x.text).join(''), out.model, cors);
 }
