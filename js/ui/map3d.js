@@ -521,7 +521,7 @@
     // Obidalarning batafsil 3D modellari (bir marta, binolar va obida belgilari tayyor boʻlganda)
     if (!refresh.lm && NX.lm3d && mapReady && data.buildings.some(b => b.lmK)) { refresh.lm = true; NX.lm3d.attach(map, data.buildings).catch(e => { refresh.lm = false; console.warn('obidalar 3D:', e.message); }); }
     // Realistik bino modellari (har bir bino: kontur, balandlik, derazalar, tom) — “Balandlik” rejimida, yaqin masshtabda
-    if (!refresh.c3 && NX.city3d && NX.lm3d && mapReady && data.buildings.length) { refresh.c3 = true; NX.city3d.attach(map, () => data.buildings, () => mode).catch(e => { refresh.c3 = false; console.warn('city3d:', e.message); }); }
+    if (!refresh.c3 && NX.city3d && NX.lm3d && mapReady && data.buildings.length) { refresh.c3 = true; NX.city3d.attach(map, () => data.buildings, () => mode, () => data.roads).catch(e => { refresh.c3 = false; console.warn('city3d:', e.message); }); }
     else if (refresh.c3 && NX.city3d) NX.city3d.update();
     // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
     ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));

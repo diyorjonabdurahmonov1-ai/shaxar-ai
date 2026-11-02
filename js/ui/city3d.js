@@ -9,10 +9,17 @@
 (function () {
   'use strict';
   const NX = window.NX;
-  let THREE = null, layer = null, map = null, getB = null, getMode = null, built = null, busy = false, ids = [];
+  let THREE = null, layer = null, map = null, getB = null, getMode = null, getR = null, built = null, busy = false, ids = [];
 
-  const hash = n => { let x = (n * 2654435761) >>> 0; x ^= x >>> 15; return x; };
-  const ROOFS = [0x9aa3ab, 0x8b9399, 0x5f7f6a, 0x9c5b4a, 0x50739a, 0xa7adb2, 0x7d868c];     // tunuka: rux, yashil, qizgʻish, koʻk
+  // Real fasadlar (pilot): Mapillary suratlaridan devorga proyeksiya qilingan teksturalar — data/facades-pilot.json
+  let FAC = null, facTex = new Map();
+  fetch('data/facades-pilot.json').then(r => (r.ok ? r.json() : null)).then(j => { if (!j) return; FAC = j; FAC.by = new Map(); j.walls.forEach(w => { const k = w.id; if (!FAC.by.has(k)) FAC.by.set(k, []); FAC.by.get(k).push(w); }); if (built) built.R = -1; if (map) check(); }).catch(() => {});
+  function facMat(f) {
+    if (!facTex.has(f)) { const t = new THREE.TextureLoader().load(FAC.dir + f, () => map && map.triggerRepaint()); t.anisotropy = 4; facTex.set(f, new THREE.MeshBasicMaterial({ map: t, color: 0xe8e8e8, side: THREE.DoubleSide })); }
+    return facTex.get(f);
+  }
+  const hash = n => { let x = (n * 2654435761) >>> 0; x ^= x >>> 15; return x >>> 0; };
+  const ROOFS = [0x9aa3ab, 0x8f979d, 0xa3a9ad, 0x86909a, 0x6f8a78, 0x8a5f52, 0x6d7f95, 0x9ca3a8];     // tunuka: rux, yashil, qizgʻish, koʻk
   const FLAT = [0x6f6b66, 0x625f5b, 0x77726b, 0x595653];      // tekis tom: bitum, beton (qorongʻiroq — yorugʻda oqarib ketmasin)
 
   // ---------- Fasad teksturalari (canvas, bir marta) ----------
@@ -86,6 +93,56 @@
     tri(a, b, f); tri(a, f, e); tri(c, d, e); tri(c, e, f); tri(b, c, f); tri(d, a, e);
   }
 
+  // ---------- Koʻchalar: asfalt (kenglik — yoʻl toifasidan, taxminiy), oʻrta chiziq, bordyur; zebra, chiroq ustunlari, svetoforlar (Mapillary aniqlagan joylarda) ----------
+  const RWM = { trunk: 22, primary: 18, secondary: 14, tertiary: 10, unclassified: 7, residential: 6, living_street: 5, service: 4, pedestrian: 6 };
+  function quad(B, a, b, c, d, z, col) { [a, b, c, a, c, d].forEach(v => { B.p.push(v[0], v[1], z); B.n.push(0, 0, 1); B.c.push(col.r, col.g, col.b); }); }
+  function box(B, cx, cy, z0, sx, sy, sz, ang, col) {
+    const c = Math.cos(ang), s = Math.sin(ang), P = (x, y, z) => [cx + x * c - y * s, cy + x * s + y * c, z0 + z];
+    const hx = sx / 2, hy = sy / 2, F = [[[-hx, -hy], [hx, -hy], [0, -1]], [[hx, -hy], [hx, hy], [1, 0]], [[hx, hy], [-hx, hy], [0, 1]], [[-hx, hy], [-hx, -hy], [-1, 0]]];
+    F.forEach(([a, b, n]) => { const nx = n[0] * c - n[1] * s, ny = n[0] * s + n[1] * c, A = P(a[0], a[1], 0), Bq = P(b[0], b[1], 0), C2 = P(b[0], b[1], sz), D2 = P(a[0], a[1], sz); [A, Bq, C2, A, C2, D2].forEach(v => { B.p.push(...v); B.n.push(nx, ny, 0); B.c.push(col.r, col.g, col.b); }); });
+    const T = [P(-hx, -hy, sz), P(hx, -hy, sz), P(hx, hy, sz), P(-hx, hy, sz)]; [T[0], T[1], T[2], T[0], T[2], T[3]].forEach(v => { B.p.push(...v); B.n.push(0, 0, 1); B.c.push(col.r, col.g, col.b); });
+  }
+  function streets(S, lat0, lon0, KX, KY, R) {
+    const roads = (getR && getR()) || [], ASP = new THREE.Color(0x3b3e44), CURB = new THREE.Color(0xbdb6a8), LINE = new THREE.Color(0xf1f1ea), segs = [];
+    const L = (la, lo) => [(lo - lon0) * KX, (la - lat0) * KY];
+    roads.forEach(w => {
+      const W = RWM[w.hw]; if (!W || !w.ll) return;
+      for (let i = 1; i < w.ll.length; i++) {
+        const a = L(w.ll[i - 1][0], w.ll[i - 1][1]), b = L(w.ll[i][0], w.ll[i][1]);
+        if (Math.hypot(a[0], a[1]) > R + 60 && Math.hypot(b[0], b[1]) > R + 60) continue;
+        const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 0.5) continue;
+        const tx = dx / len, ty = dy / len, nx = -ty, ny = tx, h = W / 2, e = Math.min(1.5, h * 0.3);
+        const A = [a[0] - tx * e, a[1] - ty * e], Bp = [b[0] + tx * e, b[1] + ty * e];
+        quad(S, [A[0] + nx * h, A[1] + ny * h], [A[0] - nx * h, A[1] - ny * h], [Bp[0] - nx * h, Bp[1] - ny * h], [Bp[0] + nx * h, Bp[1] + ny * h], 0.05, ASP);
+        if (W >= 10) {
+          // bordyur (ikki tomonda) va oʻrta uzuq chiziq
+          [1, -1].forEach(sg => { const o = h + 0.15; quad(S, [a[0] + nx * o * sg, a[1] + ny * o * sg], [a[0] + nx * (o + 0.3) * sg, a[1] + ny * (o + 0.3) * sg], [b[0] + nx * (o + 0.3) * sg, b[1] + ny * (o + 0.3) * sg], [b[0] + nx * o * sg, b[1] + ny * o * sg], 0.16, CURB); });
+          for (let d = 1; d < len - 3; d += 9) { const p = [a[0] + tx * d, a[1] + ty * d], q = [a[0] + tx * (d + 3), a[1] + ty * (d + 3)]; quad(S, [p[0] + nx * 0.07, p[1] + ny * 0.07], [p[0] - nx * 0.07, p[1] - ny * 0.07], [q[0] - nx * 0.07, q[1] - ny * 0.07], [q[0] + nx * 0.07, q[1] + ny * 0.07], 0.07, LINE); }
+        }
+        segs.push({ a, tx, ty, len, W });
+      }
+    });
+    // eng yaqin yoʻl boʻlagi (yoʻnalish va kenglik)
+    const nearSeg = (x, y) => { let best = null, bd = 30; segs.forEach(s => { const t = Math.max(0, Math.min(s.len, (x - s.a[0]) * s.tx + (y - s.a[1]) * s.ty)), px = s.a[0] + s.tx * t, py = s.a[1] + s.ty * t, d = Math.hypot(x - px, y - py); if (d < bd) { bd = d; best = Object.assign({ px, py, d }, s); } }); return best; };
+    if (!NX.mlyf || !NX.mlyf.ready()) return;
+    const POLE = new THREE.Color(0x4b5563), HEAD = new THREE.Color(0xfff3c4), BOXC = new THREE.Color(0x111827), RED = new THREE.Color(0xef4444), AMB = new THREE.Color(0xf59e0b), GRN = new THREE.Color(0x22c55e), ZEB = new THREE.Color(0xf8fafc);
+    const seen = new Set();
+    NX.mlyf.near(lat0, lon0, R, 'LSZ').forEach(o => {
+      const [x, y] = L(o.lat, o.lon), k = o.c + Math.round(x / 4) + ':' + Math.round(y / 4); if (seen.has(k)) return; seen.add(k);
+      const s = nearSeg(x, y); if (!s) return;
+      const ang = Math.atan2(s.ty, s.tx);
+      if (o.c === 'Z') {
+        // zebra: yoʻl boʻylab 0.5 m oq yoʻlaklar, yoʻl kengligi boʻyicha
+        for (let i = -3; i <= 3; i++) { const cx = s.px + s.tx * i * 1.0, cy = s.py + s.ty * i * 1.0; box(S, cx, cy, 0.06, 0.5, s.W * 0.9, 0.012, ang, ZEB); }
+      } else {
+        // ustun yoʻl chetida (Mapillary nuqtasi — taxminan, yoʻl chetiga keltiriladi)
+        const side = Math.sign((x - s.px) * -s.ty + (y - s.py) * s.tx) || 1, off = s.W / 2 + 1.2, px = s.px - s.ty * off * side, py = s.py + s.tx * off * side;
+        if (o.c === 'L') { box(S, px, py, 0, 0.22, 0.22, 8.5, ang, POLE); box(S, px + s.ty * side * 0.9, py - s.tx * side * 0.9, 8.3, 0.12, 1.8, 0.12, ang, POLE); box(S, px + s.ty * side * 1.7, py - s.tx * side * 1.7, 8.0, 0.35, 0.7, 0.25, ang, HEAD); }
+        else { box(S, px, py, 0, 0.2, 0.2, 4.2, ang, POLE); box(S, px, py, 3.0, 0.38, 0.32, 1.1, ang, BOXC); [[3.85, RED], [3.55, AMB], [3.25, GRN]].forEach(([z, c]) => box(S, px + s.ty * side * 0.17, py - s.tx * side * 0.17, z, 0.05, 0.22, 0.22, ang, c)); }
+      }
+    });
+  }
+
   // Kamera atrofidagi binolarni modellash (bir necha qismda — sahifa qotmasin)
   async function rebuild(center, R) {
     if (busy) return; busy = true;
@@ -95,7 +152,7 @@
       for (const b of list) { const p = b.ring && b.ring[0]; if (!p || b.lmK || Math.abs(p[1] - lat0) > dLat || Math.abs(p[0] - lon0) > dLon) continue; sel.push(b); }
       sel.sort((a, b) => Math.hypot(a.ring[0][1] - lat0, (a.ring[0][0] - lon0) * 0.77) - Math.hypot(b.ring[0][1] - lat0, (b.ring[0][0] - lon0) * 0.77));
       if (sel.length > 14000) sel.length = 14000;
-      const W = { house: bucket(), apt: bucket(), shop: bucket() }, F = { p: [], n: [], c: [] }, Rf = { p: [], n: [], c: [] }, done = [];
+      const photo = [], W = { house: bucket(), apt: bucket(), shop: bucket() }, F = { p: [], n: [], c: [] }, Rf = { p: [], n: [], c: [] }, done = [];
       const loc = (lon, lat) => new THREE.Vector2((lon - lon0) * KX, (lat - lat0) * KY);
       for (let i = 0; i < sel.length; i++) {
         const b = sel[i], k = kindOf(b), h = Math.max(2.8, b.height || (b.levels || 1) * 3), hs = hash(b.id || i);
@@ -118,21 +175,37 @@
             for (let j = g0.start; j < g0.start + g0.count; j++) if (P[j * 3 + 2] > h - 0.01) { F.p.push(P[j * 3], P[j * 3 + 1], P[j * 3 + 2] + 0.02); F.n.push(N[j * 3], N[j * 3 + 1], N[j * 3 + 2]); F.c.push(col.r, col.g, col.b); }
           }
           geo.dispose();
+          // Real fasad surati boʻlgan devorlar — haqiqiy tekstura (devordan 6 sm tashqarida)
+          const fw = FAC && FAC.by.get(b.id);
+          if (fw) {
+            const R0 = b.ring.slice(0, -1).map(c => [(c[0] - lon0) * KX, (c[1] - lat0) * KY]);
+            let A2 = 0; for (let q = 0; q < R0.length; q++) { const a = R0[q], c = R0[(q + 1) % R0.length]; A2 += a[0] * c[1] - c[0] * a[1]; }
+            fw.forEach(w => {
+              const a = R0[w.e], c = R0[(w.e + 1) % R0.length]; if (!a || !c) return;
+              const L = Math.hypot(c[0] - a[0], c[1] - a[1]), tx = (c[0] - a[0]) / L, ty = (c[1] - a[1]) / L, nx = A2 > 0 ? ty : -ty, ny = A2 > 0 ? -tx : tx, o = 0.06;
+              const g = new THREE.BufferGeometry(), A = [a[0] + nx * o, a[1] + ny * o], C = [c[0] + nx * o, c[1] + ny * o];
+              g.setAttribute('position', new THREE.Float32BufferAttribute([A[0], A[1], 0, C[0], C[1], 0, C[0], C[1], h, A[0], A[1], 0, C[0], C[1], h, A[0], A[1], h], 3));
+              g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], 2));
+              photo.push(new THREE.Mesh(g, facMat(w.f)));
+            });
+          }
           done.push(b.id);
         } catch (e) { /* buzilgan kontur — oʻtkazib yuboriladi */ }
         if (i % 1500 === 1499) await new Promise(r => setTimeout(r, 0));
       }
+      const ST = { p: [], n: [], c: [] }; try { streets(ST, lat0, lon0, KX, KY, R); } catch (e) { console.warn('city3d koʻchalar:', e.message); }
       const grp = new THREE.Group();
       Object.keys(W).forEach(k => { const m = toMesh(W[k], layer.mat[k]); if (m) grp.add(m); });
-      [[F, layer.mat.flat], [Rf, layer.mat.roof]].forEach(([B, mat]) => {
+      [[F, layer.mat.flat], [Rf, layer.mat.roof], [ST, layer.mat.flat]].forEach(([B, mat]) => {
         if (!B.p.length) return;
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(B.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(B.n, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(B.c, 3));
         grp.add(new THREE.Mesh(g, mat));
       });
+      photo.forEach(m => grp.add(m));
       if (built) { layer.scene.remove(built.grp); built.grp.traverse(o => o.geometry && o.geometry.dispose()); }
       const mc = window.maplibregl.MercatorCoordinate.fromLngLat([lon0, lat0], 0), s = mc.meterInMercatorCoordinateUnits();
-      built = { grp, l: new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(s, -s, s)), at: [lat0, lon0], R };
+      built = { rn: ((getR && getR()) || []).length, ml: !!(NX.mlyf && NX.mlyf.ready()), grp, l: new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(s, -s, s)), at: [lat0, lon0], R };
       layer.scene.add(grp);
       setIds(done);
       map.triggerRepaint();
@@ -154,13 +227,13 @@
     if (!layer || !layer.scene) return;
     if (!on()) { if (built) { layer.scene.remove(built.grp); built.grp.traverse(o => o.geometry && o.geometry.dispose()); built = null; clearIds(); map.triggerRepaint(); } return; }
     const c = map.getCenter(), z = map.getZoom(), R = z >= 17 ? 650 : z >= 16 ? 900 : 1200;
-    if (built && Math.hypot((c.lat - built.at[0]) * 110574, (c.lng - built.at[1]) * 85700) < R * 0.4 && Math.abs(R - built.R) < 1) return;
+    if (built && Math.hypot((c.lat - built.at[0]) * 110574, (c.lng - built.at[1]) * 85700) < R * 0.4 && Math.abs(R - built.R) < 1 && built.rn === ((getR && getR()) || []).length && built.ml === !!(NX.mlyf && NX.mlyf.ready())) return;
     rebuild(c, R);
   }
 
-  async function attach(m, getBuildings, getM) {
+  async function attach(m, getBuildings, getM, getRoads) {
     if (layer) return;
-    map = m; getB = getBuildings; getMode = getM;
+    map = m; getB = getBuildings; getMode = getM; getR = getRoads;
     if (!window.THREE) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/three.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
     THREE = window.THREE;
     layer = {
@@ -190,5 +263,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { attach, update, reapply, active: () => !!built };
+  NX.city3d = { _dbg: () => ({ layer, built, FAC }), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();
