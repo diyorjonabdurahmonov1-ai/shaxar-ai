@@ -161,7 +161,7 @@
       if (best) out.C.push({ id: 'C' + (out.C.length + 1), from: e.ll, to: G.ll(best.q[0], best.q[1]), uzunlik_m: Math.round(best.d), qaysi: `${M.streets[e.w.street].name || 'nomsiz yoʻl'} → ${best.name || 'nomsiz yoʻl'}` });
     });
     out.C = out.C.sort((a, b) => a.uzunlik_m - b.uzunlik_m).slice(0, 10).map((c, i) => Object.assign(c, { id: 'C' + (i + 1) }));
-    st.streets.filter(s => s.name).slice(0, 8).forEach((s, i) => { const S = M.streets[s.s]; out.S.push({ id: 'S' + (i + 1), lat: S.center[0], lon: S.center[1], nomi: s.name, turi: NX.HW[S.hw].uz }); });
+    st.streets.filter(s => s.name).slice(0, 8).forEach((s, i) => { const S = s.s != null ? M.streets[s.s] : null; const c = S ? S.center : s.c; if (!c) return; out.S.push({ id: 'S' + (i + 1), lat: c[0], lon: c[1], nomi: s.name, turi: S ? NX.HW[S.hw].uz : (NX.HW[s.hw] || {}).uz || 'koʻcha' }); });
     // Boʻsh yerlar — OpenStreetMap (hudud chegarasi boʻyicha)
     try {
       let s = 90, w = 180, n = -90, e = -180; poly.forEach(p => { s = Math.min(s, p[0]); n = Math.max(n, p[0]); w = Math.min(w, p[1]); e = Math.max(e, p[1]); });

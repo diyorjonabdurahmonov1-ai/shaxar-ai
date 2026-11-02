@@ -242,6 +242,7 @@
     const el3 = $('#map3d');
     el3.hidden = t !== 'twin';
     $('.map-wrap').classList.toggle('twin-on', t === 'twin');
+    if (t !== 'twin' && document.body.classList.contains('big3d')) { document.body.classList.remove('big3d', 'panel-hide'); document.querySelectorAll('.tw-ctl [data-tw=big]').forEach(b => { b.classList.remove('on'); b.querySelector('span').textContent = 'Katta 3D'; }); }
     if (t === 'twin') loadTwin();
     NX.camwall.show(t === 'map' && !NX.fx.active());
     // Natija (masalan suv yechimi) 3D da olingan boʻlsa — xaritaga oʻtganda shu joyga uchadi
@@ -693,6 +694,14 @@
         const R0 = await twinFlood2d([{ t0: 0, t1: 3600, mmh: mm }], `${mm} mm, 1 soatda — ariqlar tiqilgan boʻlsa`, null, 0);
         if (R0) extra.ariqlar_tiqilgan_holat = dynFacts(R0);
       }
+      // Savol belgilangan hudud haqida — javob shu hududdagi koʻchalar boʻyicha (butun shahar emas)
+      const areaQ = S.area && ((opts && opts.area) || /shu\s*(yer|joy|hudud|mahalla)|bu\s*(yer|joy|hudud|mahalla)/i.test(q));
+      if (areaQ && R && R.streets) {
+        const poly = S.area.st.poly, near = p => p && (NX.area.inside(poly, p[0], p[1]) || (() => { const [x, y] = NX.geo.xy(p[0], p[1]); return poly.some(q2 => { const [a, b] = NX.geo.xy(q2[0], q2[1]); return Math.hypot(a - x, b - y) < 150; }); })());
+        const inA = R.streets.filter(x => near(x.at));
+        extra.belgilangan_hudud_suv = inA.length ? inA.slice(0, 10).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })) : 'belgilangan hududda 10 sm dan chuqur suv toʻplanmaydi (model)';
+        local = inA.length ? `**${mm} mm yomgʻirda belgilangan hududda:** ${inA.slice(0, 8).map(x => `${x.name || 'nomsiz koʻcha'} (${Math.round(x.max * 100)} sm, ${NX.fmt.int(x.len)} m)`).join(', ')}.` : `**${mm} mm yomgʻirda belgilangan hududda koʻchalarda 10 sm dan chuqur suv toʻplanmaydi** (2D model). Shahar boʻyicha eng xavfli: ${R.streets.slice(0, 3).map(x => x.name).join(', ')}.`;
+      } else
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
     }
     // Ochiq manbalar: Samarqanddagi oʻtgan toshqinlar / zilzilalar haqida yangiliklar — model natijasini real hodisalar bilan solishtirish uchun
@@ -817,7 +826,49 @@
       NX.view.drawArea(poly, null, true);
       render(); focusPanel();
       loadAreaLive(S.area);
+      enrichArea(S.area);
     });
+  }
+  // Hudud transport modeli (tarixiy markaz) chegarasidan tashqarida boʻlsa — koʻchalar butun shahar faylidan,
+  // bekat/svetofor/oʻtish joyi/maktab — OSM (Overpass, faqat shu hudud atrofi); “0 ta koʻcha” degan notoʻgʻri natija chiqmasin
+  async function enrichArea(A) {
+    const st = A.st, B = NX.config.bbox, c = st.center;
+    const outside = c[0] < B.s || c[0] > B.n || c[1] < B.w || c[1] > B.e || st.streetKm < 0.05;
+    if (!outside) return;
+    st.outside = true;
+    const inP = (la, lo) => NX.area.inside(st.poly, la, lo);
+    try {
+      const roads = await Promise.race([NX.twin.roads(), NX.sleep(20000).then(() => null)]);
+      if (roads && roads.length) {
+        const len = new Map();
+        roads.forEach(w => { for (let i = 1; i < w.ll.length; i++) { const a = NX.geo.xy(w.ll[i - 1][0], w.ll[i - 1][1]), b = NX.geo.xy(w.ll[i][0], w.ll[i][1]), L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(L / 20)); for (let t = 0; t < n; t++) { const ll = NX.geo.ll(a[0] + (b[0] - a[0]) * (t + 0.5) / n, a[1] + (b[1] - a[1]) * (t + 0.5) / n); if (inP(ll[0], ll[1])) { const k = w.name || ('#' + w.hw); const v = len.get(k) || { name: w.name || '', hw: w.hw, len: 0, c: ll }; v.len += L / n; len.set(k, v); } } } });
+        st.streets = [...len.values()].map(v => ({ s: null, name: v.name, hw: v.hw, len: Math.round(v.len), c: v.c })).sort((a, b) => b.len - a.len);
+        st.streetKm = st.streets.reduce((t, x) => t + x.len, 0) / 1000;
+      }
+    } catch (e) { /* */ }
+    // OSM nuqtalari: bekat, svetofor, oʻtish joyi, maktab/bogʻcha (hudud + 600 m)
+    let s0 = 90, w0 = 180, n0 = -90, e0 = -180; st.poly.forEach(p => { s0 = Math.min(s0, p[0]); n0 = Math.max(n0, p[0]); w0 = Math.min(w0, p[1]); e0 = Math.max(e0, p[1]); });
+    const d = 0.006, bb = [s0 - d, w0 - d, n0 + d, e0 + d].map(v => v.toFixed(4)).join(',');
+    const q = `[out:json][timeout:25];(node["highway"="bus_stop"](${bb});node["highway"="traffic_signals"](${bb});node["highway"="crossing"](${bb});nwr["amenity"~"^(school|kindergarten)$"](${bb}););out center tags qt;`;
+    for (const url of NX.config.overpassMirrors) {
+      try {
+        const r = await NX.fetchJSON(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) }, 25000);
+        if (!r.ok || !r.data || !r.data.elements) continue;
+        const pts = r.data.elements.map(e => ({ t: e.tags || {}, la: e.lat != null ? e.lat : e.center && e.center.lat, lo: e.lon != null ? e.lon : e.center && e.center.lon })).filter(x => x.la != null);
+        const [cx, cy] = NX.geo.xy(c[0], c[1]), dist = x => { const [px, py] = NX.geo.xy(x.la, x.lo); return Math.round(Math.hypot(px - cx, py - cy)); };
+        const stops = pts.filter(x => x.t.highway === 'bus_stop');
+        st.stops = stops.filter(x => inP(x.la, x.lo)).length;
+        const ns = stops.map(x => ({ name: x.t.name || 'bekat', d: dist(x) })).sort((a, b) => a.d - b.d)[0];
+        st.nearestStop = ns || null;
+        st.signals = pts.filter(x => x.t.highway === 'traffic_signals' && inP(x.la, x.lo)).length;
+        st.crossings = pts.filter(x => x.t.highway === 'crossing' && inP(x.la, x.lo)).length;
+        const sch = pts.filter(x => /school|kindergarten/.test(x.t.amenity || ''));
+        st.schoolsIn = sch.filter(x => inP(x.la, x.lo)).map(x => ({ name: x.t.name || '', kind: x.t.amenity, lat: x.la, lon: x.lo }));
+        st.schoolsNear = sch.map(x => ({ name: x.t.name || '', kind: x.t.amenity, d: dist(x) })).filter(x => x.d <= 500).sort((a, b) => a.d - b.d);
+        break;
+      } catch (e) { /* keyingi */ }
+    }
+    if (S.area === A) renderKeepScroll();
   }
   function clearArea() {
     NX.draw.stop();
@@ -976,6 +1027,8 @@
       const fut = await NX.sim.run({ demand: S.demand, scenario: Object.assign({ growth: 1.15 }, sc), iters: 10 }, prog(0.5, '5 yildan keyin'));
       if (S.area !== A) return;
       A.res = { b, sim, fut, ev: NX.area.assess(A.st, b, sim, fut) };
+      // Hudud transport modeli (tarixiy markaz) dan tashqarida — harakat taʼsiri hisobi ishonchli emas, aytiladi
+      if (A.st.outside) { A.res.ev.pros = A.res.ev.pros.filter(t => !/harakat/i.test(t)); A.res.ev.cons = A.res.ev.cons.filter(t => !/harakat|tirband|yuklan/i.test(t)); A.res.ev.cons.push('Koʻchalarga yuklama hisoblanmadi: bu hudud batafsil transport modeli (tarixiy markaz) chegarasidan tashqarida — koʻchalar va obyektlar butun shahar maʼlumotidan olindi.'); }
       // Yangi bino soyasi (qishda qaysi binolar soyada qoladi) — binolar xaritasi boʻyicha
       try {
         const bl = await withTimeout(NX.buildings.load(t => { A.busy = { p: 1, label: t }; }), 25000);
@@ -1131,6 +1184,13 @@
     A.qa.push({ role: 'user', text: q });
     if (NX.intent(q).main === 'general') { A.qaBusy = 'Tahlil qilinmoqda…'; renderKeepScroll(); try { q = await smartQ(q, prevQ); } finally { A.qaBusy = null; } }
     const it = NX.intent(q);
+    // Bosh reja / UNESCO savoli (aniq bino parametrlarisiz) — bosh reja va muhofaza zonalari tekshiruvi (hudud boʻyicha)
+    if (it.main === 'plan' && !NX.area.parseBuild(q)) {
+      A.qaBusy = 'Bosh reja va UNESCO zonalari tekshirilmoqda…'; renderKeepScroll();
+      let m = null; try { m = await planAsk(q, prev); } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
+      A.qa.push(m); A.qaBusy = null; renderKeepScroll();
+      return;
+    }
     if (it.hazard || it.main === 'access') {
       // Zilzila / suv / yongʻin / koʻcha holati — shu hudud uchun ham yoʻl hisoblanadi (3D egizak hisobi)
       A.qaBusy = 'Favqulodda vaziyat hisoblanmoqda — natija xaritada…'; renderKeepScroll();
@@ -1605,6 +1665,7 @@
 
   // ---------- Xaritani oʻrgatish: tuzatishlar ----------
   // Binolar yuklanganda: OSM’da faqat nuqta boʻlgan maktablar yonida maktab binosi bormi — muammolar qayta baholanadi
+  document.getElementById('panelTab').addEventListener('click', () => { document.body.classList.toggle('panel-hide'); });
   document.addEventListener('nx:tour', () => { if (S.tab === 'twin') renderKeepScroll(); });
   document.addEventListener('nx:buildings', () => { if (S.model && S.model.schools && S.model.schools.some(o => o.ot === 'n' && !o.safe)) { NX.analysis.refresh(S.model); if (S.tab === 'problems') renderKeepScroll(); } });
   function rebuildModel() {
@@ -1913,6 +1974,7 @@
   function openSettings(focus) {
     $('#keyTomtom').value = NX.store.get('key:tomtom', '');
     $('#keyOpenai').value = NX.store.get('key:openai', '');
+    $('#keyGoogle3d').value = NX.store.get('key:google3d', '');
     $('#fixPin').value = NX.store.get('fixes:pin', '');
     const fl = NX.fixes.list();
     $('#fixInfo').textContent = `Xaritaga ${fl.length} ta tuzatish kiritilgan (${fl.filter(x => x.shared).length} tasi hamma uchun).` + (NX.fixes.status() === false ? ' Server ombori hali ulanmagan.' : '');
@@ -1946,6 +2008,7 @@
       e.preventDefault();
       NX.store.set('key:tomtom', $('#keyTomtom').value.trim());
       NX.store.set('key:openai', $('#keyOpenai').value.trim());
+      NX.store.set('key:google3d', $('#keyGoogle3d').value.trim());
       NX.store.set('fixes:pin', $('#fixPin').value.trim());
       if ($('#fixPin').value.trim()) NX.fixes.syncLocal().then(n => { if (n) { toast(`${n} ta tuzatish hamma uchun saqlandi.`, 'ok'); NX.fixes.loadShared().then(rebuildModel); } });
       closeSettings(); toast('Sozlamalar saqlandi (faqat shu brauzerda).', 'ok');
@@ -2044,6 +2107,7 @@
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
+        case 'g3d': if (NX.g3d.available()) NX.g3d.open(); else { toast('Google fotoreal 3D uchun Sozlamalarda Google Maps API kalitini kiriting (Map Tiles API yoqilgan boʻlsin).', 'warn'); openSettings(); setTimeout(() => $('#keyGoogle3d').focus(), 50); } break;
         case 'twin-rain': twinFlood2d([{ t0: 0, t1: 3600, mmh: +b.dataset.mm }], `${b.dataset.mm} mm, 1 soatda`); break;
         case 'twin-forecast': {
           const R0 = twinState().rain;

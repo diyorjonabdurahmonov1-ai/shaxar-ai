@@ -481,6 +481,7 @@ ${MAPRULE}`;
     const sim = r => r ? { shahar_boʻyicha_yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0 && x.name).slice(0, 6).map(x => ({ koʻcha: x.name, qoʻshimcha_mashina_soat: Math.round(x.dv), toʻlishi_foiz: Math.round(x.scenVC * 100) })), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
     return {
       hudud_osm: {
+        model_chegarasi: st.outside ? 'hudud transport modeli (tarixiy markaz) dan tashqarida — koʻchalarga yuklama (simulyatsiya) hisoblanmagan, koʻcha va obyektlar butun shahar maʼlumotidan' : 'transport modeli ichida',
         maydon_ga: +st.areaHa.toFixed(1), koʻchalar: st.streets.filter(s => s.name).slice(0, 10).map(s => s.name), koʻcha_km: +st.streetKm.toFixed(1),
         muammolar: g, bekatlar_ichida: st.stops, bekat_400m_qamrovi_foiz: st.coverage != null ? Math.round(st.coverage) : null,
         eng_yaqin_bekat_m: st.nearestStop && st.nearestStop.d, avtobus_liniyalari_400m: st.lines.slice(0, 12),
@@ -534,6 +535,7 @@ Qoidalar:
 - “muhofaza” berilgan boʻlsa va koʻcha UNESCO zonasida — kengaytirish, yangi polosa, buzish kabi yechimlarda Madaniy meros agentligi kelishuvi kerakligini ayt; UNESCO asosiy hududida (Temuriylar, Yevropa qismi, Afrosiyob) koʻchani kengaytirish yoki binolarni buzishni tavsiya qilma — tashkiliy yechimlarni (svetofor, bir tomonlama, jamoat transporti) taklif qil.
 - “internet” berilgan boʻlsa (oʻtgan haqiqiy hodisalar) — model natijasini shu real hodisalar bilan solishtir: mos kelgan va kelmagan joylarni ayt, manba bilan.
 - “real_hodisalar_oav” berilgan boʻlsa (Samarqandda haqiqatda suv bosgan koʻchalar, OAV): **Real hodisalar bilan solishtirish** — har biri uchun bir qator: koʻcha, sana, model ham koʻrsatdimi. Model koʻrsatmagan joyda sabab odatda ariq/kanal tiqilishi ekanini ayt (xaritada 📰 H belgilar).
+- “belgilangan_hudud_suv” berilgan boʻlsa — savol foydalanuvchi chizgan hudud haqida: javobni FAQAT shu hududdagi koʻchalar bilan boshla (roʻyxat shu yerda); shahar boʻyicha raqamlarni bir gapda qoʻsh.
 - “ariqlar_tiqilgan_holat” berilgan boʻlsa: avval kanalizatsiya ishlaganda (asosiy hisob), keyin ariq va kollektorlar tiqilgan boʻlsa qaysi koʻchalarda suv toʻplanishini ayt — xaritada shu holat koʻrsatilgan.
 - Zilzila soʻralsa: “xavf_xaritasi” dagi zonalar va raqamlar asosida javob ber; bino mustahkamligi (material, yil) maʼlumoti yoʻqligini bir gapda ayt. Raqam oʻylab topma.
 - “xavf_xaritasi” berilgan boʻlsa — bu koʻcha tarmogʻida hisoblangan va XARITADA CHIZILGAN natija. Javobni shunga qur va id lar bilan ayt (Z1, R1, S1, H1 — xaritadagi belgilar shu nomda):
@@ -632,6 +634,16 @@ No text, no labels, no logos. Output only the prompt.`;
   async function areaAsk(q, A, history, extra) {
     const facts = areaFacts(A, extra);
     const local = () => {
+      // “Nima qursam foydali” — xizmatlar qamrovi meʼyorga nisbatan (hisob natijasi)
+      if (A.needs && A.needs.list && A.needs.list.length && (NX.area.NEED_Q.test(q) || !A.res)) {
+        const L = A.needs.list.slice().sort((a, b) => (b.yetishmovchilik || 0) - (a.yetishmovchilik || 0));
+        const bad = L.filter(x => (x.qamrov_foiz ?? 100) < 80).slice(0, 4), okL = L.filter(x => (x.qamrov_foiz ?? 0) >= 80);
+        const site = n => { const m = (A.match || []).find(z => z.need === n && z.site); return m ? ` — mos joy: ${m.site.id} (${NX.fmt.int(m.site.maydon_m2)} m²)` : ''; };
+        return [bad.length ? `**Eng kerakli — ${bad[0].uz}:** uylarning ${bad[0].qamrov_foiz}% i ${bad[0].meyor_radius_m} m meʼyorida${bad[0].kerak_orin ? `, ~${NX.fmt.int(bad[0].kerak_orin)} ${bad[0].birlik || ''} kerak` : ''}.` : '**Hududda asosiy xizmatlar meʼyor ichida.**',
+          bad.length ? `**Nima yetishmaydi**\n${bad.map(x => `- ${x.uz}: qamrov ${x.qamrov_foiz}% (meʼyor ${x.meyor_radius_m} m)${x.eng_yaqini ? `, eng yaqini ${NX.fmt.int(x.eng_yaqini.m)} m — ${x.eng_yaqini.nomi || 'nomsiz'}` : ''}${site(x)}`).join('\n')}` : '',
+          okL.length ? `**Yetarli:** ${okL.map(x => x.uz).join(', ')}.` : '',
+          'Obyektlar ochiq xaritadan (OSM) — chizilmaganlari boʻlishi mumkin; yer egaligi va mavjud sigʻimni tegishli boʻlimdan tasdiqlang.'].filter(Boolean).join('\n\n');
+      }
       if (!A.res) {
         const h = facts.hudud_osm, m = Object.keys(h.muammolar);
         return [`**Hozir:** ${h.maydon_ga} ga, ${h.koʻcha_km} km koʻcha, ${h.bekatlar_ichida} ta bekat, ${h.svetoforlar} ta svetofor, ${h.maktab_bogcha_ichida} ta maktab/bogʻcha.`,

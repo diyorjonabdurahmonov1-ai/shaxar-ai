@@ -891,3 +891,32 @@ html.lite .think-orb i, html.lite .think-w, html.lite .think-bar i { animation-d
 .lm-tag span { padding: 3px 10px; border-radius: 999px; background: rgba(3, 7, 16, .78); border: 1px solid rgba(251, 191, 36, .7); color: #fde68a; font: 600 .74rem system-ui; white-space: nowrap; box-shadow: 0 0 14px rgba(251, 191, 36, .35); backdrop-filter: blur(4px); transition: transform .2s; }
 .lm-tag:hover span { transform: scale(1.08); }
 .sun-now { align-self: center; }
+/* ---------- 3D egizak: katta ekran, boshqaruv, legenda, kinematik koʻrinish ---------- */
+#map3d::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 2; background: radial-gradient(ellipse at 50% 55%, transparent 55%, rgba(2, 6, 16, .55) 100%); }
+.tw-ctl { position: absolute; left: 12px; top: 64px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+.tw-ctl button { display: flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 12px; border: 1px solid rgba(94, 234, 212, .35); background: rgba(3, 7, 16, .78); color: #e2e8f0; font: 600 .78rem system-ui; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 6px 18px rgba(0, 0, 0, .35); transition: transform .15s, border-color .15s; }
+.tw-ctl button:hover { transform: translateX(2px); border-color: #5eead4; }
+.tw-ctl button.on { background: linear-gradient(135deg, rgba(20, 184, 166, .55), rgba(14, 116, 144, .55)); border-color: #5eead4; }
+.tw-ctl button[data-tw=big] { font-size: .86rem; padding: 9px 13px; border-color: #5eead4; box-shadow: 0 0 16px rgba(94, 234, 212, .3); }
+.tw-leg { position: absolute; left: 12px; bottom: 34px; z-index: 5; width: 190px; padding: 8px 10px; border-radius: 12px; background: rgba(3, 7, 16, .78); border: 1px solid rgba(94, 234, 212, .3); color: #cbd5e1; font-size: .72rem; backdrop-filter: blur(6px); }
+.tw-leg i { display: block; height: 8px; border-radius: 4px; margin: 5px 0 3px; background: linear-gradient(90deg, #1f3b4d, #24566a, #1f7f86, #22a39a, #5eead4, #ccfbf1); }
+.tw-leg span { display: flex; justify-content: space-between; } .tw-leg em { font-style: normal; } .tw-leg small { color: #fbbf24; }
+/* Katta 3D: xarita butun kenglikda, panel oʻngda yigʻiladigan shisha oyna boʻlib suzadi */
+body.big3d .layout { grid-template-columns: 1fr 0; }
+body.big3d #panel { position: fixed; right: 14px; top: calc(var(--header) + 12px); bottom: 14px; width: min(400px, 92vw); z-index: 1200; border-radius: 16px; border: 1px solid rgba(94, 234, 212, .3); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); transition: transform .3s ease; }
+body.big3d.panel-hide #panel { transform: translateX(calc(100% + 24px)); }
+.panel-tab { display: none; }
+body.big3d .panel-tab { display: flex; position: fixed; right: 14px; top: calc(var(--header) + 12px); z-index: 1250; padding: 8px 12px; border-radius: 12px; border: 1px solid #5eead4; background: rgba(3, 7, 16, .85); color: #e2e8f0; font: 600 .8rem system-ui; cursor: pointer; }
+body.big3d:not(.panel-hide) .panel-tab { right: calc(min(400px, 92vw) + 24px); }
+@media (max-width: 820px) { .map-wrap.twin-on { height: 70svh; } body.big3d .map-wrap.twin-on { height: calc(100svh - var(--header)); } .tw-ctl button span { display: none; } .tw-leg { display: none; } }
+body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(400px, 92vw) + 18px); }
+/* Google fotoreal 3D oynasi */
+#g3d { position: absolute; inset: 0; z-index: 1150; background: #020617; }
+#g3dView { position: absolute; inset: 0; }
+#g3d .cesium-viewer-bottom { opacity: .85; }
+.g3d-top { position: absolute; left: 12px; right: 12px; top: 12px; display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 12px; background: rgba(3, 7, 16, .8); border: 1px solid rgba(94, 234, 212, .35); color: #e2e8f0; backdrop-filter: blur(6px); z-index: 2; }
+.g3d-top .g3d-st { flex: 1; color: #94a3b8; }
+.g3d-x { border: 1px solid #5eead4; background: none; color: #e2e8f0; border-radius: 10px; padding: 5px 10px; cursor: pointer; }
+.g3d-spots { position: absolute; left: 12px; bottom: 36px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; max-width: 70%; }
+.g3d-spots button { padding: 6px 11px; border-radius: 999px; border: 1px solid rgba(251, 191, 36, .7); background: rgba(3, 7, 16, .8); color: #fde68a; font: 600 .76rem system-ui; cursor: pointer; }
+.g3d-btn { border-color: #fbbf24 !important; color: #fde68a !important; }

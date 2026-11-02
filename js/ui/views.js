@@ -47,7 +47,7 @@
       ${T.err ? `<p class="small bad-text">⚠️ ${E(T.err)}</p>` : ''}
       <div class="chips">${chip('height', '🏢 Balandlik')}${chip('solar', '☀️ Quyosh')}${chip('flood', '🌧 Suv toshqini')}${chip('quake', '🏚 Zilzila')}${chip('plan', '🏗 Yangi bino va soya')}</div>
       <div class="row-btns">${[['twin', '✨ Raqamli egizak'], ['sat', '🛰 Sunʼiy yoʻldosh'], ['street', '🗺 Xarita']].map(([k, t]) => `<button class="btn xs${NX.map3d.base() === k ? ' primary' : ''}" data-act="twin-base" data-base="${k}">${t}</button>`).join('')}</div>
-      <div class="row-btns"><button class="btn xs${NX.map3d.touring() ? ' primary' : ''}" data-act="twin-tour">${NX.map3d.touring() ? '⏹ Sayohatni toʻxtatish' : '🎬 Obidalar boʻylab sayohat'}</button>${(() => { const sp = NX.map3d.sun(); return sp ? `<span class="small muted sun-now">${sp.alt > 0 ? `☀️ Quyosh ${Math.round(sp.alt)}° balandlikda — soyalar real vaqtda` : '🌙 Kechki shahar — derazalar yonadi'}</span>` : ''; })()}</div>
+      <div class="row-btns"><button class="btn xs g3d-btn" data-act="g3d" title="Google Photorealistic 3D Tiles — real binolar, daraxtlar, rang (Google Maps API kaliti kerak)">🌐 Google fotoreal 3D</button><button class="btn xs${NX.map3d.touring() ? ' primary' : ''}" data-act="twin-tour">${NX.map3d.touring() ? '⏹ Sayohatni toʻxtatish' : '🎬 Obidalar boʻylab sayohat'}</button>${(() => { const sp = NX.map3d.sun(); return sp ? `<span class="small muted sun-now">${sp.alt > 0 ? `☀️ Quyosh ${Math.round(sp.alt)}° balandlikda — soyalar real vaqtda` : '🌙 Kechki shahar — derazalar yonadi'}</span>` : ''; })()}</div>
       ${b.length ? `<p class="small muted">🏙 ${F.int(b.length)} ta bino 3D da${b.some(x => x.ml) ? ` — shundan ${F.int(b.filter(x => x.ml).length)} tasi OSM’da yoʻq, sunʼiy yoʻldosh suratidan (Microsoft)` : ''}.</p>` : ''}
     </section>
     ${twinChat(S)}
@@ -662,8 +662,10 @@
 
   // AI tavsiya qilgan joylar (xaritada raqamli belgilar)
   function annList(m) {
-    if (!m.actions || !m.actions.length) return '';
-    return `<div class="deep-opts"><b class="small">📍 Xaritada belgilandi:</b>${m.actions.map((a, i) => { const p = a.kind === 'line' ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon]; return `<button class="dopt lv0" data-act="ann-fly" data-lat="${p[0]}" data-lon="${p[1]}"><span><b>${i + 1}. ${E(a.title)}</b></span><small>${E(a.note || '')}</small></button>`; }).join('')}</div>`;
+    // Faqat roʻyxatga mos belgilar (mayda nuqtalar, suv, chiziq boʻlaklari emas); chiziqda boshi/oxiri boʻlmasa — oʻrta nuqtasi
+    const acts = (m.actions || []).filter(a => a && a.list !== false && a.kind !== 'water' && a.kind !== 'zone' || (a && a.kind === 'zone' && a.list !== false)).filter(a => a.lat != null || (a.from && a.to)).slice(0, 30);
+    if (!acts.length) return '';
+    return `<div class="deep-opts"><b class="small">📍 Xaritada belgilandi:</b>${acts.map((a, i) => { const p = a.kind === 'line' && a.from && a.to ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon]; return `<button class="dopt lv0" data-act="ann-fly" data-lat="${p[0]}" data-lon="${p[1]}"><span><b>${i + 1}. ${E(a.title)}</b></span><small>${E(a.note || '')}</small></button>`; }).join('')}</div>`;
   }
 
   // Chuqur tahlil variantlari: raqamlar (sayt hisobi) va xaritada koʻrsatish tugmasi

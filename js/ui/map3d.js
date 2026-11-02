@@ -42,8 +42,8 @@
       VEC.forEach(l => map.addLayer(Object.assign({}, l, { layout: Object.assign({}, l.layout, { visibility: vis(base === 'twin') }) }), 'roads-glow'));
       LABELS.forEach(l => map.addLayer(Object.assign({}, l, { layout: Object.assign({}, l.layout, { visibility: vis(base !== 'street') }) }), 'hz-zone'));
       // Bogʻlar va daraxtzorlar — yashil hajm (daraxt tojlari ~7 m), binolar oldidan
-      map.addLayer({ id: 'v-trees', type: 'fill-extrusion', source: 'omt', 'source-layer': 'landcover', minzoom: 14, filter: ['match', ['get', 'class'], ['wood', 'forest'], true, false], layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#0f5132' : '#2f6b3a', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 7], 'fill-extrusion-opacity': 0.55, 'fill-extrusion-vertical-gradient': true } }, 'bld');
-      map.addLayer({ id: 'v-parks3d', type: 'fill-extrusion', source: 'omt', 'source-layer': 'park', minzoom: 14, layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#11603a' : '#3b7a45', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 5], 'fill-extrusion-opacity': 0.4, 'fill-extrusion-vertical-gradient': true } }, 'bld');
+      map.addLayer({ id: 'v-trees', type: 'fill-extrusion', source: 'omt', 'source-layer': 'landcover', minzoom: 14, filter: ['match', ['get', 'class'], ['wood', 'forest'], true, false], layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#0f5132' : '#2f6b3a', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 7], 'fill-extrusion-opacity': 0.45, 'fill-extrusion-vertical-gradient': true } }, 'bld');
+      map.addLayer({ id: 'v-parks3d', type: 'fill-extrusion', source: 'omt', 'source-layer': 'park', minzoom: 14, layout: { visibility: vis(base !== 'street') }, paint: { 'fill-extrusion-color': base === 'twin' ? '#11603a' : '#3b7a45', 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 2], 'fill-extrusion-opacity': 0.28, 'fill-extrusion-vertical-gradient': true } }, 'bld');
     } catch (e) { console.warn('Vektor fon:', e.message); }
   }
   // Fon turiga qarab: Raqamli egizak — vektor qatlamlar hammasi; sunʼiy yoʻldosh — faqat nomlar; xarita — hech biri
@@ -279,6 +279,29 @@
     };
     step();
   }
+  // ---------- 3D boshqaruv paneli (xarita ustida): katta ekran, kamera burchaklari, balandlik legendasi ----------
+  function controls(el) {
+    const box = document.createElement('div'); box.className = 'tw-ctl';
+    box.innerHTML = `<button type="button" data-tw="big" title="3D ni katta ekranda ochish (panel yon tomonga yigʻiladi)">⛶ <span>Katta 3D</span></button>
+      <button type="button" data-tw="top" title="Yuqoridan">⬇ Yuqoridan</button><button type="button" data-tw="tilt" title="Qiya (60°)">◢ Qiya</button><button type="button" data-tw="eye" title="Inson koʻzi balandligidan">👁 Koʻcha</button><button type="button" data-tw="spin" title="Shahar ustida aylanish">⟳ Aylanish</button>`;
+    el.appendChild(box);
+    const leg = document.createElement('div'); leg.className = 'tw-leg'; leg.innerHTML = '<b>Qavatlar</b><i></i><span><em>1</em><em>3</em><em>6</em><em>9</em><em>14+</em></span><small>oltin — tarixiy obidalar</small>'; el.appendChild(leg);
+    let spin = 0;
+    const stopSpin = () => { if (spin) { cancelAnimationFrame(spin); spin = 0; box.querySelector('[data-tw=spin]').classList.remove('on'); } };
+    ['dragstart', 'wheel', 'touchstart'].forEach(ev => map.on(ev, stopSpin));
+    box.addEventListener('click', e => {
+      const b = e.target.closest('[data-tw]'); if (!b || !map) return;
+      const k = b.dataset.tw;
+      if (k === 'big') { document.body.classList.toggle('big3d'); b.classList.toggle('on', document.body.classList.contains('big3d')); b.querySelector('span').textContent = document.body.classList.contains('big3d') ? 'Oddiy' : 'Katta 3D'; setTimeout(() => map.resize(), 320); return; }
+      stopSpin();
+      if (k === 'top') map.easeTo({ pitch: 0, bearing: 0, duration: 1200 });
+      if (k === 'tilt') map.easeTo({ pitch: 60, duration: 1200 });
+      if (k === 'eye') map.easeTo({ pitch: 80, zoom: Math.max(map.getZoom(), 17.3), duration: 1500 });
+      if (k === 'spin') { b.classList.add('on'); let last = performance.now(); const f = t => { map.setBearing(map.getBearing() + (t - last) * 0.006); last = t; spin = requestAnimationFrame(f); }; spin = requestAnimationFrame(f); }
+    });
+    const legVis = () => { leg.hidden = !(mode === 'height' && base === 'twin'); };
+    controls.legVis = legVis; legVis();
+  }
   function init(el) {
     if (ready) return ready;
     ready = new Promise((resolve, reject) => {
@@ -332,6 +355,7 @@
         applySun(); setInterval(applySun, 5 * 60000);
         sky();
         landmarks();
+        controls(el);
         ['dragstart', 'wheel', 'touchstart'].forEach(ev => map.on(ev, () => { if (tourOn) tourStop(); }));
         map.addSource('plan', { type: 'geojson', data: planGeo() });
         map.addLayer({ id: 'shadow', type: 'fill', source: 'plan', filter: ['==', ['get', 'kind'], 'shadow'], paint: { 'fill-color': '#0f172a', 'fill-opacity': 0.25 } });
@@ -436,6 +460,7 @@
     if (map.getSource('water')) map.getSource('water').setData(waterGeo());
     if (map.getSource('water-vol')) map.getSource('water-vol').setData(waterVolGeo());
     if (mode === 'flood' && data.rainMm) rainStart();
+    if (controls.legVis) controls.legVis();
     // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
     ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));
     map.getSource('plan').setData(planGeo());
