@@ -67,12 +67,32 @@
     });
     return out;
   }
+  // Tarixiy obidalar va diniy binolar: OSM’da balandlik yozilmagan boʻlsa — ochiq manbalardagi haqiqiy balandliklar (taxminiy, oʻrtacha massa;
+  // peshtoq va minoralar bundan baland). Aks holda masjid/madrasa “1 qavatli uy” boʻlib qoladi.
+  const LM = [
+    { c: [39.6547, 66.9757], r: 140, h: 26, n: 'Registon madrasalari (peshtoq ~35 m)' },
+    { c: [39.6606, 66.9794], r: 110, h: 30, n: 'Bibixonim (peshtoq ~35 m, gumbaz ~40 m)' },
+    { c: [39.6485, 66.9690], r: 70, h: 28, n: 'Goʻri Amir (gumbaz ~34 m)' },
+    { c: [39.6628, 66.9880], r: 220, h: 13, n: 'Shohi Zinda maqbaralari' },
+    { c: [39.6591, 66.9745], r: 60, h: 14, n: 'Hazrati Xizr masjidi' },
+  ];
+  const LM_KIND = /mosque|religious|cathedral|church|temple|shrine/, LM_NAME = /madras|masjid|maqbara|mausole|registon|bibixonim|go.?ri.?amir|shohi.?zinda|xonaqoh|мадраса|мечеть|мавзолей/i;
+  function refine(list) {
+    list.forEach(b => {
+      const lmk = LM_KIND.test(b.kind) || (b.name && LM_NAME.test(b.name));
+      const [x, y] = G.xy(b.c[0], b.c[1]);
+      const spot = LM.find(l => { const [lx, ly] = G.xy(l.c[0], l.c[1]); return Math.hypot(lx - x, ly - y) < l.r; });
+      if (spot && (lmk || b.area > 600) && b.est) { b.height = spot.h; b.levels = Math.round(spot.h / 3.2); b.lmH = spot.n; }
+      else if (lmk && b.est && b.area > 150) { b.height = Math.max(b.height, b.area > 800 ? 14 : 10); b.levels = Math.round(b.height / 3.2); }
+    });
+    return list;
+  }
   let staticBox = null;
   async function loadStatic() {
     const r = await fetch(STATIC_URL);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const doc = await r.json();
-    const l = decodeStatic(doc);
+    const l = refine(decodeStatic(doc));
     if (l.length < 1000) throw new Error('fayl toʻliq emas');
     return { list: l, src: doc.src };
   }

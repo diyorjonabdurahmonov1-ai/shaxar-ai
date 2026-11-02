@@ -279,11 +279,21 @@
     };
     step();
   }
+  // Balandlik masshtabi (↕): binolar baland/past farqi yaqqolroq koʻrinsin (×1 — haqiqiy)
+  let hScale = 1;
+  try { hScale = +localStorage.getItem('m3d:hscale') || 1; } catch (e) { /* */ }
+  const HX = () => ['*', ['get', 'h'], hScale];
+  function applyHeight() {
+    if (!map || !map.getLayer('bld')) return;
+    map.setPaintProperty('bld', 'fill-extrusion-height', ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, HX()]);
+    map.setPaintProperty('bld-roof', 'fill-extrusion-base', ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, HX()]);
+    map.setPaintProperty('bld-roof', 'fill-extrusion-height', ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['+', HX(), 0.6]]);
+  }
   // ---------- 3D boshqaruv paneli (xarita ustida): katta ekran, kamera burchaklari, balandlik legendasi ----------
   function controls(el) {
     const box = document.createElement('div'); box.className = 'tw-ctl';
     box.innerHTML = `<button type="button" data-tw="big" title="3D ni katta ekranda ochish (panel yon tomonga yigʻiladi)">⛶ <span>Katta 3D</span></button>
-      <button type="button" data-tw="top" title="Yuqoridan">⬇ Yuqoridan</button><button type="button" data-tw="tilt" title="Qiya (60°)">◢ Qiya</button><button type="button" data-tw="eye" title="Inson koʻzi balandligidan">👁 Koʻcha</button><button type="button" data-tw="spin" title="Shahar ustida aylanish">⟳ Aylanish</button>`;
+      <button type="button" data-tw="top" title="Yuqoridan">⬇ Yuqoridan</button><button type="button" data-tw="tilt" title="Qiya (60°)">◢ Qiya</button><button type="button" data-tw="eye" title="Inson koʻzi balandligidan">👁 Koʻcha</button><button type="button" data-tw="spin" title="Shahar ustida aylanish">⟳ Aylanish</button><button type="button" data-tw="hx" title="Balandliklarni 2 barobar koʻrsatish (maket kabi)" class="${hScale > 1 ? 'on' : ''}">↕ Balandlik ×${hScale > 1 ? 1 : 2}</button>`;
     el.appendChild(box);
     const leg = document.createElement('div'); leg.className = 'tw-leg'; leg.innerHTML = '<b>Qavatlar</b><i></i><span><em>1</em><em>3</em><em>6</em><em>9</em><em>14+</em></span><small>oltin — tarixiy obidalar</small>'; el.appendChild(leg);
     let spin = 0;
@@ -293,6 +303,7 @@
       const b = e.target.closest('[data-tw]'); if (!b || !map) return;
       const k = b.dataset.tw;
       if (k === 'big') { document.body.classList.toggle('big3d'); b.classList.toggle('on', document.body.classList.contains('big3d')); b.querySelector('span').textContent = document.body.classList.contains('big3d') ? 'Oddiy' : 'Katta 3D'; setTimeout(() => map.resize(), 320); return; }
+      if (k === 'hx') { hScale = hScale > 1 ? 1 : 2; try { localStorage.setItem('m3d:hscale', String(hScale)); } catch (e) { /* */ } b.classList.toggle('on', hScale > 1); b.textContent = `↕ Balandlik ×${hScale > 1 ? 1 : 2}`; applyHeight(); return; }
       stopSpin();
       if (k === 'top') map.easeTo({ pitch: 0, bearing: 0, duration: 1200 });
       if (k === 'tilt') map.easeTo({ pitch: 60, duration: 1200 });
@@ -355,7 +366,7 @@
         applySun(); setInterval(applySun, 5 * 60000);
         sky();
         landmarks();
-        controls(el);
+        controls(el); applyHeight();
         ['dragstart', 'wheel', 'touchstart'].forEach(ev => map.on(ev, () => { if (tourOn) tourStop(); }));
         map.addSource('plan', { type: 'geojson', data: planGeo() });
         map.addLayer({ id: 'shadow', type: 'fill', source: 'plan', filter: ['==', ['get', 'kind'], 'shadow'], paint: { 'fill-color': '#0f172a', 'fill-opacity': 0.25 } });
@@ -393,7 +404,7 @@
           const id = e.features[0].properties.id, b = data.buildings.find(x => x.id === id);
           if (!b) return;
           const kwh = data.ghi ? NX.twin.roofKwh(b, data.ghi.kwh) : null;
-          new window.maplibregl.Popup({ maxWidth: '260px' }).setLngLat(e.lngLat).setHTML(`<div class="ppop"><b>🏢 ${NX.esc(b.name || KIND[b.kind] || 'Bino')}</b><div>${b.levels} qavat${b.est ? ' <small class="muted">(qavati nomaʼlum — oʻlchamiga qarab)</small>' : ''} · ~${Math.round(b.height)} m</div><div>Bino osti: ${NX.fmt.int(b.area)} m²</div><div class="small muted">${b.ml ? 'Manba: sunʼiy yoʻldosh surati (Microsoft ML Buildings)' : 'Manba: OpenStreetMap'}</div>${kwh != null ? `<div>☀️ Tom quyosh salohiyati: ~${NX.fmt.int(kwh)} kVt·soat/yil</div>` : ''}</div>`).addTo(map);
+          new window.maplibregl.Popup({ maxWidth: '260px' }).setLngLat(e.lngLat).setHTML(`<div class="ppop"><b>🏢 ${NX.esc(b.name || KIND[b.kind] || 'Bino')}</b><div>${b.lmH ? `~${Math.round(b.height)} m — ${NX.esc(b.lmH)} <small class="muted">(ochiq manbalar, taxminiy)</small>` : `${b.levels} qavat${b.est ? ' <small class="muted">(qavati nomaʼlum — oʻlchamiga qarab)</small>' : ''} · ~${Math.round(b.height)} m`}</div><div>Bino osti: ${NX.fmt.int(b.area)} m²</div><div class="small muted">${b.ml ? 'Manba: sunʼiy yoʻldosh surati (Microsoft ML Buildings)' : 'Manba: OpenStreetMap'}</div>${kwh != null ? `<div>☀️ Tom quyosh salohiyati: ~${NX.fmt.int(kwh)} kVt·soat/yil</div>` : ''}</div>`).addTo(map);
         });
         map.on('mouseenter', 'bld', () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'bld', () => { map.getCanvas().style.cursor = ''; });

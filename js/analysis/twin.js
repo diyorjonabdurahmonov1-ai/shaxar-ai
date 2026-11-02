@@ -298,6 +298,7 @@
   // Butun shahar koʻchalari — 3×3 = 9 kichik qism; har qism alohida saqlanadi; kelgan qismlar darhol ishlatiladi, kelmaganlari keyin qayta soʻraladi.
   // “out body” — tugun raqamlari bilan (tarmoq uchun shart). Hech biri kelmasa ham — markaz koʻchalari (sayt modeli) ishlatiladi.
   function roadsFromModel(M) {
+    if (!M || !M.ways) return [];   // model hali yuklanmagan (3D egizak avval ochilsa) — butun shahar koʻchalari fayli ishlatiladi
     return M.ways.map(w => ({ id: 'm' + w.i, hw: w.hw, name: (M.streets[w.street] && M.streets[w.street].name) || '', nodes: w.nodes, ll: w.ll }));
   }
   function partsOf() {
