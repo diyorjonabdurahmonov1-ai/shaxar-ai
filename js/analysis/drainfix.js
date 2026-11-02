@@ -10,7 +10,15 @@
   'use strict';
   const NX = window.NX;
   const G = NX.geo;
-  const C_RUN = 0.75, N_PIPE = 0.013;
+  const C_RUN = 0.75, N_PIPE = 0.013, DESIGN_MM = 25;
+  // Taxminiy narxlar (mln soʻm, qazish va qoplamani tiklash bilan; loyiha smetasi emas — variantlarni solishtirish uchun)
+  const COST = {
+    pipe: d => (d <= 400 ? 1.5 : d <= 600 ? 2.5 : d <= 800 ? 3.5 : d <= 1000 ? 4.5 : d <= 1200 ? 6 : d <= 1600 ? 8.5 : 12),
+    press: q => (q <= 0.25 ? 1.8 : q <= 1 ? 3.5 : 6),
+    pump: q => 600 + 900 * q,
+    lotok: b => (b <= 0.8 ? 0.9 : b <= 1.5 ? 1.6 : 2.5),
+    tank: v => v * 1.8, green: v => v * 0.35, inlet: 12, clean100: 3,
+  };
   const SIZES = [300, 400, 500, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000];
 
   // Ariq/kanal/daryolar — OSM (brauzerda, bir marta)
@@ -91,6 +99,9 @@
     // 3) Oqim: ratsional formula; mavjud tizim (ariq/kanalizatsiya) sigʻimi
     // Oqim: ratsional formula (mahalliy havza); kerakli qoʻshimcha sigʻim — 2D modeldagi toʻplanadigan suvni 1 soatda olib ketish
     const i = o.rainMm, Q = C_RUN * (i / 3.6e6) * A, Qex = C_RUN * ((o.drainMm || 10) / 3.6e6) * A, Qneed = Math.max(0.02, Math.min(Math.max(0, Q - Qex), vol / 3600));
+    // Doimiy inshoot (quvur, ariq, nasos) MEʼYORIY yomgʻirga hisoblanadi (shahar koʻchalari, ~2 yilda bir marta: ~25 mm/soat, taxminiy);
+    // undan kuchli favqulodda jalada qolgan suv — koʻchma nasoslar va yer usti oqizish bilan (har koʻchaga ulkan quvur tortilmaydi)
+    const iD = Math.min(i, DESIGN_MM), Qd = Math.max(0.02, Math.min(Qneed, C_RUN * (Math.max(0, iD - (o.drainMm || 10)) / 3.6e6) * A));
     // 4) Chiqish joyi: ariq/kanal (pastroq) yoki relyef boʻyicha 3 m pastdagi joy; quvur — koʻchalar ostidan
     const ww = await waterways();
     // Mavjud ariq/kanallar: shu koʻcha boʻyida (25 m) va atrofda (800 m)
@@ -103,10 +114,9 @@
     const src = nearNode(site[0], site[1], 250);
     let outlet = null;
     const cands = [];
-    // Har ariq/kanaldan bitta — eng yaqin mos nuqta (nomzodlar turli suv yoʻllaridan boʻlsin)
-    ww.forEach(w => { let bestP = null; w.pts.forEach((p, j) => { if (j % 2) return; const z = zAt(p[0], p[1]); const [x, y] = G.xy(p[0], p[1]), dd = Math.hypot(x - sx0, y - sy0); if (NX.masterplan && NX.masterplan.zoneAt(p[0], p[1]) === 'afrosiyob') return; if (dd < 3500 && isFinite(z) && z < zPit - 1 && (!bestP || dd < bestP.dd)) bestP = { c: p, z, dd, name: w.name, kind: WW_UZ[w.kind] || 'ariq' }; }); if (bestP) cands.push(bestP); });
-    cands.sort((a, b) => a.dd - b.dd);   // eng yaqinlari birinchi
-    // Relyef boʻyicha pastga (D8) — ariq topilmasa
+    // Har ariq/kanaldan bitta — eng yaqin nuqta (1.5 km ichida, balandligidan qatʼi nazar: past boʻlsa — oʻz oqimi, baland boʻlsa — kichik nasos)
+    ww.forEach(w => { let bestP = null; w.pts.forEach(p => { if (NX.masterplan && NX.masterplan.zoneAt(p[0], p[1]) === 'afrosiyob') return; const z = zAt(p[0], p[1]), [x, y] = G.xy(p[0], p[1]), dd = Math.hypot(x - sx0, y - sy0); if (dd < 1500 && isFinite(z) && (!bestP || dd < bestP.dd)) bestP = { c: p, z, dd, name: w.name, kind: WW_UZ[w.kind] || 'ariq', big: /river|canal/.test(w.kind) }; }); if (bestP) cands.push(bestP); });
+    cands.sort((a, b) => a.dd - b.dd);
     { let k = k0, g = 0; while (k >= 0 && g++ < 200) { if (D.z[k] < zPit - 3) { const c = cellLL(k), [x, y] = G.xy(c[0], c[1]); cands.push({ c, z: D.z[k], dd: Math.hypot(x - sx0, y - sy0) + 500, name: '', kind: 'past joy (relyef boʻyicha)' }); break; } k = H.down[k]; } }
     // Koʻcha tarmogʻi boʻylab eng qisqa yoʻl (birinchi 6 nomzoddan eng yaqini)
     const route = (a, b) => {
@@ -116,26 +126,38 @@
       const pop = () => { const t = Q2[0], l = Q2.pop(); if (Q2.length) { Q2[0] = l; let c = 0; for (;;) { const a1 = 2 * c + 1, b1 = a1 + 1; let m = c; if (a1 < Q2.length && Q2[a1][0] < Q2[m][0]) m = a1; if (b1 < Q2.length && Q2[b1][0] < Q2[m][0]) m = b1; if (m === c) break; [Q2[m], Q2[c]] = [Q2[c], Q2[m]]; c = m; } } return t; };
       push(0, a);
       const zc = new Map(), zoneOf = m => { if (!NX.masterplan) return null; if (!zc.has(m)) zc.set(m, NX.masterplan.zoneAt(m.lat, m.lon)); return zc.get(m); };
-      while (Q2.length) { const [d, n] = pop(); if (done.has(n)) continue; done.add(n); if (n === b) break; if (d > 9000) break; n.nb.forEach(({ n: m, sg }) => { const zm = zoneOf(m); if (zm === 'afrosiyob') return; const nd = d + sg.len * (zm === 'temur' ? 2.5 : 1); if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, [n, sg]); push(nd, m); } }); }
+      while (Q2.length) { const [d, n] = pop(); if (done.has(n)) continue; done.add(n); if (n === b) break; if (d > 9000) break; n.nb.forEach(({ n: m, sg }) => { const zm = zoneOf(m); if (zm === 'afrosiyob') return; const nd = d + sg.len * (zm === 'temur' ? 2.5 : 1) * ((sg.w || 8) < 8 ? 1.7 : 1); if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, [n, sg]); push(nd, m); } }); }
       if (!prev.has(b) && a !== b) return null;
       const pts = [], names = []; let n = b, L = 0;
       while (n && n !== a) { pts.push([n.lat, n.lon]); const [p, sg] = prev.get(n); L += sg.len; if (sg.name && names[names.length - 1] !== sg.name) names.push(sg.name); n = p; }
       pts.push([a.lat, a.lon]); pts.reverse(); names.reverse();
       return { pts, L: Math.round(L), streets: [...new Set(names)].slice(0, 5) };
     };
-    // Bir nechta nomzod — koʻcha boʻylab eng qisqa yoʻl tanlanadi (5 km gacha)
-    const seenNode = new Set();
-    for (const c of cands.slice(0, 15)) { const t = nearNode(c.c[0], c.c[1], 700); if (!t || seenNode.has(t)) continue; seenNode.add(t); const r = route(src, t); if (r && r.L >= 30 && r.L <= 6000 && (!outlet || r.L < outlet.route.L)) outlet = Object.assign(c, { route: r }); }
+    // Har nomzod: koʻcha boʻylab yoʻl, oʻz oqimi bilan ketadimi, quvur oʻlchami va NARXI — eng arzon chiqish tanlanadi
+    const pipeFor = S => { let k = 1, d = pipeD(Qd, S); while (d.raw > 2000 && k < 6) { k++; d = pipeD(Qd / k, S); } return { k, d }; };
+    const evals = [], seenNode = new Set();
+    for (const c of cands.slice(0, 14)) {
+      let r = null;
+      if (c.dd < 60) r = { pts: [site, c.c], L: Math.max(10, Math.round(c.dd)), streets: [] };
+      else { const t = nearNode(c.c[0], c.c[1], 400); if (!t || seenNode.has(t)) continue; seenNode.add(t); r = route(src, t); }
+      if (!r || r.L > 3000) continue;
+      const grav = zPit - 1.5 > c.z + 0.3, S = grav ? Math.max(0.002, (zPit - 1.5 - (c.z + 0.3)) / Math.max(30, r.L)) : 0.003;
+      const pf = pipeFor(S);
+      const cost = grav ? COST.pipe(pf.d.std) * pf.k * r.L : COST.pump(Qd) + COST.press(Qd) * r.L;
+      const widen = !c.big && Qd > 1.5 ? 300 : 0;
+      evals.push(Object.assign({}, c, { route: r, grav, S, pf, widen, cost: Math.round(cost + widen * COST.lotok(1.5)) }));
+    }
+    evals.sort((a, b) => a.cost - b.cost);
+    outlet = evals[0] || null;
+    const seenAlt = new Set([outlet ? outlet.kind + outlet.name : '']);
+    const altOutlets = evals.slice(1).filter(e => { const k = e.kind + e.name; if (seenAlt.has(k)) return false; seenAlt.add(k); return true; }).slice(0, 3).map(e => ({ nomi: e.kind + (e.name ? ' “' + e.name + '”' : ''), masofa_m: e.route.L, oʻz_oqimi: e.grav, narx_mln_som: e.cost }));
     // Boʻylama profil (sxema uchun): yoʻl boʻylab yer sathi
     if (outlet) { let acc = 0; outlet.profile = outlet.route.pts.map((p, j) => { if (j) { const [ax, ay] = G.xy(outlet.route.pts[j - 1][0], outlet.route.pts[j - 1][1]), [bx, by] = G.xy(p[0], p[1]); acc += Math.hypot(bx - ax, by - ay); } return [Math.round(acc), +zAt(p[0], p[1]).toFixed(1)]; }).filter(q => isFinite(q[1])); }
-    // 5) Quvur
+    // 5) Quvur (oʻz oqimi bilan) yoki nasos + bosimli quvur — meʼyoriy oqim Qd ga
     let pipe = null;
-    if (outlet && Qneed > 0.01) {
-      const S = Math.max(0.002, (zPit - 1.5 - (outlet.z + 0.5)) / Math.max(50, outlet.route.L));   // 1.5 m chuqurlikda yotqiziladi
-      // Juda katta oqim — bir nechta parallel quvur (eng kattasi Ø2000) yoki yopiq kanal
-      let k = 1, d = pipeD(Qneed, S);
-      while (d.raw > 2000 && k < 6) { k++; d = pipeD(Qneed / k, S); }
-      pipe = { qiyalik_promille: +(S * 1000).toFixed(1), diametr_mm: d.std, soni: k, hisobiy_mm: d.raw, oʻtkazish_m3s: +(qFull(d.std, S) * k).toFixed(2), uzunlik_m: outlet.route.L, gravitatsion: zPit - 1.5 > outlet.z + 0.5, izoh: k > 1 ? `${k} ta parallel quvur yoki ${k > 3 ? 'yopiq toʻrtburchak kanal (box-culvert)' : 'katta kollektor'}` : null };
+    if (outlet) {
+      const { k, d } = outlet.pf, S = outlet.S;
+      pipe = { qiyalik_promille: +(S * 1000).toFixed(1), diametr_mm: d.std, soni: k, hisobiy_mm: d.raw, oʻtkazish_m3s: +(qFull(d.std, S) * k).toFixed(2), uzunlik_m: outlet.route.L, gravitatsion: outlet.grav, izoh: k > 1 ? `${k} ta parallel quvur` : null };
     }
     // 6) Saqlash rezervuari: yaqin (600 m) ochiq joy — park/maydon/sport (maktab hovlisi emas), muammo joyidan pastroq yoki teng
     const retV = Math.round(Math.max(vol, Qneed * 3600 * 0.5));
@@ -156,49 +178,57 @@
     if (zSite === 'yevropa' || zRoute.includes('yevropa')) lim.push('Yevropa qismi (UNESCO) — tarixiy koʻchalar qoplamasi va daraxtlar saqlanadi; ishlar kelishuv bilan.');
     if (zBasin === 'afrosiyob' || zBasin === 'temur') lim.push('Tanlangan rezervuar joyi UNESCO hududida — u yerda qazish mumkin emas, boshqa joy kerak.');
     if (pzBasin === 'konservatsiya') lim.push('Rezervuar joyi bosh rejada konservatsiya zonasi (yashil hudud) — faqat yer osti, yuzasi park sifatida tiklanadi.');
-    // 9) Variantlar va tavsiya
-    const opts = [];
-    opts.push({ id: 'C', nomi: 'Panjarali quduqlar + ariq/kollektorni tozalash', mos: Qneed < 0.3, izoh: `${inlets} ta panjarali quduq (har ~45 m), mavjud ariq va quvurlarni tozalash`, samara: Qneed < 0.3 ? 'yetarli' : `oʻzi yetarli emas — ${Qneed.toFixed(2)} m³/s qoʻshimcha sigʻim kerak` });
-    if (outlet) opts.push({ id: 'A', nomi: 'Yomgʻir suvi kollektori (yer osti quvur)', mos: !!pipe && pipe.gravitatsion && !(zRoute.includes('afrosiyob')), izoh: pipe ? `${pipe.soni > 1 ? pipe.soni + ' × ' : ''}Ø${pipe.diametr_mm} mm, ${F(outlet.route.L)} m, qiyalik ${pipe.qiyalik_promille}‰ → ${outlet.kind}${outlet.name ? ' “' + outlet.name + '”' : ''}` : 'oqim kichik — kollektor shart emas', samara: pipe ? `${pipe.oʻtkazish_m3s} m³/s oʻtkazadi (kerak ${Qneed.toFixed(2)})` : '' });
-    opts.push({ id: 'B', nomi: 'Yer osti saqlash rezervuari', mos: !!basinSite && !(zBasin === 'afrosiyob' || zBasin === 'temur'), izoh: `${F(retV)} m³ (≈ ${F(tankArea)} m², 2.5 m chuqur)${basinSite ? ` — ${basinSite.name}, ${basinSite.dd} m` : ' — yaqinda mos ochiq joy topilmadi'}`, samara: 'yomgʻir choʻqqisini ushlab, keyin sekin chiqaradi' });
-    if (!outlet || (pipe && !pipe.gravitatsion)) opts.push({ id: 'D', nomi: 'Nasos stansiyasi', mos: true, izoh: `≥ ${Math.max(0.05, Qneed).toFixed(2)} m³/s — tabiiy (gravitatsion) chiqish yoʻq`, samara: 'elektr va xizmat koʻrsatish kerak' });
-    // E — ochiq betonli lotok (ariq) koʻcha cheti boʻylab: UNESCO hududidan tashqarida va gravitatsion chiqish boʻlsa — eng arzon va tez
+    // 9) Variantlar: har biri — nima, sigʻimi, NARXI; tavsiya = yetarli boʻlganlar ichida eng arzoni
+    const opts = [], cleanCost = Math.round(inlets * COST.inlet + wetLen / 100 * COST.clean100);
+    // Koʻcha boʻylab katta suv yoʻli (daryo, kanal, soy) oqsa — quduqlar qisqa quvurlar bilan toʻgʻridan unga ulanadi (eng arzon)
+    const bigDitch = streetDitch.find(w => /daryo|kanal|soy/.test(w.kind));
+    const capC = bigDitch ? 4 : streetDitch.length ? 0.4 : 0.15;
+    const outfall = bigDitch ? Math.round(inlets * 15 * COST.pipe(400)) : 0;
+    opts.push({ id: 'C', nomi: bigDitch ? `Panjarali quduqlar → koʻchadagi ${bigDitch.kind}ga qisqa quvurlar + tozalash` : 'Panjarali quduqlar + ariq/quvurlarni tozalash', mos: Qd <= capC, narx: cleanCost + outfall, izoh: `${inlets} ta panjarali quduq (har ~45 m)${streetDitch.length ? `, koʻchadagi ${streetDitch[0].kind} tozalanadi va quduqlar unga ulanadi` : ''}`, samara: Qd <= capC ? 'meʼyoriy yomgʻir uchun yetarli' : `oʻzi yetarli emas — ${Qd.toFixed(2)} m³/s kerak` });
+    if (outlet && outlet.grav) opts.push({ id: 'A', nomi: `Yer osti quvur → ${outlet.kind}${outlet.name ? ' “' + outlet.name + '”' : ''}`, mos: !zRoute.includes('afrosiyob'), narx: outlet.cost + cleanCost, izoh: `${pipe.soni > 1 ? pipe.soni + ' × ' : ''}Ø${pipe.diametr_mm} mm, ${F(outlet.route.L)} m, oʻz oqimi bilan (qiyalik ${pipe.qiyalik_promille}‰)${outlet.widen ? `; ariqni ${outlet.widen} m kengaytirish` : ''}`, samara: `${pipe.oʻtkazish_m3s} m³/s oʻtkazadi (kerak ${Qd.toFixed(2)})` });
+    if (outlet && !outlet.grav) opts.push({ id: 'D', nomi: `Kichik nasos stansiyasi → ${outlet.kind}${outlet.name ? ' “' + outlet.name + '”' : ''}`, mos: true, narx: outlet.cost + cleanCost, izoh: `${Qd.toFixed(2)} m³/s nasos + ${F(outlet.route.L)} m bosimli quvur (ariq koʻchadan baland — oʻz oqimi bilan ketmaydi)${outlet.widen ? `; ariqni ${outlet.widen} m kengaytirish` : ''}`, samara: 'elektr va xizmat koʻrsatish kerak' });
     let lotok = null;
-    if (outlet && pipe && pipe.gravitatsion) {
-      const S = pipe.qiyalik_promille / 1000, h = 0.6, nC = 0.015;
-      let b = 0.4; while (b < 4 && (1 / nC) * (b * h) * Math.pow((b * h) / (b + 2 * h), 2 / 3) * Math.sqrt(S) < Qneed) b += 0.1;
-      lotok = { kenglik_m: +b.toFixed(1), chuqurlik_m: h, uzunlik_m: outlet.route.L, qazish_m3: Math.round(outlet.route.L * (b + 0.4) * (h + 0.3)) };
+    if (outlet && outlet.grav) {
+      const S = outlet.S, h = 0.6, nC = 0.015;
+      let b2 = 0.4; while (b2 < 4 && (1 / nC) * (b2 * h) * Math.pow((b2 * h) / (b2 + 2 * h), 2 / 3) * Math.sqrt(S) < Qd) b2 += 0.1;
+      lotok = { kenglik_m: +b2.toFixed(1), chuqurlik_m: h, uzunlik_m: outlet.route.L, qazish_m3: Math.round(outlet.route.L * (b2 + 0.4) * (h + 0.3)) };
     }
     const unescoRoute = zRoute.some(z => z === 'temur' || z === 'yevropa' || z === 'afrosiyob') || zSite === 'temur' || zSite === 'yevropa' || zSite === 'afrosiyob';
-    if (lotok) opts.push({ id: 'E', nomi: 'Ochiq betonli lotok (ariq) koʻcha cheti boʻylab', mos: !unescoRoute && lotok.kenglik_m <= 2, izoh: `${lotok.kenglik_m} m × ${lotok.chuqurlik_m} m, ${F(lotok.uzunlik_m)} m, ustiga panjarali qopqoq`, samara: unescoRoute ? 'UNESCO hududida ochiq ariq mumkin emas' : lotok.kenglik_m > 2 ? 'juda keng — quvur yaxshiroq' : 'eng arzon va tez quriladi' });
-    const pumpN = Math.max(1, Math.ceil(vol / (300 * 2)));    // 300 m³/soat koʻchma nasos, 2 soatda
-    opts.unshift({ id: 'P', nomi: 'Tezkor: koʻchma nasoslar (yomgʻir paytida)', mos: true, izoh: `${pumpN} ta × 300 m³/soat nasos, ${outlet ? 'shlang/quvur bilan ⬇ chiqish joyiga' : 'suv tashuvchi mashinalarga'}`, samara: `~${F(vol)} m³ suvni ~2 soatda olib chiqadi` });
-    // Tavsiya va ish tartibi: ① tezkor nasos → ② quduqlar (+ariq tozalash) → ③ asosiy inshoot (E/A/B/D) → ④ chiqish
+    if (lotok) opts.push({ id: 'E', nomi: 'Ochiq betonli lotok (ariq) koʻcha cheti boʻylab', mos: !unescoRoute && lotok.kenglik_m <= 1.5, narx: Math.round(COST.lotok(lotok.kenglik_m) * lotok.uzunlik_m + cleanCost), izoh: `${lotok.kenglik_m} m × ${lotok.chuqurlik_m} m, ${F(lotok.uzunlik_m)} m, ustiga panjarali qopqoq`, samara: unescoRoute ? 'UNESCO hududida ochiq ariq mumkin emas' : lotok.kenglik_m > 1.5 ? 'koʻcha cheti uchun juda keng' : 'arzon va tez quriladi' });
+    const gV = Math.round(Math.min(retV, Qd * 3600));
+    if (basinSite && basinSite.dd <= 600 && basinSite.area >= gV / 0.8 && !(zBasin === 'afrosiyob' || zBasin === 'temur')) opts.push({ id: 'G', nomi: `Yashil botiq (yomgʻir bogʻi) — ${basinSite.name}`, mos: true, narx: Math.round(COST.green(gV) + COST.pipe(800) * basinSite.dd + cleanCost), izoh: `${F(gV)} m³, ~${F(Math.round(gV / 0.8))} m² × 0.8 m sayoz botiq, ${basinSite.dd} m quvur bilan ulanadi`, samara: 'arzon, yashil hudud saqlanadi; lyoss gruntida chuqur shimdirish tavsiya etilmaydi — botiq sekin boʻshatiladi' });
+    opts.push({ id: 'B', nomi: 'Yer osti saqlash rezervuari', mos: !!basinSite && !(zBasin === 'afrosiyob' || zBasin === 'temur'), narx: Math.round(COST.tank(retV) + cleanCost), izoh: `${F(retV)} m³ (≈ ${F(tankArea)} m², 2.5 m chuqur)${basinSite ? ` — ${basinSite.name}, ${basinSite.dd} m` : ' — yaqinda mos ochiq joy topilmadi'}`, samara: 'qimmat; yomgʻir choʻqqisini ushlab, keyin sekin chiqaradi' });
+    const pumpN = Math.max(1, Math.ceil(vol / (300 * 2)));
+    opts.unshift({ id: 'P', nomi: 'Favqulodda jalada: koʻchma nasoslar', mos: true, narx: null, izoh: `${pumpN} ta × 300 m³/soat${i > DESIGN_MM ? ` (${i} mm/soat — meʼyordan kuchli, doimiy inshoot buni toʻliq olmaydi)` : ''}`, samara: `~${F(vol)} m³ suvni ~2 soatda chiqaradi` });
     const o_ = id => opts.find(x => x.id === id), C0 = o_('C');
-    const main = C0.mos ? null : o_('E') && o_('E').mos ? o_('E') : o_('A') && o_('A').mos ? o_('A') : o_('B') && o_('B').mos ? o_('B') : o_('D') || o_('B');
+    const main = C0.mos ? null : opts.filter(x => x.id !== 'P' && x.id !== 'C' && x.mos && x.narx != null).sort((a, b) => a.narx - b.narx)[0] || null;
     const chosen = [o_('P'), C0, main].filter(Boolean);
     return {
       name, site, depth: top.d, wetLen, vol, zPit: Math.round(zPit), zTop: Math.round(zTop), basin, Aha: +Aha.toFixed(1), tc, Q: +Q.toFixed(2), Qex: +Qex.toFixed(2), Qneed: +Qneed.toFixed(2),
-      outlet, pipe, lotok, pumpN, nearWW, streetDitch, retV, tankArea, basinSite, inlets, segs, lim, opts, best: chosen.map(x => x.id), main: main ? main.id : null, zones: { joy: zSite, yoʻl: zRoute, rezervuar: zBasin, rezervuar_bosh_reja: pzBasin }, rain: i, drain: o.drainMm || 10,
+      outlet, pipe, lotok, pumpN, nearWW, streetDitch, retV, tankArea, basinSite, inlets, segs, lim, opts, best: chosen.map(x => x.id), main: main ? main.id : null, Qd: +Qd.toFixed(2), iD, altOutlets, zones: { joy: zSite, yoʻl: zRoute, rezervuar: zBasin, rezervuar_bosh_reja: pzBasin }, rain: i, drain: o.drainMm || 10,
       cellLL, step,
     };
   }
   const F = v => NX.fmt.int(v);
 
   // Ish tartibi (xaritadagi raqamlar bilan bir xil): ① nasos, ② quduqlar, ③ asosiy inshoot yoʻli, ④ chiqish, ⑤ rezervuar
-  const MAINC = { E: '#2dd4bf', A: '#22d3ee', B: '#a855f7', D: '#f97316' };
+  const MAINC = { E: '#2dd4bf', A: '#22d3ee', B: '#a855f7', D: '#f97316', G: '#22c55e' };
+  const MLN = v => (v >= 1000 ? `~${(v / 1000).toFixed(1)} mlrd soʻm` : `~${F(v)} mln soʻm`);
   function steps(X) {
     const S = [];
     const dep = Math.round(Math.min(1.2, X.depth) * 100);
     S.push({ n: 1, col: '#ef4444', belgi: '①', nima: `Muammo joyi — ${X.name}`, qilish: `Yomgʻir paytida ${X.pumpN} ta koʻchma nasos (300 m³/soat) qoʻyiladi`, olcham: `${dep} sm suv, ~${F(X.vol)} m³` });
-    S.push({ n: 2, col: '#f59e0b', belgi: '② (sariq nuqtalar)', nima: 'Panjarali quduqlar', qilish: `${X.inlets} ta quduq har ~45 m${X.streetDitch.length ? `; mavjud ariq (“${X.streetDitch[0].name || X.streetDitch[0].kind}”) tozalanadi` : '; koʻchada ariq yoʻq — quduqlar quvurga ulanadi'}`, olcham: `${F(X.wetLen)} m koʻcha` });
-    if (X.main && X.outlet && (X.main === 'E' || X.main === 'A')) {
-      const E_ = X.main === 'E';
-      S.push({ n: 3, col: MAINC[X.main], belgi: '③ (chiziq, oqim bilan)', nima: E_ ? 'Ochiq betonli lotok (ariq)' : 'Yer osti kollektor (quvur)', qilish: `${X.outlet.route.streets.join(' → ')} boʻylab ${E_ ? 'koʻcha chetidan ariq qaziladi' : 'koʻcha ostidan quvur yotqiziladi'}`, olcham: E_ ? `${X.lotok.kenglik_m} × ${X.lotok.chuqurlik_m} m, ${F(X.outlet.route.L)} m, ~${F(X.lotok.qazish_m3)} m³ qazish` : `${X.pipe.soni > 1 ? X.pipe.soni + ' × ' : ''}Ø${X.pipe.diametr_mm} mm, ${F(X.outlet.route.L)} m, qiyalik ${X.pipe.qiyalik_promille}‰` });
+    const c0 = X.opts.find(o => o.id === 'C');
+    S.push({ n: 2, col: '#f59e0b', belgi: '② (sariq nuqtalar)', nima: c0 ? c0.nomi : 'Panjarali quduqlar', qilish: c0 ? c0.izoh : `${X.inlets} ta quduq`, olcham: `${F(X.wetLen)} m koʻcha${c0 && c0.narx != null ? ` · ${MLN(c0.narx)}` : ''}${c0 && c0.mos ? ' — shuning oʻzi yetarli' : ''}` });
+    const mo = X.opts.find(o => o.id === X.main), cost = mo && mo.narx != null ? ` · ${MLN(mo.narx)}` : '';
+    const via = X.outlet && X.outlet.route.streets.length ? `${X.outlet.route.streets.join(' → ')} boʻylab` : 'toʻgʻridan-toʻgʻri';
+    if (X.main && X.outlet && (X.main === 'E' || X.main === 'A' || X.main === 'D')) {
+      const t = { E: ['Ochiq betonli lotok (ariq)', `${via} koʻcha chetidan ariq qaziladi`, `${X.lotok && X.lotok.kenglik_m} × ${X.lotok && X.lotok.chuqurlik_m} m, ${F(X.outlet.route.L)} m`], A: ['Yer osti quvur (oʻz oqimi bilan)', `${via} koʻcha ostidan quvur yotqiziladi`, `${X.pipe.soni > 1 ? X.pipe.soni + ' × ' : ''}Ø${X.pipe.diametr_mm} mm, ${F(X.outlet.route.L)} m, qiyalik ${X.pipe.qiyalik_promille}‰`], D: ['Kichik nasos stansiyasi + bosimli quvur', `muammo joyi yonida nasos, ${via} bosimli quvur`, `${X.Qd} m³/s, ${F(X.outlet.route.L)} m`] }[X.main];
+      S.push({ n: 3, col: MAINC[X.main], belgi: '③ (chiziq, oqim yoʻnalishi)', nima: t[0], qilish: t[1], olcham: t[2] + cost });
     }
-    if (X.outlet) S.push({ n: 4, col: '#0ea5e9', belgi: '④', nima: `Chiqish — ${X.outlet.kind}${X.outlet.name ? ' “' + X.outlet.name + '”' : ''}`, qilish: 'Suv shu yerga tushiriladi (oʻz oqimi bilan)', olcham: `${Math.round(X.zPit - X.outlet.z)} m pastda` });
-    if (X.main === 'B' && X.basinSite) S.push({ n: 5, col: MAINC.B, belgi: '⑤', nima: `Yer osti rezervuari — ${X.basinSite.name}`, qilish: 'Yomgʻir choʻqqisini ushlab, keyin sekin chiqaradi; yuzasi park sifatida tiklanadi', olcham: `${F(X.retV)} m³ (~${F(X.tankArea)} m² × 2.5 m)` });
-    if (X.main === 'D') S.push({ n: 5, col: MAINC.D, belgi: '⑤', nima: 'Nasos stansiyasi', qilish: 'Doimiy nasos stansiyasi muammo joyi yonida', olcham: `≥ ${X.Qneed} m³/s` });
+    if (X.outlet && X.main && X.main !== 'G' && X.main !== 'B') S.push({ n: 4, col: '#0ea5e9', belgi: '④', nima: `Chiqish — ${X.outlet.kind}${X.outlet.name ? ' “' + X.outlet.name + '”' : ''}`, qilish: X.outlet.grav ? 'Suv shu yerga oʻz oqimi bilan tushadi' : 'Suv nasos bilan shu yerga chiqariladi', olcham: X.outlet.grav ? `${Math.round(X.zPit - X.outlet.z)} m pastda, ${F(X.outlet.route.L)} m` : `${Math.abs(X.outlet.z - X.zPit) < 1 ? 'deyarli bir balandlikda' : `koʻchadan ${Math.round(X.outlet.z - X.zPit)} m baland`}, ${F(X.outlet.route.L)} m` });
+    if (X.main === 'G' && X.basinSite) S.push({ n: 5, col: MAINC.G, belgi: '⑤', nima: `Yashil botiq — ${X.basinSite.name}`, qilish: 'Sayoz botiq: yomgʻir suvi vaqtincha toʻplanadi, keyin sekin ketadi; park sifatida qoladi', olcham: (mo ? mo.izoh : '') + cost });
+    if (X.main === 'B' && X.basinSite) S.push({ n: 5, col: MAINC.B, belgi: '⑤', nima: `Yer osti rezervuari — ${X.basinSite.name}`, qilish: 'Yomgʻir choʻqqisini ushlab, keyin sekin chiqaradi; yuzasi park sifatida tiklanadi', olcham: `${F(X.retV)} m³ (~${F(X.tankArea)} m² × 2.5 m)` + cost });
     return S;
   }
 
@@ -211,14 +241,13 @@
     const s1 = st.find(x => x.n === 1);
     out.push({ kind: 'point', id: '1', lat: X.site[0], lon: X.site[1], color: s1.col, title: `① ${s1.nima}`, note: `${s1.olcham}. ${s1.qilish}.` });
     const s3 = st.find(x => x.n === 3);
-    if (X.outlet) {
+    if (X.outlet && s3) {
       out.push({ kind: 'line', id: '3', path: X.outlet.route.pts, lat: mid(X.outlet.route.pts)[0], lon: mid(X.outlet.route.pts)[1], color: s3 ? s3.col : '#64748b', dash: !s3, ppl: 600, title: s3 ? `③ ${s3.nima}` : '③ Mumkin boʻlgan quvur yoʻli (tavsiya etilmaydi)', note: s3 ? `${s3.olcham}. ${s3.qilish}.` : '' });
       const s4 = st.find(x => x.n === 4);
       out.push({ kind: 'point', id: '4', lat: X.outlet.c[0], lon: X.outlet.c[1], color: s4.col, title: `④ ${s4.nima}`, note: `${s4.olcham}. ${s4.qilish}.` });
     }
     const s5 = st.find(x => x.n === 5);
-    if (s5 && X.main === 'B' && X.basinSite) out.push({ kind: 'point', id: '5', lat: X.basinSite.c[0], lon: X.basinSite.c[1], color: s5.col, title: `⑤ ${s5.nima}`, note: `${s5.olcham}. ${s5.qilish}.` });
-    if (s5 && X.main === 'D') out.push({ kind: 'point', id: '5', lat: X.site[0] + 0.0004, lon: X.site[1] + 0.0004, color: s5.col, title: `⑤ ${s5.nima}`, note: `${s5.olcham}.` });
+    if (s5 && (X.main === 'B' || X.main === 'G') && X.basinSite) out.push({ kind: 'point', id: '5', lat: X.basinSite.c[0], lon: X.basinSite.c[1], color: s5.col, title: `⑤ ${s5.nima}`, note: `${s5.olcham}. ${s5.qilish}.` });
     let acc = 0, n = 0;
     X.segs.slice().sort((a, b) => b.d - a.d).forEach(x => { acc += x.sg.len; if (acc >= 45 && n < 14) { acc = 0; n++; out.push({ kind: 'point', id: 'Q' + n, lat: x.sg.mid[0], lon: x.sg.mid[1], color: '#f59e0b', list: false, title: `② Panjarali quduq ${n}`, note: 'Yomgʻir suvini qabul qiluvchi quduq.' }); } });
     return out;
@@ -231,24 +260,28 @@
       chiqish_joyi: X.outlet ? { turi: X.outlet.kind, nomi: X.outlet.name, balandligi_m: Math.round(X.outlet.z), masofa_koʻcha_boʻylab_m: X.outlet.route.L, koʻchalar: X.outlet.route.streets } : 'yaqin atrofda pastroq ariq/kanal topilmadi',
       quvur: X.pipe, lotok: X.lotok, rezervuar: { hajm_m3: X.retV, maydon_m2: X.tankArea, joy: X.basinSite }, panjarali_quduqlar: X.inlets, koʻchma_nasoslar: X.pumpN,
       cheklovlar_bosh_reja_unesco: X.lim.length ? X.lim : ['muammo joyi va yoʻl UNESCO hududidan tashqarida'], zonalar: X.zones,
-      variantlar: X.opts, tavsiya: X.best,
+      hisobiy_yomgir: { meyoriy_mm_soat: X.iD, doimiy_inshoot_oqimi_m3s: X.Qd, izoh: 'Doimiy inshoot meʼyoriy yomgʻirga (≈25 mm/soat, ~2 yilda bir) hisoblanadi; undan kuchli jalada — koʻchma nasoslar. Har koʻchaga ulkan quvur tortilmaydi.' },
+      variantlar: X.opts.map(o => Object.assign({}, o, { narx_taxminiy: o.narx != null ? MLN(o.narx) : null })), tavsiya: X.best, tanlov_sababi: 'yetarli variantlar ichida eng arzoni; eng yaqin ariq/kanal birinchi koʻriladi',
+      boshqa_chiqish_joylari: X.altOutlets,
       ish_tartibi_xaritadagi_raqamlar: steps(X).map(x => ({ raqam: x.belgi, nima: x.nima, nima_qilinadi: x.qilish, olcham: x.olcham })),
       ogohlantirish: 'TAXMINIY muhandislik hisobi (relyef SRTM ~30 m, ratsional formula, Manning). Loyiha uchun geodezik syomka va mavjud kanalizatsiya xaritasi kerak.',
     };
   }
   function summary(X) {
-    const L = [`**${X.name}: ${Math.round(Math.min(1.2, X.depth) * 100)} sm suv, ~${F(X.vol)} m³.** ${X.Aha} ga havzadan ${X.rain} mm/soat yomgʻirda ${X.Q} m³/s oqim keladi; mavjud tizim ~${X.Qex} m³/s oladi — yana ${X.Qneed} m³/s sigʻim kerak.`];
+    const L = [`**${X.name}: ${Math.round(Math.min(1.2, X.depth) * 100)} sm suv, ~${F(X.vol)} m³.** ${X.Aha} ga havzadan ${X.rain} mm/soat yomgʻirda ${X.Q} m³/s oqim keladi; mavjud tizim ~${X.Qex} m³/s oladi.`, `Doimiy yechim meʼyoriy yomgʻirga (${X.iD} mm/soat) — ${X.Qd} m³/s; ${X.rain > X.iD ? 'undan kuchli jalada qolgan suv koʻchma nasoslar bilan chiqariladi.' : ''}`];
     L.push('', '**Sabab**', `- Koʻcha havzaning eng past joyida (${X.zPit} m; havzaning eng balandi ${X.zTop} m) — suv ~${X.tc} daqiqada shu yerga yigʻiladi.`, `- ${X.streetDitch.length ? `Koʻcha boʻyida ${X.streetDitch[0].kind} bor, lekin sigʻimi yetmaydi yoki tiqilgan.` : 'Koʻcha boʻyida ariq ochiq xaritada (OpenStreetMap) belgilanmagan — joyida tekshirish kerak; belgilangan suv chiqish yoʻli yoʻq.'}`);
     L.push('', '**Nima qilish kerak (xaritadagi raqamlar)**', ...steps(X).map(x => `- **${x.belgi} ${x.nima}** — ${x.qilish}; ${x.olcham}.`));
     const rej = X.opts.filter(o => !X.best.includes(o.id) && o.id !== 'P');
-    if (rej.length) L.push('', '**Boshqa variantlar**', ...rej.map(o => `- ${o.nomi} — ${o.izoh}${o.samara ? '; ' + o.samara : ''} ${o.mos ? '' : '⛔'}`));
+    const mo = X.opts.find(o => o.id === X.main);
+    if (mo) L.push('', `**Nega aynan shu:** yetarli variantlar ichida eng arzoni (${MLN(mo.narx)}).`);
+    if (rej.length) L.push('', '**Boshqa variantlar (taxminiy narx)**', ...rej.map(o => `- ${o.nomi} — ${o.izoh}${o.narx != null ? `; ${MLN(o.narx)}` : ''}${o.samara ? '; ' + o.samara : ''} ${o.mos ? '' : '⛔'}`));
     if (X.lim.length) L.push('', '**Bosh reja / UNESCO**', ...X.lim.map(t => '- ⚠️ ' + t));
     return L.join('\n');
   }
 
   // Sunʼiy yoʻldosh surati (Esri) ustida loyiha: suv, havza chegarasi, ariqlar, ③ yoʻl, raqamli belgilar
   function satImage(X, water) {
-    const pts = [X.site]; if (X.outlet) X.outlet.route.pts.forEach(p => pts.push(p)); if (X.basinSite && X.main === 'B') pts.push(X.basinSite.c);
+    const pts = [X.site]; if (X.outlet) X.outlet.route.pts.forEach(p => pts.push(p)); if (X.basinSite && (X.main === 'B' || X.main === 'G')) pts.push(X.basinSite.c);
     let s0 = 90, w0 = 180, n0 = -90, e0 = -180; pts.forEach(p => { s0 = Math.min(s0, p[0]); n0 = Math.max(n0, p[0]); w0 = Math.min(w0, p[1]); e0 = Math.max(e0, p[1]); });
     const padLat = Math.max(0.0012, (n0 - s0) * 0.15), padLon = Math.max(0.0016, (e0 - w0) * 0.15);
     s0 -= padLat; n0 += padLat; w0 -= padLon; e0 += padLon;
@@ -270,7 +303,7 @@
         (water || []).forEach(sg => { const a = P(sg.a), b = P(sg.b); g.strokeStyle = sg.d >= 0.3 ? 'rgba(37,99,235,.9)' : 'rgba(96,165,250,.85)'; g.lineWidth = sg.d >= 0.3 ? 7 : 4; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); });
         // ③ yoʻl
         const st = steps(X), s3 = st.find(x => x.n === 3);
-        if (X.outlet) { const col = s3 ? s3.col : '#94a3b8'; g.strokeStyle = 'rgba(2,6,16,.75)'; g.lineWidth = 10; g.beginPath(); X.outlet.route.pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke(); g.strokeStyle = col; g.lineWidth = 5; if (!s3) g.setLineDash([10, 8]); g.stroke(); g.setLineDash([]);
+        if (X.outlet && s3) { const col = s3 ? s3.col : '#94a3b8'; g.strokeStyle = 'rgba(2,6,16,.75)'; g.lineWidth = 10; g.beginPath(); X.outlet.route.pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke(); g.strokeStyle = col; g.lineWidth = 5; if (!s3) g.setLineDash([10, 8]); g.stroke(); g.setLineDash([]);
           // yoʻnalish oʻqlari
           const rp = X.outlet.route.pts; for (let i = 2; i < rp.length; i += Math.max(2, Math.floor(rp.length / 8))) { const a = P(rp[i - 1]), b = P(rp[i]), ang = Math.atan2(b[1] - a[1], b[0] - a[0]); g.save(); g.translate(b[0], b[1]); g.rotate(ang); g.fillStyle = '#ecfeff'; g.beginPath(); g.moveTo(6, 0); g.lineTo(-5, -5); g.lineTo(-5, 5); g.fill(); g.restore(); } }
         // Quduqlar
@@ -278,8 +311,8 @@
         // Raqamli belgilar
         const pin = (p, t, col) => { const q = P(p); g.fillStyle = col; g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.beginPath(); g.arc(q[0], q[1], 13, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.font = 'bold 14px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, q[0], q[1] + 1); };
         pin(X.site, '1', '#ef4444');
-        if (X.outlet) { pin(X.outlet.route.pts[Math.floor(X.outlet.route.pts.length / 2)], '3', s3 ? s3.col : '#64748b'); pin(X.outlet.c, '4', '#0ea5e9'); }
-        if (X.main === 'B' && X.basinSite) pin(X.basinSite.c, '5', '#a855f7');
+        if (X.outlet && s3) { pin(X.outlet.route.pts[Math.floor(X.outlet.route.pts.length / 2)], '3', s3.col); pin(X.outlet.c, '4', '#0ea5e9'); }
+        if ((X.main === 'B' || X.main === 'G') && X.basinSite) pin(X.basinSite.c, '5', X.main === 'G' ? '#22c55e' : '#a855f7');
         // Izoh
         g.fillStyle = 'rgba(2,6,16,.82)'; g.fillRect(8, H - 30, Math.min(W - 16, 520), 22); g.fillStyle = '#e2e8f0'; g.font = '11px system-ui,sans-serif'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
         g.fillText('Sunʼiy yoʻldosh: Esri, Maxar · ko‘k — suv, ▪ quduq, 〰 mavjud ariq, raqamlar — ish tartibi (taxminiy)', 14, H - 15);
@@ -294,8 +327,9 @@
   // Loyiha sxemasi (SVG): boʻylama kesim — yer sathi, suv toʻplanadigan joy, quvur (1.5 m chuqurlikda, qiyalik), chiqish
   function svg(X) {
     const W = 560, Hh = 230, pad = { l: 46, r: 16, t: 26, b: 34 };
-    const prof = X.outlet && X.outlet.profile && X.outlet.profile.length > 1 ? X.outlet.profile : null;
+    const prof = X.outlet && ['A', 'E', 'D'].includes(X.main) && X.outlet.profile && X.outlet.profile.length > 1 ? X.outlet.profile : null;
     const E = NX.esc;
+    if (!prof && !['B', 'G'].includes(X.main)) return '';
     if (!prof) {
       // Chiqish yoʻq — rezervuar sxemasi
       return `<svg class="fix-svg" viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${Hh}" rx="12" fill="#06101f"/><text x="16" y="22" fill="#5eead4" font-size="13" font-weight="700">Loyiha sxemasi — yer osti rezervuari</text>

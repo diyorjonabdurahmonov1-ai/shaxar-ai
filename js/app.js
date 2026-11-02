@@ -636,7 +636,7 @@
     el.querySelector('.fl-min').onclick = () => el.classList.toggle('min');
   }
   document.addEventListener('click', e => { const b = e.target.closest('[data-fix-street]'); if (b) { e.preventDefault(); fixAsk(b.dataset.fixStreet); } });
-  function hazardClear() { fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
+  function hazardClear() { const T = twinState(); T.hz = null; fixLegend(null); NX.fx.clear(); NX.view.showActions(null); NX.map3d.setHazard(null); hazardFocus(false); }
   async function twinAsk(q, opts) {
     q = (q || '').trim();
     const C = S.twinChat = S.twinChat || { msgs: [], busy: null };
@@ -740,6 +740,23 @@
         if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H) + (local ? '\n\n' + local : ''); }
       } else if (wItems.length) H = showHazard({ kind: 'water', items: wItems });
     }
+    const KUZ = k => ({ school: 'maktab', kindergarten: 'bogʻcha', apartments: 'koʻp qavatli uy', commercial: 'savdo binosi', industrial: 'sanoat binosi', retail: 'doʻkon', warehouse: 'ombor', university: 'universitet', hospital: 'shifoxona', office: 'ofis' }[k] || 'bino');
+    // Quyosh paneli: real yillik nurlanish × tom maydoni — eng foydali tomlar xaritada; iqlim — 1991-yildan real arxiv
+    if (!H && it.main === 'solar' && T0.ghi && (T0.buildings || []).length) {
+      const top = T0.buildings.filter(b => b.area >= 150).map(b => ({ b, kwh: NX.twin.roofKwh(b, T0.ghi.kwh) })).sort((a, b) => b.kwh - a.kwh).slice(0, 12);
+      const tot = Math.round(T0.buildings.reduce((t, b) => t + NX.twin.roofKwh(b, T0.ghi.kwh), 0) / 1e6);
+      NX.map3d.setMode('solar');
+      const items = top.map((x, i) => ({ kind: 'point', id: 'Q' + (i + 1), lat: x.b.c[0], lon: x.b.c[1], color: '#f59e0b', title: `☀️ Q${i + 1}: ${x.b.name || KUZ(x.b.kind)}`, note: `Tom ~${NX.fmt.int(x.b.area)} m² — yiliga ~${NX.fmt.int(Math.round(x.kwh / 1000))} MVt·soat (taxminiy).` }));
+      H = showHazard({ kind: 'solar', items });
+      extra.quyosh_tahlili = { yillik_nurlanish_kvt_soat_m2: T0.ghi.kwh, eng_foydali_tomlar: top.map((x, i) => ({ id: 'Q' + (i + 1), nomi: x.b.name || KUZ(x.b.kind), tom_m2: Math.round(x.b.area), yillik_mvt_soat: Math.round(x.kwh / 1000) })), barcha_tomlar_jami_gvt_soat: tot };
+      local = `**Eng foydali tomlar** (yillik quyosh nurlanishi ${NX.fmt.int(T0.ghi.kwh)} kVt·soat/m², real arxiv):\n${top.slice(0, 8).map((x, i) => `- **Q${i + 1}** ${x.b.name || KUZ(x.b.kind)} — tom ~${NX.fmt.int(x.b.area)} m², yiliga ~${NX.fmt.int(Math.round(x.kwh / 1000))} MVt·soat`).join('\n')}\n\nShahar boʻyicha barcha tomlarga panel qoʻyilsa — yiliga ~${NX.fmt.int(tot)} GVt·soat (taxminiy). Xaritada sariq Q belgilar, 3D da binolar quyosh salohiyati boʻyicha boʻyalgan.`;
+    }
+    if (!H && it.main === 'climate' && T0.climate) {
+      const c = T0.climate, ys = c.years.slice(-5);
+      local = `**Samarqand iqlimi (real arxiv, 1991-yildan):** oʻrtacha harorat meʼyori ${c.tNorm}°C, yillik yogʻin ${c.pNorm} mm; isish — har 10 yilda ~${c.trend10}°C.\n\n**Oxirgi yillar:**\n${ys.map(o => `- ${o.y}: ${o.t}°C, ${o.p} mm (eng kuchli kun ${o.pmax} mm)`).join('\n')}\n\n**Eng kuchli yomgʻirli kunlar:** ${c.top.slice(0, 3).map(t => `${t.t} — ${t.p} mm`).join(', ')}.`;
+    }
+    // Yangi natija chizilmagan boʻlsa — xaritada eski natija qolmasin
+    if (!H) hazardClear();
     if (webP) {
       C.busy = 'Oʻtgan hodisalar maʼlumoti qoʻshilmoqda'; renderKeepScroll();
       try { const w = await Promise.race([webP, NX.sleep(12000).then(() => null)]); if (w && w.text) extra.internet = { matn: w.text.slice(0, 2500), manbalar: w.sources.slice(0, 6) }; } catch (e) { /* qidiruv ishlamadi */ }
@@ -1739,6 +1756,8 @@
       S.chat.busy = null; renderChat();
       return;
     }
+    // Boshqa mavzudagi savol — xaritadagi oldingi favqulodda natija olib tashlanadi (eski chiziqlar chalgʻitmasin)
+    if (twinState().hz) hazardClear();
     // Yangi koʻcha / koʻchani oʻzgartirish — xaritada chiziladi, UNESCO, bosh reja, binolar boʻyicha tekshiriladi
     if (it.main === 'road') {
       S.chat.msgs.push({ role: 'user', text: shown });
@@ -1784,15 +1803,17 @@
     renderChat();
     const TYPE = { oneway: d => 'oneway-' + (d || 'A'), close: () => 'close', buslane: () => 'buslane', signal: () => 'signal', demand: () => 'demand' };
     // Koʻcha boʻyicha tirbandlik savoli — chuqur tahlil (bir nechta variant, Yandex real vaqt, internet, xarita)
-    if (TRAFFIC_Q.test(q) && NX.ai.available() && (NX.ai.detectStreets(q, S.model).length || (S.chatStreet != null && /nima qils|yechim|hal qil|bir tomon|yops|svetofor|polosa|shu koʻcha|bu koʻcha|shu yer|bu yer/i.test(q)))) {
+    if (TRAFFIC_Q.test(q) && (NX.ai.available() || !/yops|bir\s*tomon|polosa|svetofor\s*qo/i.test(q)) && (NX.ai.detectStreets(q, S.model).length || (S.chatStreet != null && /nima qils|yechim|hal qil|bir tomon|yops|svetofor|polosa|shu koʻcha|bu koʻcha|shu yer|bu yer/i.test(q)))) {
       try {
         const dp = await deepAnalyze(q, null, t => { S.chat.busy = t + '…'; renderChat(); });
         if (dp) {
           S.chatStreet = dp.sid;
           S.chat.busy = 'AI xulosa yozmoqda (chuqur tahlil)…'; renderChat();
-          const r = await NX.ai.deepAsk(q, Object.assign({ shahar_tizimlari: NX.ai.systemsFacts() }, dp.facts), prev.map(m => ({ role: m.role, text: m.content })));
+          // AI ulanmagan boʻlsa — simulyatsiya natijalaridan oʻz xulosasi (variantlar solishtiriladi)
+          const localDeep = () => { const st = S.model.streets[dp.sid], lv = ['✅ tavsiya etiladi', '⚠️ ehtiyotkorlik bilan', '⛔ tavsiya etilmaydi']; return { text: `**${st ? st.name : 'Koʻcha'} — ${dp.opts.length} ta variant hisoblandi** (talab ${NX.fmt.int(S.demand)} safar/soat, taxminiy model):\n${dp.opts.map(o => `- ${o === dp.best ? '⭐ ' : ''}**${o.label}** — umumiy yoʻl vaqti ${NX.fmt.signed(o.r.ttChangePct, 1)}%, ortiqcha yuklangan koʻchalar: ${o.r.overloadedCount}; ${lv[o.v.level] || ''}. ${(o.v.why || [])[0] || ''}`).join('\n')}\n\n**Eng yaxshi variant:** ${dp.best.label}. Xaritada — shu variantda qaysi koʻchalarga mashina koʻpayadi (qizil) va kamayadi (yashil).`, src: 'hisob' }; };
+          const r = NX.ai.available() ? await NX.ai.deepAsk(q, Object.assign({ shahar_tizimlari: NX.ai.systemsFacts() }, dp.facts), prev.map(m => ({ role: m.role, text: m.content }))).catch(() => localDeep()) : localDeep();
           S.sim.last = { street: dp.sid, type: dp.best.type, label: dp.best.label, demand: S.demand, result: dp.best.r, verdict: dp.best.v, iters: 10 };
-          S.chat.msgs.push({ role: 'ai', text: r.text, src: 'ai', sim: simSummary(S.sim.last) });
+          S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src || 'ai', sim: simSummary(S.sim.last) });
           S.chat.busy = null; renderChat();
           return;
         }

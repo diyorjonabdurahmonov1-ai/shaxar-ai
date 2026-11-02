@@ -483,7 +483,7 @@
     nodes.forEach(n => { const k = Math.floor(n.x / 500) + ':' + Math.floor(n.y / 500), c = cells.get(k); if (!c || T[n.ix] > T[c.ix]) cells.set(k, n); });
     const slow = [];
     [...cells.values()].filter(n => isFinite(T[n.ix]) && T[n.ix] > S0.norm * 60).sort((a, b) => T[b.ix] - T[a.ix]).forEach(n => { if (slow.length < 6 && slow.every(q => Math.hypot(q.x - n.x, q.y - n.y) >= 900)) slow.push(n); });
-    const slowOut = slow.map((n, i) => ({ id: 'T' + (i + 1), c: [n.lat, n.lon], min: Math.round(T[n.ix] / 60), name: hz.street(n.lat, n.lon, 300) || '', st: st[from[n.ix]] && (st[from[n.ix]].name || S0.uz) }));
+    const slowOut = slow.map((n, i) => ({ id: 'T' + (i + 1), c: [n.lat, n.lon], min: Math.round(T[n.ix] / 60), name: hz.street(n.lat, n.lon, 300) || (hz.street(n.lat, n.lon, 900) ? hz.street(n.lat, n.lon, 900) + ' atrofi' : ''), st: st[from[n.ix]] && (st[from[n.ix]].name || S0.uz) }));
     // Aniq manzilga (belgilangan hudud yoki eng uzoq joy) — eng tez stansiyadan yoʻl
     const tgt = o.target ? hz.node(o.target[0], o.target[1], 500) : slow[0];
     let route = null;
@@ -677,7 +677,7 @@
     } else if (H.kind === 'svc') {
       const S0 = SVC[H.svc];
       L.push(`**${S0.uz}: shahar koʻchalarining ${H.cover != null ? H.cover + '%' : '—'} iga ${S0.norm} daqiqada yetib boriladi** (${H.stations.length} ta stansiya).`);
-      if (H.slow.length) L.push('', '**Uzoq hududlar**', ...H.slow.map(t => `- **${t.id} ${t.name || ''}** — ~${t.min} daq. (${t.st})`));
+      if (H.slow.length) L.push('', '**Uzoq hududlar**', ...H.slow.map(t => `- **${t.id}${t.name ? ' ' + t.name : ''}** — ~${t.min} daq. (${t.st})`));
       if (H.route) L.push('', `**Yoʻl:** ${H.route.from.name || S0.uz} → ${H.route.to}: ${H.route.streets.join(' → ')}, ~${H.route.min} daq.`);
       if (H.slow.length) L.push('', `**Tavsiya:** ${H.slow[0].name || H.slow[0].id} atrofiga yangi post/stansiya.`);
     }

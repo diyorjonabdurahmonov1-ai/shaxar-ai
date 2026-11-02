@@ -61,6 +61,7 @@ Qoidalar:
 - Foydalanuvchining SAVOLIGA AYNAN javob ber. Savolga aloqasi yoʻq narsani yozma.
 - Faqat berilgan JSON maʼlumotdan foydalan. Maʼlumotda yoʻq raqam, koʻcha yoki hodisani oʻylab topma.
 - Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, maktab, ariq) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi yoki svetofor taklif qilma.
+- Yechim taklif qilganda eng oddiy, arzon va yaqin variantdan boshla (mavjud inshootni tozalash/ulash, belgi, tashkiliy chora), keyin kerak boʻlsa qimmatrogʻini; har taklifni masofa/oʻlcham va (berilgan boʻlsa) narx bilan asosla. Butun shahar boʻyicha takrorlab boʻlmaydigan ulkan yoki uzoq inshootni oddiyroq yoʻl bor joyda tavsiya qilma.
   Kerakli maʼlumot boʻlmasa, “Bu haqda saytda maʼlumot yoʻq” deb ayt va saytning qaysi boʻlimida koʻrish mumkinligini qisqa ayt.
 - “real” (TomTom yoki Open-Meteo oʻlchovi) va “taxmin”ni (model hisobi) farqla: taxminni oʻlchov deb atama.
 - Odatda 2–6 gap yetarli. Roʻyxat kerak boʻlsa — qisqa nuqtalar bilan.
@@ -181,7 +182,12 @@ Qoidalar:
       if (!h) return 'Yoʻl hodisalari haqida maʼlumot yoʻq (TomTom ulanmagan).';
       return h.length ? h.slice(0, 5).map(x => `- ${x.turi}: ${x.joy || 'hudud ichida'}${x.kechikish_daqiqa ? `, +${x.kechikish_daqiqa} daqiqa` : ''}`).join('\n') : 'Hozir hududda avariya, taʼmir yoki yopiq yoʻl qayd etilmagan.';
     }
-    if (s) {
+    // Saytda maʼlumoti yoʻq infratuzilma mavzulari — halol javob (oldingi koʻcha haqida emas)
+    if (/kanaliz|ichimlik|suv\s*(tarmog|quvur|taʼminot|ta.?minot)|elektr|gaz\s*(tarmog|quvur)|issiqlik\s*(tarmog|taʼminot)|chiroq|yoritish|havo\s*(iflos|sifat)|chang|shovqin|chiqindi|axlat/.test(n)) {
+      const sys = ctx.shahar_tizimlari, loaded = sys && Array.isArray(sys) ? sys.filter(x => x.yuklangan || x.loaded) : [];
+      return `Bu mavzu boʻyicha saytda hali real maʼlumot yoʻq: ${/kanaliz/.test(n) ? 'kanalizatsiya tarmogʻi' : /ichimlik|suv/.test(n) ? 'suv taʼminoti tarmogʻi' : /elektr/.test(n) ? 'elektr tarmogʻi' : /gaz/.test(n) ? 'gaz tarmogʻi' : /chiroq|yoritish/.test(n) ? 'koʻcha yoritish' : /chiqindi|axlat/.test(n) ? 'chiqindi tashish' : 'havo sifati va shovqin oʻlchovlari'} xaritasi ulanmagan${loaded.length ? '' : ''}.\n\n**Nima qilish mumkin:** “Tizimlar” boʻlimiga tegishli xizmatdan olingan GeoJSON/KML/CSV faylni yuklang — shundan keyin AI shu tarmoq boʻyicha xaritada tahlil qiladi (eski quvurlar, qamrov, muammoli joylar).`;
+    }
+    if (s && (/shu|bu|ushbu|koʻcha|ko'cha|yoʻl|yo'l/.test(n) || (NX.state && NX.state.model && detectStreets(q, NX.state.model).length))) {
       const t = s.tomtom && s.tomtom.tirbandlik_foiz != null ? `Hozir: ${s.tomtom.joriy_tezlik_kmh} km/soat (odatda ${s.tomtom.erkin_tezlik_kmh}).` : 'Hozirgi tirbandligi oʻlchanmagan.';
       return `${s.nomi}: ${s.harakat}, ${NX.fmt.km(s.uzunlik_m)}. Avtobuslar: ${s.avtobus_liniyalari.length ? s.avtobus_liniyalari.join(', ') : 'yoʻq'}. ${t}`;
     }
@@ -440,7 +446,8 @@ Keep the road geometry, widths and directions EXACTLY as in the plan. Show the p
 
   // ---------- Belgilangan hudud (mahalla) va qurilish ----------
   // Tavsiyani xaritada koʻrsatish: faqat berilgan REAL nomzod joylar (id) dan
-  const MAPRULE = `- Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, maktab, ariq) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi, svetofor yoki bekat taklif qilma.
+  const MAPRULE = `- Yechim taklif qilganda eng oddiy, arzon va yaqin variantdan boshla (mavjud inshootni tozalash/ulash, belgi, tashkiliy chora), keyin kerak boʻlsa qimmatrogʻini; har taklifni masofa/oʻlcham va (berilgan boʻlsa) narx bilan asosla. Butun shahar boʻyicha takrorlab boʻlmaydigan ulkan yoki uzoq inshootni oddiyroq yoʻl bor joyda tavsiya qilma.
+- Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, maktab, ariq) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi, svetofor yoki bekat taklif qilma.
 - “nomzod_joylar” berilgan boʻlsa — javobni ALBATTA xaritadagi belgilar bilan bogʻla. Agar tavsiyangizda joy boʻlsa (bogʻcha/maktab qurish, yangi yoʻl ochish, svetofor/belgi qoʻyish, bekat), javobda joyni nomzod raqami bilan ayt (masalan “1-belgi: L2 — 3 200 m² boʻsh yer”) va javob OXIRIDA quyidagi blokni qoʻsh (faqat berilgan id lardan, 1–6 ta):
 \`\`\`json
 {"belgilar":[{"id":"L2","nima":"Bogʻcha","izoh":"qisqa sabab"},{"id":"C1","nima":"Yangi yoʻl","izoh":"…"}]}
@@ -538,6 +545,7 @@ Qoidalar:
 - “xizmatlar_xaritasi” berilgan boʻlsa (yongʻin, tez yordam, politsiya): 1-qator — shahar koʻchalarining necha foiziga meʼyor (daqiqa) ichida yetib boriladi. **Uzoq hududlar** — T1…: joy, necha daqiqa, qaysi stansiyadan. **Yoʻl** (Y1 boʻlsa): qaysi stansiyadan, qaysi koʻchalar orqali, necha daqiqa. **Tavsiya** — yangi stansiya/post qayerga kerak (eng uzoq hududlar oraligʻi), yoʻllarni boʻshatish.
 - “suv_yechimi.topilmadi” boʻlsa — soʻralgan koʻchada suv toʻplanmasligini ayt, boshqa joy uchun yechim YOZMA; suv toʻplanadigan koʻchalarni sanab, ulardan birini tanlashni taklif qil.
 - “suv_yechimi” da “ish_tartibi_xaritadagi_raqamlar” boʻlsa — “Nima qilish kerak” boʻlimini AYNAN shu raqamlar (①②③④⑤) bilan yoz: har qadam — qayerda (koʻcha nomlari), nima qilinadi (nasos, quduq, ariq/lotok qazish, quvur yotqizish), oʻlchami (dona, m, Ø mm, m³). “mavjud_ariqlar” ni ayt: koʻchada ariq bormi, atrofdagi ariq/kanallar. Javobdagi sunʼiy yoʻldosh rasmi va sxemadagi raqamlar xaritadagi bilan bir xil ekanini ayt.
+- “suv_yechimi” da “tanlov_sababi”, “variantlar[].narx_taxminiy”, “hisobiy_yomgir” boʻlsa: tavsiyani ENG ARZON yetarli variant asosida yoz va narxini ayt; avval eng oddiy choralar (tozalash, quduqlar, eng yaqin ariqqa ulash), keyin kerak boʻlsa kattaroq inshoot. Doimiy inshoot meʼyoriy yomgʻirga hisoblanganini, favqulodda jalada esa koʻchma nasoslar ishlatilishini bir gapda ayt. Uzoq (km lab) quvur yoki ulkan diametrni faqat “variantlar” da boshqa yetarli yoʻl boʻlmasa tavsiya qil. “boshqa_chiqish_joylari” — qisqa solishtirish.
 - “suv_yechimi” berilgan boʻlsa (suv toʻplanadigan joyni hal qilish): tuzilma — 1-qator: muammo raqamlarda (koʻcha, chuqurlik, hajm m³). **Sabab** — havza (ga), eng yuqori oqim va mavjud tizim sigʻimi (m³/s), nega aynan shu joy (havzaning eng past nuqtasi). **Variantlar** — A/B/C/D har biri: nima qilinadi (diametr, uzunlik, hajm, quduqlar soni), samarasi, mos/mos emas va nega (bosh reja, UNESCO, gravitatsion chiqish bormi). **Tavsiya** — eng yaxshisi va ketma-ketligi (avval tezkor: tozalash/quduqlar, keyin asosiy). **Xaritada** — moviy kataklar havza, havorang chiziq kollektor yoʻli, ⬇ chiqish, 🛢 rezervuar, ▦ quduqlar. “cheklovlar_bosh_reja_unesco” ni albatta ayt. “real_suratlar” boʻlsa — joy suratlari chatda koʻrsatilganini ayt.
 - “savol_doirasi” = BUTUN SHAHAR boʻlsa: 1-qator — jami odam, nechta mavze, nechta yigʻilish joyi, oʻrtacha va eng uzoq vaqt. Keyin **Eng koʻp odam boradigan joylar** (sigʻim bilan, sigʻmaydiganlarini ogohlantir), **Eng uzoq yuradigan mavzelar**, **Xavfli zonalar (Z)** qisqa, **Birinchi soatda**. Xaritada har bir mavzedan yoʻl chizilgan — buni ayt.
 - Savol “belgilangan hudud” haqida, lekin “savol_doirasi” FAQAT belgilangan hudud EMAS boʻlsa (hudud chizilmagan): qayta soʻrama — barcha zonalar uchun rejani ber, eng xavflisidan (Z1) boshla; oxirida bir gap: “Boshqa hudud uchun xaritada ✏️ Hudud belgilang.”
@@ -547,6 +555,7 @@ Qoidalar:
 - “koʻchalar_reytingi” berilgan boʻlsa (shahar yoki hudud koʻchalari): 1-qator — nechta koʻcha, oʻrtacha ball, eng yomoni. **Eng muammoli koʻchalar** — 1…10 (xaritadagi raqamlar): koʻcha — ball — asosiy muammo. **Umumiy muammolar** (jami raqamlar). **Nima qilish kerak** — birinchi navbatda qaysi koʻchalarda nima (oʻtish joyi, pandus, qoplama). Oxirida: batafsil tekshiruv uchun koʻcha nomini yozish mumkinligini ayt.
 - Ochiq xaritada (OSM) belgilanmagan narsa (zebra, svetofor, ariq, maktab, bordyur) haqiqatda boʻlishi mumkin: “yoʻq” dema — “ochiq maʼlumotda belgilanmagan” de; real suratlar tahlili berilgan boʻlsa — suratga ishon. Mavjud svetofor, zebra yoki chorraha yonida yangi oʻtish joyi, svetofor yoki bekat taklif qilma.
 - Kod bloki, ASCII sxema ishlatma — oddiy matn va roʻyxat.
+- Yechim taklif qilganda eng oddiy, arzon va yaqin variantdan boshla (mavjud inshootni tozalash/ulash, belgi, tashkiliy chora), keyin kerak boʻlsa qimmatrogʻini; har taklifni masofa/oʻlcham va (berilgan boʻlsa) narx bilan asosla. Butun shahar boʻyicha takrorlab boʻlmaydigan ulkan yoki uzoq inshootni oddiyroq yoʻl bor joyda tavsiya qilma.
 - Maʼlumot qayerdan olinganini, qanday hisoblanganini, manbalar roʻyxatini matnda yozma (ular alohida koʻrsatiladi). Faqat natija va tavsiya.
   • Hisob taxminiy ekanini bir marta ayt (bino materiali/yili yoʻq — qurilish inspeksiyasi va kadastrdan olinsa aniqlashadi). Raqamlarni faqat JSON’dan ol.
 - Xaritada nima koʻrsatilganini bir gapda ayt (koʻk — suv; qizil kataklar — xavfli zonalar; yashil chiziqlar — evakuatsiya yoʻllari; yashil belgilar — yigʻilish/baland joylar).
