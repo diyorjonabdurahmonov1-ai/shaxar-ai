@@ -100,7 +100,7 @@
     const M = S.model;
     let html;
     NX.view.showProblems(S.tab === 'problems');
-    if (S.tab === 'map') html = S.road ? V.road(S) : S.area ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
+    if (S.tab === 'map') html = S.road ? V.road(S) : S.area && !S.area.from3d ? V.area(S) : S.street != null ? V.street(S, M.streets[S.street]) : V.home(S);
     else if (S.tab === 'problems') {
       const op = S.problemOpen && M.problems.find(x => x.id === S.problemOpen);
       if (!op) S.problemOpen = null;
@@ -677,7 +677,15 @@
       let m = null;
       try { await areaAsk(q); m = S.area.qa[S.area.qa.length - 1]; } catch (e) { m = { role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }; }
       const items = ((m && m.actions) || []).filter(a => a && a.lat != null).map(a => Object.assign({}, a));
+      const A = S.area;
+      if (A && A.res && A.res.sim) {
+        // Qurilish: koʻchalar yuklamasi oʻzgarishi (qizil — koʻproq mashina, yashil — kamroq) 3D da va yangi bino belgisi
+        const d = A.res.sim.deltas || [], P = S.simInfo && S.simInfo.pieces, M = S.model;
+        if (P && M) for (let k = 0; k < d.length; k += 2) { const pc = P[d[k]], st = NX.deltaStyle(d[k + 1]); if (!pc || !st) continue; const ll = M.ways[pc[0]].ll.slice(pc[1], pc[2] + 1); if (ll.length < 2) continue; items.push({ kind: 'line', style: 'seg', id: 'D' + k, path: ll, lat: ll[0][0], lon: ll[0][1], color: st.col, w: Math.min(1.6, Math.max(0.6, st.w / 4)), list: false, title: d[k + 1] > 0 ? `🚗 +${Math.round(d[k + 1])} mashina/soat` : `🚗 ${Math.round(d[k + 1])} mashina/soat`, note: '' }); }
+        items.push({ kind: 'point', id: '🏗', lat: A.st.center[0], lon: A.st.center[1], color: '#a855f7', title: `🏗 Yangi bino: ${A.spec.floors} qavat, ${A.spec.flats} xonadon`, note: `~${NX.fmt.int(A.res.b.residents)} aholi, tigʻiz soatda ~${NX.fmt.int(A.res.b.peak)} safar.` });
+      }
       let H = null; if (items.length) H = showHazard({ kind: 'area', items });
+      if (A && A.res && A.res.shadow) NX.map3d.set({ plan: A.res.shadow });
       const msg = { role: 'ai', text: m ? m.text : 'Hisoblab boʻlmadi.', src: m ? m.src : 'hisob', error: m && m.error, hz: H ? H.items : null };
       C.msgs.push(msg); C.busy = null; renderKeepScroll();
       return msg;
@@ -868,7 +876,6 @@
     if (!S.model) { toast('Maʼlumot hali yuklanmoqda — birozdan keyin.', 'warn'); return; }
     NX.map3d.drawPoly(poly => {
       if (!makeArea(poly, true)) { NX.map3d.showArea(null); return; }
-      NX.view.drawArea(poly, null, false);
       toast(`Hudud belgilandi (${NX.fmt.num(S.area.st.areaHa, 1)} ga) — endi savollar shu hudud haqida.`, 'ok');
       renderKeepScroll();
     });
@@ -1084,9 +1091,11 @@
         A.res.blds = { n: inA.length, area: Math.round(inA.reduce((t, x) => t + x.area, 0)), maxLv: inA.reduce((m, x) => Math.max(m, x.est ? 0 : x.levels), 0) };
         NX.map3d.set({ plan: sh });
       } catch (e) { /* binolar yuklanmadi — soya hisoblanmaydi */ }
+      if (!A.from3d) {
       ensureLeaflet();
       NX.view.showDeltas(sim, S.simInfo.pieces);
       NX.view.drawArea(A.st.poly, A.st.center, false);
+      }
     } catch (e) {
       console.error(e);
       toast('Hisob xatosi: ' + e.message, 'bad');

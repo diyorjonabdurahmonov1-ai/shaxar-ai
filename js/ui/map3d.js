@@ -188,8 +188,9 @@
   }
   function planGeo() {
     const P = data.plan, f = [];
-    if (P && mode === 'plan') {
-      P.list.filter(s => s.ring && s.label.startsWith('Qish')).forEach(s => f.push({ type: 'Feature', properties: { kind: 'shadow', h: 0 }, geometry: { type: 'Polygon', coordinates: [s.ring] } }));
+    // Rejadagi yangi bino har doim koʻrinadi (aytilgan qavat balandligida); qishki soya — “Yangi bino va soya” rejimida
+    if (P && P.planned) {
+      if (mode === 'plan') P.list.filter(s => s.ring && s.label.startsWith('Qish')).forEach(s => f.push({ type: 'Feature', properties: { kind: 'shadow', h: 0 }, geometry: { type: 'Polygon', coordinates: [s.ring] } }));
       f.push({ type: 'Feature', properties: { kind: 'plan', h: P.planned.height }, geometry: { type: 'Polygon', coordinates: [P.planned.ring] } });
     }
     return { type: 'FeatureCollection', features: f };

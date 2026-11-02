@@ -301,6 +301,13 @@ async function roadBlock(browser) {
   await page.click('#twinChat form button.primary');
   await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nA3, { timeout: 180000 });
   const a3r = await page.evaluate(() => { const H = NX.state.twin.hz; return { scope: H && H.scope, origin: H && H.origin, ann2d: document.querySelectorAll('.leaflet-marker-icon.hz-ann').length }; });
+  // 3D hududda “uy qursam” — yangi bino aytilgan qavatda 3D da koʻtariladi, koʻchalar yuklamasi oʻzgarishi 3D da; hudud 2D xaritada chizilmaydi
+  const nB3 = await page.evaluate(() => NX.state.twinChat.msgs.length);
+  await page.fill('#twinChat textarea[name=tq]', 'Bu yerga 300 xonadonli 9 qavatli dom qursam nima boʻladi?');
+  await page.click('#twinChat form button.primary');
+  await page.waitForFunction(n => !NX.state.twinChat.busy && NX.state.twinChat.msgs.length === n + 2, nB3, { timeout: 240000 });
+  const b3 = await page.evaluate(() => { const H = NX.state.twin.hz, pf = (NX.map3d.map().getSource('plan')._data.features || []).find(f => f.properties.kind === 'plan'); return { kind: H && H.kind, pin: !!(H && H.items.some(a => a.id === '🏗')), segs: H ? H.items.filter(a => a.style === 'seg').length : 0, h: pf && pf.properties.h, area2d: Object.keys(NX.map.leaflet()._layers).length, panelArea: !!document.querySelector('#areaChat') }; });
+  ok('3D hududda qurilish: yangi bino 9 qavat balandlikda 3D da, belgi va koʻchalar yuklamasi 3D da', b3.kind === 'area' && b3.pin && b3.h >= 25 && !b3.panelArea, JSON.stringify(b3));
   await page.click('[data-act=twin-area-clear]'); await page.waitForTimeout(300);
   ok('3D da hudud chizish: savol shu hudud boʻyicha hisoblanadi, natija faqat 3D da (2D xaritaga chizilmaydi)', a3.area && a3.ha > 1 && a3.chip && a3r.scope === 'area' && a3r.origin === 'twin' && a3r.ann2d === 0 && !(await page.evaluate(() => NX.state.area)), JSON.stringify([a3, a3r]));
   // Aqlli savol: davomli savollar oldingi savol bilan birlashadi; imlo xatosi va ruscha savollar ham taniladi
