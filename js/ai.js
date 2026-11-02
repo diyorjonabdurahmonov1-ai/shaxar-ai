@@ -70,7 +70,8 @@ Qoidalar:
   avval bir gapda xulosa, keyin qaysi koʻchalar koʻproq yuklanadi (ular xaritada qizil koʻrsatilgan) va qaysi avtobuslarga taʼsir qiladi, keyin 1–2 ta amaliy maslahat.
 - Agar koʻchada “tanlangan_qism” berilgan boʻlsa — gap butun koʻcha emas, faqat shu qism (qayerdan–qayergacha) haqida; javobda buni aniq ayt va “qismdagi_muammolar”ga tayan.
 - Agar savol “bu koʻchani nima qilish kerak?” turida boʻlsa — koʻchaning “muammolar” roʻyxati va yechimlariga tayan, ustuvorlik tartibida ayt.
-- Mos boʻlsa, javob oxirida “Kelajakda:” deb bitta gap yoz: transport oqimi oshsa (masalan, turistik mavsumda) qaysi joy birinchi boʻlib tirband boʻlishi mumkin — faqat “sigim_toʻlishi” raqamlariga tayanib.`;
+- Mos boʻlsa, javob oxirida “Kelajakda:” deb bitta gap yoz: transport oqimi oshsa (masalan, turistik mavsumda) qaysi joy birinchi boʻlib tirband boʻlishi mumkin — faqat “sigim_toʻlishi” raqamlariga tayanib.
+- Bosh rejaga va UNESCO muhofaza talablariga zid tavsiya berma (tarixiy markazda yangi keng yoʻl, baland bino va h.k.). Eng oddiy, arzon chora (belgi, svetofor rejimi, tashkiliy) dan boshla.`;
 
   function streetFacts(s, M) {
     return {
@@ -125,6 +126,32 @@ Qoidalar:
   // Mavjud emas deb javob bergan modellar 1 kun qayta soʻralmaydi (har safar ortiqcha kutish boʻlmasin)
   const badModels = () => { const b = NX.store.get('ai:bad', {}); Object.keys(b).forEach(k => { if (Date.now() - b[k] > 86400e3) delete b[k]; }); return b; };
   const markBad = m => { const b = badModels(); b[m] = Date.now(); NX.store.set('ai:bad', b); };
+  // ---------- Soʻrov hajmi: Worker chegarasi (eski versiya 30 ming, yangisi 60 ming belgi) ----------
+  // Maʼlumot (JSON) juda katta boʻlsa — roʻyxatlar qisqartiriladi, uzun matnlar kesiladi (eng muhim birinchi elementlar qoladi).
+  const BODY_SOFT = 56000, BODY_OLD = 28500;
+  function shrinkObj(o, n, sl, depth) {
+    if (Array.isArray(o)) { const a = o.slice(0, n).map(x => shrinkObj(x, n, sl, depth + 1)); if (o.length > n) a.push(`… yana ${o.length - n} ta`); return a; }
+    if (o && typeof o === 'object') { const r = {}; Object.keys(o).forEach(k => { r[k] = depth > 6 ? (typeof o[k] === 'object' ? '…' : o[k]) : shrinkObj(o[k], n, sl, depth + 1); }); return r; }
+    if (typeof o === 'string' && o.length > sl) return o.slice(0, sl) + '…';
+    return o;
+  }
+  const MARK = 'JSON):\n';
+  function fitMessages(messages, max) {
+    const size = () => JSON.stringify({ messages }).length + 300;
+    if (size() <= max) return messages;
+    messages = messages.map(m => Object.assign({}, m));
+    // 1) avvalgi suhbat qisqartiriladi
+    messages.forEach((m, i) => { if (i > 0 && i < messages.length - 1 && typeof m.content === 'string') m.content = m.content.slice(0, 500); });
+    const last = messages[messages.length - 1];
+    if (typeof last.content !== 'string' || last.content.indexOf(MARK) < 0) return messages;
+    const at = last.content.indexOf(MARK) + MARK.length, head = last.content.slice(0, at);
+    let facts; try { facts = JSON.parse(last.content.slice(at)); } catch (e) { last.content = last.content.slice(0, Math.max(2000, max - 16000)); return messages; }
+    for (const [n, sl] of [[40, 600], [25, 400], [15, 300], [10, 200], [6, 150], [4, 100], [2, 80]]) {
+      last.content = head + JSON.stringify(shrinkObj(facts, n, sl, 0));
+      if (size() <= max) break;
+    }
+    return messages;
+  }
   async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
     let lastErr = null;
     // Sozlamalarda tanlangan model (Claude/Gemini — faqat sayt Worker’i orqali) birinchi sinab koʻriladi
@@ -136,18 +163,26 @@ Qoidalar:
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
       const body = { model, messages: messages || [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
-      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 2500; body.reasoning_effort = 'low'; } else if (!/^gpt-/.test(model)) body.max_completion_tokens = 2500; else { body.max_completion_tokens = 900; body.temperature = 0.3; }
+      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 4000; body.reasoning_effort = 'low'; } else if (!/^gpt-/.test(model)) body.max_completion_tokens = 4000; else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       // Prompt caching: oʻzgarmas qism (system) boshida turadi; bir xil turdagi soʻrovlar bitta kalit bilan — takroriy kirish arzonroq
       body.prompt_cache_key = 'cityjam-' + (cacheKey || 'chat');
-      let r;
-      try {
+      if (!key) body.messages = fitMessages(body.messages, BODY_SOFT);
+      let r, tries = 0;
+      const send = async () => { try {
         r = key
           ? await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 60000)
           : await NX.fetchJSON(proxyUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 60000);
-      } catch (e) { throw new Error(e.timeout ? 'OpenAI javob bermadi (vaqt tugadi). Qayta urinib koʻring.' : 'OpenAI serveriga ulanib boʻlmadi. Internet aloqasini tekshiring.'); }
+      } catch (e) { throw new Error(e.timeout ? 'AI javob bermadi (vaqt tugadi). Qayta urinib koʻring.' : 'AI serveriga ulanib boʻlmadi. Internet aloqasini tekshiring.'); } };
+      await send();
+      // Worker eski versiyasi (30 ming belgi): maʼlumot qisqartirilib qayta yuboriladi
+      if (!key && (r.status === 413 || (r.data && r.data.error && r.data.error.code === 'too_large'))) { body.messages = fitMessages(body.messages, BODY_OLD); await send(); }
+      // Server vaqtincha xatosi (502/503/504) — 1.5 s dan keyin bir marta qayta
+      while (r.status >= 500 && r.status !== 501 && tries++ < 1) { await new Promise(res => setTimeout(res, 1500)); await send(); }
       const err = r.data && r.data.error;
       if (r.ok && r.data && r.data.choices && r.data.choices[0]) {
-        const text = (r.data.choices[0].message && r.data.choices[0].message.content) || '';
+        let text = (r.data.choices[0].message && r.data.choices[0].message.content) || '';
+        // Javob uzunlik chegarasida kesilgan — oxirgi chala gap olib tashlanadi va belgi qoʻyiladi
+        if (text.trim() && r.data.choices[0].finish_reason === 'length') { const cut = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('. ')); if (cut > text.length * 0.6) text = text.slice(0, cut + 1); text += '\n\n⚠️ Javob qisqartirildi — batafsilroq kerak boʻlsa, savolni aniqroq bering.'; }
         if (text.trim()) return { text, model };
         lastErr = new Error('Model boʻsh javob qaytardi.');
         continue;
@@ -162,7 +197,7 @@ Qoidalar:
       if (r.status === 429) throw new Error('OpenAI soʻrovlar limiti oshdi. Birozdan keyin qayta urinib koʻring.');
       if (r.status === 404 || code === 'model_not_found' || (r.status === 400 && /model/i.test((err && err.message) || ''))) { markBad(model); lastErr = new Error(`“${model}” modeli mavjud emas.`); continue; }
       if (r.status === 400 && /reasoning_effort|max_completion_tokens|temperature/.test((err && err.message) || '')) { lastErr = new Error('Parametr mos kelmadi'); continue; }
-      lastErr = new Error('OpenAI xatosi: ' + ((err && err.message) || 'HTTP ' + r.status));
+      lastErr = new Error(r.status >= 500 ? 'AI xizmati vaqtincha javob bermadi' : r.status === 413 ? 'Soʻrov juda katta' : 'AI xatosi: ' + ((err && err.message) || 'HTTP ' + r.status));
     }
     throw lastErr || new Error('Mos OpenAI modeli topilmadi.');
   }
@@ -264,7 +299,7 @@ Qoidalar:
 
   // **qalin** va qatorlarni xavfsiz HTML ga aylantirish
   function render(text) {
-    return NX.esc(text).replace(/^\s*[-*] /gm, '• ').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+    return NX.esc(text).replace(/^\s*#{1,4}\s*(.+)$/gm, '**$1**').replace(/^\s*[-*] /gm, '• ').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
   }
 
   // ---------- Muammoni real surat bilan tekshirish ----------
@@ -694,7 +729,8 @@ Tuzilma:
 **Keyingi qadamlar** — 2–4 ta aniq ish.
 - Faqat berilgan raqamlardan foydalan; yoʻq narsani oʻylab topma. Bosh rejaga yoki UNESCO talablariga zid tavsiya berma.
 - “internet” berilgan boʻlsa — tegishlisini qisqa ayt (qaysi manbada nima deyilgan).
-- JSON, model, hisob usuli haqida yozma.`;
+- JSON, model, hisob usuli haqida yozma.
+${MAPRULE}`;
   async function roadAsk(q, facts, history, extra) {
     const local = () => NX.roadcheck.summary(facts._R);
     const F = Object.assign({}, facts); delete F._R;

@@ -21,8 +21,9 @@ const MODELS = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-m
   // Ixtiyoriy: Claude (maxfiy ANTHROPIC_API_KEY) va Gemini (maxfiy GEMINI_API_KEY). Kalit qoʻyilmasa — 503, sayt OpenAI’ga qaytadi.
   'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const LIGHT = ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'];
-const PER_IP_PER_HOUR = 20;
-const MAX_BODY_CHARS = 30000;
+const PER_IP_PER_HOUR = 120;   // hokimiyat xodimlari bitta umumiy IP (NAT) orqali chiqadi — 20 kam edi
+const ALL_PER_HOUR = 400;      // butun sayt boʻyicha soatlik chegara (Worker nusxasi ichida, eng yaxshi harakat) — kutilmagan xarajatdan himoya
+const MAX_BODY_CHARS = 60000;
 const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
 const IMAGE_MODELS = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
 // Faqat Mapillary suratlari (Meta CDN) AI’ga koʻrsatiladi
@@ -85,6 +86,7 @@ export default {
     hits.set(k, n);
     if (hits.size > 5000) hits.clear();
     if (n > PER_IP_PER_HOUR) return json({ error: { code: 'proxy_rate_limit', message: 'Soatlik savollar limiti tugadi' } }, 429, cors);
+    if (limit('all', ALL_PER_HOUR)) return json({ error: { code: 'proxy_rate_limit', message: 'Soatlik umumiy limit tugadi' } }, 429, cors);
 
     const raw = await req.text();
     if (raw.length > MAX_BODY_CHARS) return json({ error: { code: 'too_large', message: 'Soʻrov juda katta' } }, 413, cors);
@@ -94,7 +96,7 @@ export default {
       return json({ error: { code: 'model_not_found', message: 'Model yoki xabarlar ruxsat etilmagan' } }, 400, cors);
     }
     const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user', content: cleanContent(m.content) })) };
-    out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 2500);
+    out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 4000);
     if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = 'low'; else if (/^gpt-/.test(body.model)) out.temperature = 0.3;
     // Prompt caching: bir turdagi soʻrovlar bitta kalit bilan (oʻzgarmas system prompt boshida)
     if (typeof body.prompt_cache_key === 'string') out.prompt_cache_key = body.prompt_cache_key.slice(0, 64);

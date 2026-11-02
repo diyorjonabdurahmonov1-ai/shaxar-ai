@@ -959,15 +959,24 @@
     C.busy = 'AI tahlil qilmoqda'; renderKeepScroll();
     let r;
     // Bir xil savol (shu hudud, shu hisob) — bir xil javob: AI javobi 24 soat saqlanadi; “qayta” deyilsa — yangidan
-    const ck = 'ans:' + hashStr(n.replace(/[^a-z0-9ʻ' ]/g, '').replace(/\s+/g, ' ').trim() + '|' + (S.area ? S.area.st.center.map(v => v.toFixed(4)).join() : '') + '|' + (H ? H.kind + ':' + (H.items || []).length : ''));
+    const ck = 'ans:' + hashStr(n.replace(/[^a-z0-9ʻ' ]/g, '').replace(/\s+/g, ' ').trim() + '|' + (S.area ? S.area.st.center.map(v => v.toFixed(4)).join() : '') + '|' + (H ? H.kind + ':' + hashStr((H.items || []).map(a => (a.id || '') + (a.title || '')).join('|')) : ''));
+    // Jonli maʼlumot (havo sifati, ob-havo) boʻlgan javob keshlanmaydi; qolganlari — 6 soat
+    const live = !!(extra.havo_sifati || extra.ob_havo);
     let cached = null;
-    if (!/qayta|yangidan/.test(n)) { try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.ts < 86400e3) cached = c.r; } catch (e) { cached = null; } }
+    if (!live && !/qayta|yangidan/.test(n)) { try { const c = JSON.parse(localStorage.getItem(ck) || 'null'); if (c && Date.now() - c.ts < 6 * 3600e3) cached = c.r; } catch (e) { cached = null; } }
     if (cached) r = cached;
     else {
       // AI 80 s ichida javob bermasa — tayyor hisob natijasi koʻrsatiladi (cheksiz “Tahlil qilinmoqda” boʻlmasin)
       try { r = NX.ai.available() ? await Promise.race([NX.ai.twinAsk(q, twinFacts(extra), prev), NX.sleep(80000).then(() => { throw new Error('AI javobi kechikdi — hisob natijasi'); })]) : { text: local || 'AI ulanmagan.', src: 'hisob', error: 'AI ulanmagan.' }; }
       catch (e) { r = { text: local || e.message, src: 'hisob', error: e.message }; }
-      if (r.src === 'ai') { try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src, check: r.check } })); } catch (e) { /* */ } }
+      if (r.src === 'ai' && !live) {
+        try {
+          // Kesh 40 ta javob bilan cheklanadi (eskilari oʻchadi) — localStorage toʻlib, sozlamalar saqlanmay qolmasin
+          const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('ans:')) { let t = 0; try { t = JSON.parse(localStorage.getItem(k)).ts || 0; } catch (e) { /* */ } ks.push([k, t]); } }
+          if (ks.length >= 40) ks.sort((a, b) => a[1] - b[1]).slice(0, ks.length - 39).forEach(([k]) => localStorage.removeItem(k));
+          localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src, check: r.check } }));
+        } catch (e) { /* */ }
+      }
     }
     const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
     C.msgs.push(msg);
