@@ -132,6 +132,7 @@
     map.removeFeatureState({ source: 'bld' });
     if (wet) wet.forEach(id => map.setFeatureState({ source: 'bld', id }, { wet: true }));
     if (shade) shade.forEach(b => map.setFeatureState({ source: 'bld', id: b.id }, { shade: true }));
+    if (NX.city3d) NX.city3d.reapply();
   }
   // Suv chuqurligi rangi: <30 sm och, 30–60 sm, >60 sm toʻq koʻk
   const depthCol = d => (d >= 0.6 ? '#1e3a8a' : d >= 0.3 ? '#2563eb' : '#60a5fa');
@@ -289,7 +290,8 @@
   }
   // Balandlik masshtabi (↕): binolar baland/past farqi yaqqolroq koʻrinsin (×1 — haqiqiy)
   const hScale = 1;
-  const HX = () => ['*', ['get', 'h'], hScale];
+  // Realistik model chizilgan binolar (city3d.js, feature-state r3d) — MapLibre hajmi 0 (ikki marta chizilmasin)
+  const HX = () => ['case', ['boolean', ['feature-state', 'r3d'], false], 0, ['*', ['get', 'h'], hScale]];
   function applyHeight() {
     if (!map || !map.getLayer('bld')) return;
     map.setPaintProperty('bld', 'fill-extrusion-height', ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, HX()]);
@@ -401,9 +403,9 @@
         map.addLayer({ id: 'roads-core', type: 'line', source: 'roads', layout: { 'line-cap': 'round', 'line-join': 'round', visibility: base === 'twin' ? 'visible' : 'none' }, paint: { 'line-color': '#7dd3fc', 'line-opacity': 0.75, 'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', 0.4, ['get', 'w']], 17, ['*', 1.6, ['get', 'w']]] } });
         map.addSource('bld', { type: 'geojson', data: buildingsGeo() });
         // Binolar: vertikal gradient (pastda qoraroq) + yorugʻlik; balandlik zoom bilan silliq oʻsadi
-        map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: { 'fill-extrusion-color': colorExpr(), 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['get', 'h']], 'fill-extrusion-opacity': 0.92, 'fill-extrusion-vertical-gradient': true } });
+        map.addLayer({ id: 'bld', type: 'fill-extrusion', source: 'bld', paint: { 'fill-extrusion-color': colorExpr(), 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, HX()], 'fill-extrusion-opacity': 0.92, 'fill-extrusion-vertical-gradient': true } });
         // Tomlar — derazali devorlar ustida balandlik rangidagi yupqa qatlam
-        map.addLayer({ id: 'bld-roof', type: 'fill-extrusion', source: 'bld', layout: { visibility: 'none' }, paint: { 'fill-extrusion-color': ['case', ['==', ['get', 'lm'], 1], '#fde68a', H_TWIN], 'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['get', 'h']], 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['+', ['get', 'h'], 0.6]], 'fill-extrusion-opacity': 0.92 } });
+        map.addLayer({ id: 'bld-roof', type: 'fill-extrusion', source: 'bld', layout: { visibility: 'none' }, paint: { 'fill-extrusion-color': ['case', ['==', ['get', 'lm'], 1], '#fde68a', H_TWIN], 'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, HX()], 'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.2, ['+', HX(), 0.6]], 'fill-extrusion-opacity': 0.92 } });
         // Bino konturlari yerda yupqa nur — “gologramma” koʻrinishi (yaqinlashganda)
         map.addLayer({ id: 'bld-foot', type: 'line', source: 'bld', minzoom: 15, paint: { 'line-color': base === 'twin' ? ['case', ['==', ['get', 'lm'], 1], '#fde68a', '#22d3ee'] : '#3f3428', 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16.5, 0.35], 'line-width': 1, 'line-blur': 0.6 } });
         addWindows(); applyWindows();
@@ -518,6 +520,9 @@
     if (controls.legVis) controls.legVis();
     // Obidalarning batafsil 3D modellari (bir marta, binolar va obida belgilari tayyor boʻlganda)
     if (!refresh.lm && NX.lm3d && mapReady && data.buildings.some(b => b.lmK)) { refresh.lm = true; NX.lm3d.attach(map, data.buildings).catch(e => { refresh.lm = false; console.warn('obidalar 3D:', e.message); }); }
+    // Realistik bino modellari (har bir bino: kontur, balandlik, derazalar, tom) — “Balandlik” rejimida, yaqin masshtabda
+    if (!refresh.c3 && NX.city3d && NX.lm3d && mapReady && data.buildings.length) { refresh.c3 = true; NX.city3d.attach(map, () => data.buildings, () => mode).catch(e => { refresh.c3 = false; console.warn('city3d:', e.message); }); }
+    else if (refresh.c3 && NX.city3d) NX.city3d.update();
     // Suv rejimida koʻchalar nuri oʻchadi (suv bilan chalkashmasin)
     ['roads-glow', 'roads-core'].forEach(id => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', base === 'twin' && mode !== 'flood' ? 'visible' : 'none'));
     map.getSource('plan').setData(planGeo());

@@ -20,8 +20,9 @@
   }
 
   // Bino kontur halqasi → mahalliy metrlar; minimal maydonli yoʻnaltirilgan toʻrtburchak (OBB)
-  function obb(ring) {
-    const P = ring.map(c => loc(c[1], c[0]));
+  function obb(ring) { return obbPts(ring.map(c => loc(c[1], c[0]))); }
+  // Mahalliy metr nuqtalardan OBB (city3d.js ham ishlatadi)
+  function obbPts(P) {
     const hull = convex(P);
     let best = null;
     for (let i = 0; i < hull.length; i++) {
@@ -186,5 +187,5 @@
     return true;
   }
 
-  NX.lm3d = { attach, _obb: obb };
+  NX.lm3d = { attach, _obb: obb, _obbPts: obbPts };
 })();

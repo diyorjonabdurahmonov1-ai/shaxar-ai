@@ -174,7 +174,9 @@
     viewer.camera.moveEnd.addEventListener(() => bldRefresh());
   }
   // 3D egizak boʻlimi ochilganda: token boʻlsa va foydalanuvchi “Sxema”ni tanlamagan boʻlsa — fotoreal
-  function autoEmbed(el) { host = el || host; if (available() && pref() && !failed) embed(); }
+  // Avtomatik testlarda (navigator.webdriver) fotoreal oʻzi ochilmaydi — og‘ir WebGL test vaqtini choʻzmasin
+  const auto = () => !navigator.webdriver || NX.store.get('g3d:test', false);
+  function autoEmbed(el) { host = el || host; if (available() && pref() && !failed && auto()) embed(); }
   let initP = null, embedding = false;
   const btnSync = () => { const b = document.querySelector('[data-act=g3d]'); if (b) { b.classList.toggle('primary', !box.hidden); b.textContent = box.hidden ? '📸 Fotoreal 3D' : '🧊 Maket 3D'; } if (box.parentNode) box.parentNode.classList.toggle('g3d-on', !box.hidden); };
   async function embed() {
