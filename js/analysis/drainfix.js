@@ -51,6 +51,7 @@
   const qFull = (Dmm, S) => { const D = Dmm / 1000; return (1 / N_PIPE) * (Math.PI * D * D / 4) * Math.pow(D / 4, 2 / 3) * Math.sqrt(Math.max(0.002, S)); };
 
   // Asosiy hisob. o: { R (2D natija), D (yer sathi 40 m), net (koʻcha tarmogʻi), name | point, poly, rainMm, drainMm, spaces }
+  const MAJOR = /trunk|primary|secondary|tertiary/;
   async function solve(o) {
     const { R, D, net } = o, H = NX.twin.hydro(D), nx = D.nx, ny = D.ny, step = D.step;
     const cellOf = (lat, lon) => { const [x, y] = G.xy(lat, lon), i = Math.floor((x - D.x0) / step), j = Math.floor((y - D.y0) / step); return i < 0 || j < 0 || i >= nx || j >= ny ? -1 : j * nx + i; };
@@ -115,7 +116,7 @@
     let outlet = null;
     const cands = [];
     // Har ariq/kanaldan bitta — eng yaqin nuqta (1.5 km ichida, balandligidan qatʼi nazar: past boʻlsa — oʻz oqimi, baland boʻlsa — kichik nasos)
-    ww.forEach(w => { let bestP = null; w.pts.forEach(p => { if (NX.masterplan && NX.masterplan.zoneAt(p[0], p[1]) === 'afrosiyob') return; const z = zAt(p[0], p[1]), [x, y] = G.xy(p[0], p[1]), dd = Math.hypot(x - sx0, y - sy0); if (dd < 1500 && isFinite(z) && (!bestP || dd < bestP.dd)) bestP = { c: p, z, dd, name: w.name, kind: WW_UZ[w.kind] || 'ariq', big: /river|canal/.test(w.kind) }; }); if (bestP) cands.push(bestP); });
+    ww.forEach(w => { let bestP = null; w.pts.forEach(p => { if (NX.masterplan && NX.masterplan.zoneAt(p[0], p[1]) === 'afrosiyob') return; const z = zAt(p[0], p[1]), [x, y] = G.xy(p[0], p[1]), dd = Math.hypot(x - sx0, y - sy0); if (dd < 1500 && isFinite(z) && (!bestP || dd < bestP.dd)) bestP = { c: p, z, dd, name: w.name, kind: WW_UZ[w.kind] || 'ariq', big: /river|canal/.test(w.kind), w }; }); if (bestP) cands.push(bestP); });
     cands.sort((a, b) => a.dd - b.dd);
     { let k = k0, g = 0; while (k >= 0 && g++ < 200) { if (D.z[k] < zPit - 3) { const c = cellLL(k), [x, y] = G.xy(c[0], c[1]); cands.push({ c, z: D.z[k], dd: Math.hypot(x - sx0, y - sy0) + 500, name: '', kind: 'past joy (relyef boʻyicha)' }); break; } k = H.down[k]; } }
     // Koʻcha tarmogʻi boʻylab eng qisqa yoʻl (birinchi 6 nomzoddan eng yaqini)
@@ -126,21 +127,43 @@
       const pop = () => { const t = Q2[0], l = Q2.pop(); if (Q2.length) { Q2[0] = l; let c = 0; for (;;) { const a1 = 2 * c + 1, b1 = a1 + 1; let m = c; if (a1 < Q2.length && Q2[a1][0] < Q2[m][0]) m = a1; if (b1 < Q2.length && Q2[b1][0] < Q2[m][0]) m = b1; if (m === c) break; [Q2[m], Q2[c]] = [Q2[c], Q2[m]]; c = m; } } return t; };
       push(0, a);
       const zc = new Map(), zoneOf = m => { if (!NX.masterplan) return null; if (!zc.has(m)) zc.set(m, NX.masterplan.zoneAt(m.lat, m.lon)); return zc.get(m); };
-      while (Q2.length) { const [d, n] = pop(); if (done.has(n)) continue; done.add(n); if (n === b) break; if (d > 9000) break; n.nb.forEach(({ n: m, sg }) => { const zm = zoneOf(m); if (zm === 'afrosiyob') return; const nd = d + sg.len * (zm === 'temur' ? 2.5 : 1) * ((sg.w || 8) < 8 ? 1.7 : 1); if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, [n, sg]); push(nd, m); } }); }
+      while (Q2.length) { const [d, n] = pop(); if (done.has(n)) continue; done.add(n); if (n === b) break; if (d > 9000) break; n.nb.forEach(({ n: m, sg }) => {
+        const zm = zoneOf(m); if (zm === 'afrosiyob') return;
+        // Ariq/quvur — katta koʻcha boʻylab (mahalla ichidagi tor koʻchalar ×3.5), suv faqat pastga oqadi (tepaga chiqish — katta jarima)
+        const minor = !MAJOR.test(sg.hw || '') || (sg.w || 8) < 8, rise = isFinite(m.z) && isFinite(n.z) ? Math.max(0, m.z - n.z) : 0;
+        const nd = d + sg.len * (zm === 'temur' ? 2.5 : 1) * (minor ? 3.5 : 1) + rise * 150;
+        if (nd < (dist.get(m) ?? Infinity)) { dist.set(m, nd); prev.set(m, [n, sg]); push(nd, m); } }); }
       if (!prev.has(b) && a !== b) return null;
       const pts = [], names = []; let n = b, L = 0;
       while (n && n !== a) { pts.push([n.lat, n.lon]); const [p, sg] = prev.get(n); L += sg.len; if (sg.name && names[names.length - 1] !== sg.name) names.push(sg.name); n = p; }
       pts.push([a.lat, a.lon]); pts.reverse(); names.reverse();
-      return { pts, L: Math.round(L), streets: [...new Set(names)].slice(0, 5) };
+      // Aylanma/razvorot halqalari (ikki tomonlama yoʻlning qarama-qarshi qatnov qismi): yoʻl oʻz izidan 35 m yaqinga qaytsa — oraliq kesiladi
+      for (let i = 0; i < pts.length; i++) for (let j = pts.length - 1; j > i + 2; j--) { if (dPt(pts[i], pts[j]) < 35) { pts.splice(i + 1, j - i - 1); break; } }
+      let L2 = 0; for (let j = 1; j < pts.length; j++) L2 += dPt(pts[j - 1], pts[j]);
+      return { pts, L: Math.round(L2), streets: [...new Set(names)].slice(0, 5) };
     };
     // Har nomzod: koʻcha boʻylab yoʻl, oʻz oqimi bilan ketadimi, quvur oʻlchami va NARXI — eng arzon chiqish tanlanadi
     const pipeFor = S => { let k = 1, d = pipeD(Qd, S); while (d.raw > 2000 && k < 6) { k++; d = pipeD(Qd / k, S); } return { k, d }; };
     const evals = [], seenNode = new Set();
-    for (const c of cands.slice(0, 14)) {
+    for (let c of cands.slice(0, 14)) {
       let r = null;
       if (c.dd < 60) r = { pts: [site, c.c], L: Math.max(10, Math.round(c.dd)), streets: [] };
-      else { const t = nearNode(c.c[0], c.c[1], 400); if (!t || seenNode.has(t)) continue; seenNode.add(t); r = route(src, t); }
-      if (!r || r.L > 3000) continue;
+      else {
+        // Maqsad: katta koʻcha suv yoʻlini kesib oʻtadigan / unga 60 m yaqin joy (koʻprik, quvur) — boʻlmasa eng yaqin tugun
+        const ts = [];
+        if (c.w) { let bx = null, bd = Infinity; nodes.forEach(n => { if (!n.nb.some(e => MAJOR.test(e.sg.hw || ''))) return; const [x, y] = G.xy(n.lat, n.lon), ds = Math.hypot(x - sx0, y - sy0); if (ds > 1600 || ds >= bd) return; if (c.w.pts.some(p => dPt(p, [n.lat, n.lon]) < 60)) { bd = ds; bx = n; } }); if (bx) ts.push(bx); }
+        const t0 = nearNode(c.c[0], c.c[1], 400); if (t0) ts.push(t0);
+        let best = null;
+        ts.forEach(t => { if (seenNode.has(t)) return; seenNode.add(t); const rr = route(src, t); if (rr && (!best || rr.L < best.L)) best = Object.assign(rr, { t }); });
+        r = best;
+        if (r && r.t && r.t !== t0) {
+          // Chiqish — koʻprik/kesishma: suv yoʻlining shu joydagi balandligi
+          const wp = c.w.pts.reduce((b, p) => (dPt(p, [r.t.lat, r.t.lon]) < dPt(b, [r.t.lat, r.t.lon]) ? p : b), c.w.pts[0]), zw = zAt(wp[0], wp[1]);
+          c = Object.assign({}, c, { c: wp, z: isFinite(zw) ? zw : c.z, dd: dPt(site, wp), bridge: true }); r.pts.push(wp);
+        }
+      }
+      // Juda aylanma yoʻl (toʻgʻri masofadan 2.5 baravar uzun) — oqilona emas
+      if (!r || r.L > 3000 || r.L > 2.5 * dPt(site, r.pts[r.pts.length - 1]) + 250 || (r.L < 15 && c.dd >= 60)) continue;
       const grav = zPit - 1.5 > c.z + 0.3, S = grav ? Math.max(0.002, (zPit - 1.5 - (c.z + 0.3)) / Math.max(30, r.L)) : 0.003;
       const pf = pipeFor(S);
       const cost = grav ? COST.pipe(pf.d.std) * pf.k * r.L : COST.pump(Qd) + COST.press(Qd) * r.L;
