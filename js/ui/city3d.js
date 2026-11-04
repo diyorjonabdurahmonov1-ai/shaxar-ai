@@ -242,8 +242,11 @@
     const la = lat0 + y / KY, lo = lon0 + x / KX;
     return SCAN_COVER.some(P => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const yi = P[i][0], xi = P[i][1], yj = P[j][0], xj = P[j][1]; if ((yi > la) !== (yj > la) && lo < (xj - xi) * (la - yi) / (yj - yi) + xi) c = !c; } return c; });
   }
+  // Roʻyxat sahifa ochilishi bilan yuklanadi (panel tugmasi uchun); 3D modellar — 3D egizak ochilganda
+  let scanList = [];
+  const scanListP = fetch('data/scans.json').then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => { scanList = Array.isArray(l) ? l : []; if (scanList.length) document.dispatchEvent(new Event('nx:scans')); return scanList; });
   async function loadScans() {
-    let list = null; try { const r = await fetch('data/scans.json'); if (r.ok) list = await r.json(); } catch (e) { list = null; }
+    const list = await scanListP;
     if (!list || !list.length) return;
     list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); });
     // Skanlangan uylar MapLibre qatlamlarida ham koʻrsatilmaydi (tekis iz qolmasin)
@@ -299,5 +302,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scans.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon })), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon })), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();

@@ -313,7 +313,7 @@
     try { T.buildings = await NX.buildings.load(step); } catch (e) { T.err = e.message; }
     draw();
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
-    try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = NX.twin.flood(T.dem, S.model); } catch (e) { T.err = e.message; }
+    try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = S.model && S.model.ways ? NX.twin.flood(T.dem, S.model) : null; } catch (e) { T.err = e.message; }
     if (S.tab === 'twin') renderKeepScroll();
     // Yigʻilish joylari va favqulodda xizmatlar — oldindan (savol berilganda kutilmasin)
     NX.hazard.openSpaces().catch(() => {}); NX.hazard.services().catch(() => {});
@@ -1885,6 +1885,8 @@
   document.getElementById('panelTab').addEventListener('click', () => { document.body.classList.toggle('panel-hide'); });
   document.addEventListener('nx:tour', () => { if (S.tab === 'twin') renderKeepScroll(); });
   // Mapillary obyektlari yuklanganda: suratda svetofor/zebra koʻringan joylar muammolar roʻyxatidan chiqadi
+  // Real 3D skanlar roʻyxati yuklanganda — 3D egizak panelidagi tugma paydo boʻladi
+  document.addEventListener('nx:scans', () => { if (S.tab === 'twin') renderKeepScroll(); });
   document.addEventListener('nx:mly', () => { if (S.model) { NX.analysis.refresh(S.model); if (S.tab === 'problems' || S.tab === 'map') renderKeepScroll(); NX.view.drawProblems && NX.view.drawProblems(); } });
   document.addEventListener('nx:buildings', () => { if (S.model && S.model.schools && S.model.schools.some(o => o.ot === 'n' && !o.safe)) { NX.analysis.refresh(S.model); if (S.tab === 'problems') renderKeepScroll(); } });
   function rebuildModel() {
