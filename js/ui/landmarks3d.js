@@ -187,5 +187,5 @@
     return true;
   }
 
-  NX.lm3d = { attach, _obb: obb, _obbPts: obbPts };
+  NX.lm3d = { attach, loadThree, _obb: obb, _obbPts: obbPts };
 })();

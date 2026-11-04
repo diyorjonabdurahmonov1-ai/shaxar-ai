@@ -231,10 +231,31 @@
     rebuild(c, R);
   }
 
+  // ---------- Real 3D skanlar: data/scans.json — [{id, nomi, file, lat, lon, heading, z, sana, muallif}] ----------
+  // Skan oʻqlari (glTF): Y — yuqoriga, X — koʻcha boʻylab; lat/lon — skanning (0,0,0) nuqtasi, heading — X oʻqining azimuti (shimoldan, soat yoʻnalishida)
+  const scans = [];
+  async function loadScans() {
+    let list = null; try { const r = await fetch('data/scans.json'); if (r.ok) list = await r.json(); } catch (e) { list = null; }
+    if (!list || !list.length) return;
+    // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
+    if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    list.forEach(sc => {
+      const mc = window.maplibregl.MercatorCoordinate.fromLngLat([sc.lon, sc.lat], sc.z || 0), k = mc.meterInMercatorCoordinateUnits(), h = -(sc.heading - 90) * Math.PI / 180;
+      const item = Object.assign({ scene: null }, sc);
+      // mercator (y pastga) ← metr (z yuqoriga) ← azimut boʻyicha burish ← glTF (Y yuqoriga → Z)
+      item.l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(k, -k, k)).multiply(new THREE.Matrix4().makeRotationZ(h)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+      scans.push(item);
+      new window.THREE.GLTFLoader().load(sc.file, g => {
+        const scn = new THREE.Scene(); scn.add(new THREE.AmbientLight(0xffffff, 1));
+        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { o.material = new THREE.MeshBasicMaterial({ map: o.material.map, side: THREE.DoubleSide }); } });
+        scn.add(g.scene); item.scene = scn; map.triggerRepaint();
+      }, undefined, e => console.warn('skan:', sc.file, e && e.message));
+    });
+  }
   async function attach(m, getBuildings, getM, getRoads) {
     if (layer) return;
     map = m; getB = getBuildings; getMode = getM; getR = getRoads;
-    if (!window.THREE) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/three.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    if (!window.THREE) { if (NX.lm3d && NX.lm3d.loadThree) await NX.lm3d.loadThree(); else await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/three.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
     THREE = window.THREE;
     layer = {
       id: 'city3d', type: 'custom', renderingMode: '3d',
@@ -249,19 +270,21 @@
         this.renderer.autoClear = false;
       },
       render(gl, matrix) {
-        if (!built || !on()) return;
-        this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(built.l);
+        const M = new THREE.Matrix4().fromArray(matrix);
         this.renderer.resetState();
-        this.renderer.render(this.scene, this.camera);
+        if (built && on()) { this.camera.projectionMatrix = M.clone().multiply(built.l); this.renderer.render(this.scene, this.camera); }
+        // Real 3D skanlar (Polycam va h.k.) — har biri oʻz joyida, istalgan rejimda (zoom ≥ 14.5)
+        if (map.getZoom() >= 14.5) scans.forEach(sc => { if (!sc.scene) return; this.camera.projectionMatrix = M.clone().multiply(sc.l); this.renderer.render(sc.scene, this.camera); });
       },
     };
     map.addLayer(layer, map.getLayer('lm3d') ? 'lm3d' : map.getLayer('hz-zone') ? 'hz-zone' : undefined);
     map.on('moveend', check);
+    loadScans();
     check();
   }
   // Rejim almashganda / binolar yangilanganda (map3d.js chaqiradi)
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { _dbg: () => ({ layer, built, FAC }), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scans.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon })), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();
