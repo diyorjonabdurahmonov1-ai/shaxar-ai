@@ -156,10 +156,14 @@
       const photo = [], W = { house: bucket(), apt: bucket(), shop: bucket() }, F = { p: [], n: [], c: [] }, Rf = { p: [], n: [], c: [] }, done = [];
       const loc = (lon, lat) => new THREE.Vector2((lon - lon0) * KX, (lat - lat0) * KY);
       for (let i = 0; i < sel.length; i++) {
-        const b = sel[i], k = kindOf(b), h = Math.max(2.8, b.height || (b.levels || 1) * 3), hs = hash(b.id || i);
-        if (SCAN_HIDE.has(b.id)) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
+        const b = sel[i], k = SCAN_FIT.has(b.id) ? 'house' : kindOf(b), hs = hash(b.id || i);   // skanlangan uylar — hovli uyi devori (koʻp qavatli deraza emas)
+        if (SCAN_HIDE.has(b.id) && !SCAN_FIT.has(b.id)) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
+        // Skanlangan uy: real fasad oldinda, orqasida — shu uyning tomi va yon devorlari skandagi fasad balandligida (teshiklar ham yopiladi)
+        const h = SCAN_FIT.has(b.id) ? SCAN_FIT.get(b.id) : Math.max(2.8, b.height || (b.levels || 1) * 3);
         try {
           const outer = b.ring.slice(0, -1).map(c => loc(c[0], c[1]));
+          // skanlangan uy — kontur 1.3 m ichkariga (real fasad doim oldinda koʻrinsin, maket devori uni toʻsmasin)
+          if (SCAN_FIT.has(b.id)) { const cx = outer.reduce((t, v) => t + v.x, 0) / outer.length, cy = outer.reduce((t, v) => t + v.y, 0) / outer.length; outer.forEach(v => { const dx = cx - v.x, dy = cy - v.y, d = Math.hypot(dx, dy) || 1, m = Math.min(1.3, d * 0.4); v.x += dx / d * m; v.y += dy / d * m; }); }
           if (outer.length < 3) continue;
           if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
           const shape = new THREE.Shape(outer);
@@ -235,7 +239,7 @@
 
   // ---------- Real 3D skanlar: data/scans.json — [{id, nomi, file, lat, lon, heading, z, sana, muallif}] ----------
   // Skan oʻqlari (glTF): Y — yuqoriga, X — koʻcha boʻylab; lat/lon — skanning (0,0,0) nuqtasi, heading — X oʻqining azimuti (shimoldan, soat yoʻnalishida)
-  const scans = [], SCAN_HIDE = new Set(), SCAN_COVER = [];
+  const scans = [], SCAN_HIDE = new Set(), SCAN_COVER = [], SCAN_FIT = new Map();
   // Nuqta skan qamroviga tushadimi (koʻpburchaklar lat/lon da; mahalliy metrga oʻtkaziladi)
   function inCover(x, y, lat0, lon0, KX, KY) {
     if (!SCAN_COVER.length) return false;
@@ -254,7 +258,7 @@
   async function loadScans() {
     const list = await scanListP;
     if (!list || !list.length) return;
-    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); });
+    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); Object.entries(sc.fit || {}).forEach(([id, h]) => SCAN_FIT.set(+id, h)); });
     // Xaritada belgi: skanlangan koʻcha qayerda — bosilsa kamera koʻcha darajasiga tushadi
     if (window.maplibregl && window.maplibregl.Marker) {
       const groups = new Map(); list.forEach(sc => { const k = sc.nomi.replace(/\s*\(.*\)$/, ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sc); });
