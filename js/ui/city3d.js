@@ -110,6 +110,7 @@
       for (let i = 1; i < w.ll.length; i++) {
         const a = L(w.ll[i - 1][0], w.ll[i - 1][1]), b = L(w.ll[i][0], w.ll[i][1]);
         if (Math.hypot(a[0], a[1]) > R + 60 && Math.hypot(b[0], b[1]) > R + 60) continue;
+        if (inCover((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, lat0, lon0, KX, KY)) continue;   // skan qamragan joyda — real asfalt skandan
         const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 0.5) continue;
         const tx = dx / len, ty = dy / len, nx = -ty, ny = tx, h = W / 2, e = Math.min(1.5, h * 0.3);
         const A = [a[0] - tx * e, a[1] - ty * e], Bp = [b[0] + tx * e, b[1] + ty * e];
@@ -156,6 +157,7 @@
       const loc = (lon, lat) => new THREE.Vector2((lon - lon0) * KX, (lat - lat0) * KY);
       for (let i = 0; i < sel.length; i++) {
         const b = sel[i], k = kindOf(b), h = Math.max(2.8, b.height || (b.levels || 1) * 3), hs = hash(b.id || i);
+        if (SCAN_HIDE.has(b.id)) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
         try {
           const outer = b.ring.slice(0, -1).map(c => loc(c[0], c[1]));
           if (outer.length < 3) continue;
@@ -233,10 +235,21 @@
 
   // ---------- Real 3D skanlar: data/scans.json — [{id, nomi, file, lat, lon, heading, z, sana, muallif}] ----------
   // Skan oʻqlari (glTF): Y — yuqoriga, X — koʻcha boʻylab; lat/lon — skanning (0,0,0) nuqtasi, heading — X oʻqining azimuti (shimoldan, soat yoʻnalishida)
-  const scans = [];
+  const scans = [], SCAN_HIDE = new Set(), SCAN_COVER = [];
+  // Nuqta skan qamroviga tushadimi (koʻpburchaklar lat/lon da; mahalliy metrga oʻtkaziladi)
+  function inCover(x, y, lat0, lon0, KX, KY) {
+    if (!SCAN_COVER.length) return false;
+    const la = lat0 + y / KY, lo = lon0 + x / KX;
+    return SCAN_COVER.some(P => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const yi = P[i][0], xi = P[i][1], yj = P[j][0], xj = P[j][1]; if ((yi > la) !== (yj > la) && lo < (xj - xi) * (la - yi) / (yj - yi) + xi) c = !c; } return c; });
+  }
   async function loadScans() {
     let list = null; try { const r = await fetch('data/scans.json'); if (r.ok) list = await r.json(); } catch (e) { list = null; }
     if (!list || !list.length) return;
+    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); });
+    // Skanlangan uylar MapLibre qatlamlarida ham koʻrsatilmaydi (tekis iz qolmasin)
+    const ids = [...SCAN_HIDE];
+    if (ids.length) ['bld', 'bld-roof', 'bld-foot'].forEach(L => { if (map.getLayer(L)) { const f0 = map.getFilter(L), f = ['!', ['in', ['get', 'id'], ['literal', ids]]]; map.setFilter(L, f0 ? ['all', f0, f] : f); } });
+    if (built) { built.R = -1; check(); }
     // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
     if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
     list.forEach(sc => {
@@ -246,8 +259,8 @@
       item.l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(k, -k, k)).multiply(new THREE.Matrix4().makeRotationZ(h)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
       scans.push(item);
       new window.THREE.GLTFLoader().load(sc.file, g => {
-        const scn = new THREE.Scene(); scn.add(new THREE.AmbientLight(0xffffff, 1));
-        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { o.material = new THREE.MeshBasicMaterial({ map: o.material.map, side: THREE.DoubleSide }); } });
+        const scn = new window.THREE.Scene();
+        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; t.encoding = window.THREE.LinearEncoding; t.anisotropy = 4; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });   // rang — suratdagidek (sRGB qayta kodlanmaydi)
         scn.add(g.scene); item.scene = scn; map.triggerRepaint();
       }, undefined, e => console.warn('skan:', sc.file, e && e.message));
     });
