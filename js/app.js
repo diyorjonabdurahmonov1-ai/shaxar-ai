@@ -2332,7 +2332,7 @@
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
-        case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const c = L.reduce((a, x) => [a[0] + x.lat / L.length, a[1] + x.lon / L.length], [0, 0]), m = NX.map3d.map(); if (m) m.flyTo({ center: [c[1] - 0.0002, c[0] - 0.0004], zoom: 18.6, pitch: 74, bearing: 28, duration: 2200 }); renderKeepScroll(); break; }
+        case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); renderKeepScroll(); break; }
         case 'facade-pilot': { const P = NX.city3d.pilot(); if (!P) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const m = NX.map3d.map(); if (m) m.flyTo({ center: [P.c[1], P.c[0]], zoom: 18.4, pitch: 72, bearing: 30, duration: 2200 }); renderKeepScroll(); break; }
         case 'brief': makeBrief(); break;
         case 'brief-tg': briefShare('tg'); break;

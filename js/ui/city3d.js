@@ -245,6 +245,12 @@
   // Roʻyxat sahifa ochilishi bilan yuklanadi (panel tugmasi uchun); 3D modellar — 3D egizak ochilganda
   let scanList = [];
   const scanListP = fetch('data/scans.json').then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => { scanList = Array.isArray(l) ? l : []; if (scanList.length) document.dispatchEvent(new Event('nx:scans')); return scanList; });
+  // Kamera koʻchaning boshida, koʻcha boʻylab qaraydi (birinchi skan boshlanishidan 35 m ichkarida)
+  function flyScan() {
+    const sc = scanList[0]; if (!sc || !map) return;
+    const a = sc.heading * Math.PI / 180, d = 35, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
+    map.flyTo({ center: [lon, lat], zoom: 19.3, pitch: 76, bearing: sc.heading, duration: 2200 });
+  }
   async function loadScans() {
     const list = await scanListP;
     if (!list || !list.length) return;
@@ -255,7 +261,7 @@
       groups.forEach((g, name) => {
         const c = g.reduce((a, x) => [a[0] + x.lat / g.length, a[1] + x.lon / g.length], [0, 0]);
         const el = document.createElement('button'); el.type = 'button'; el.className = 'scan-pin'; el.innerHTML = `🏘 <b>Real 3D</b> ${NX.esc(name)}`;
-        el.onclick = e => { e.stopPropagation(); map.flyTo({ center: [c[1] - 0.0002, c[0] - 0.0004], zoom: 18.6, pitch: 74, bearing: 28, duration: 2000 }); };
+        el.onclick = e => { e.stopPropagation(); flyScan(); };
         const mk = new window.maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([c[1], c[0]]).addTo(map);
         const vis = () => { el.style.display = map.getZoom() >= 12.5 && map.getZoom() < 18 ? '' : 'none'; }; vis(); map.on('zoom', vis);
       });
@@ -313,5 +319,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon })), attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();
