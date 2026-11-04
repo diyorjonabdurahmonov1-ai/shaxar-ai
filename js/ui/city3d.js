@@ -249,6 +249,17 @@
     const list = await scanListP;
     if (!list || !list.length) return;
     list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); });
+    // Xaritada belgi: skanlangan koʻcha qayerda — bosilsa kamera koʻcha darajasiga tushadi
+    if (window.maplibregl && window.maplibregl.Marker) {
+      const groups = new Map(); list.forEach(sc => { const k = sc.nomi.replace(/\s*\(.*\)$/, ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sc); });
+      groups.forEach((g, name) => {
+        const c = g.reduce((a, x) => [a[0] + x.lat / g.length, a[1] + x.lon / g.length], [0, 0]);
+        const el = document.createElement('button'); el.type = 'button'; el.className = 'scan-pin'; el.innerHTML = `🏘 <b>Real 3D</b> ${NX.esc(name)}`;
+        el.onclick = e => { e.stopPropagation(); map.flyTo({ center: [c[1] - 0.0002, c[0] - 0.0004], zoom: 18.6, pitch: 74, bearing: 28, duration: 2000 }); };
+        const mk = new window.maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([c[1], c[0]]).addTo(map);
+        const vis = () => { el.style.display = map.getZoom() >= 12.5 && map.getZoom() < 18 ? '' : 'none'; }; vis(); map.on('zoom', vis);
+      });
+    }
     // Skanlangan uylar MapLibre qatlamlarida ham koʻrsatilmaydi (tekis iz qolmasin)
     const ids = [...SCAN_HIDE];
     if (ids.length) ['bld', 'bld-roof', 'bld-foot'].forEach(L => { if (map.getLayer(L)) { const f0 = map.getFilter(L), f = ['!', ['in', ['get', 'id'], ['literal', ids]]]; map.setFilter(L, f0 ? ['all', f0, f] : f); } });
