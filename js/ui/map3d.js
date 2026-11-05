@@ -615,7 +615,30 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  NX.map3d = { setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  // ---------- 📏 Oʻlchash: xaritada nuqtalarni bosib masofa (koʻcha eni, uy uzunligi, ariqgacha) ----------
+  let meas = null;
+  function measure() {
+    if (!map) return;
+    if (meas) { measureStop(); return; }
+    const src = { type: 'FeatureCollection', features: [] };
+    if (!map.getSource('meas')) { map.addSource('meas', { type: 'geojson', data: src }); map.addLayer({ id: 'meas-line', type: 'line', source: 'meas', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': '#fde047', 'line-width': 3, 'line-dasharray': [2, 1] } }); map.addLayer({ id: 'meas-pt', type: 'circle', source: 'meas', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#fde047', 'circle-stroke-color': '#111827', 'circle-stroke-width': 2 } }); }
+    const pts = [], host = map.getContainer(), bar = document.createElement('div'); bar.className = 'draw3d-bar meas-bar';
+    bar.innerHTML = '<span>📏 Nuqtalarni bosing — masofa: <b class="meas-v">0 m</b></span><button type="button" data-d="undo">↶</button><button type="button" data-d="x">✕</button>';
+    host.appendChild(bar);
+    const dist = (a, b) => Math.hypot((b[0] - a[0]) * 111320 * Math.cos(a[1] * Math.PI / 180), (b[1] - a[1]) * 110574);
+    const upd = () => {
+      let L = 0; for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
+      const seg = pts.length > 1 ? dist(pts[pts.length - 2], pts[pts.length - 1]) : 0;
+      bar.querySelector('.meas-v').textContent = pts.length > 2 ? `${L.toFixed(2)} m (oxirgi ${seg.toFixed(2)} m)` : `${L.toFixed(2)} m`;
+      map.getSource('meas').setData({ type: 'FeatureCollection', features: pts.map(p => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p } })).concat(pts.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: pts } }] : []) });
+    };
+    const click = e => { pts.push([e.lngLat.lng, e.lngLat.lat]); upd(); };
+    bar.addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; if (b.dataset.d === 'undo') { pts.pop(); upd(); } else measureStop(); });
+    map.on('click', click); map.getCanvas().style.cursor = 'crosshair';
+    meas = { bar, click };
+  }
+  function measureStop() { if (!meas) return; map.off('click', meas.click); meas.bar.remove(); map.getCanvas().style.cursor = ''; if (map.getSource('meas')) map.getSource('meas').setData({ type: 'FeatureCollection', features: [] }); meas = null; }
+  NX.map3d = { measure, measuring: () => !!meas, setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 
   // ---------- Fotoreal 3D (Cesium, js/ui/google3d.js) — 3D egizakning asosiy koʻrinishi (token boʻlsa) ----------
   // Barcha natijalar ikkala koʻrinishga beriladi: fotoreal ochiq boʻlsa — u yerda, “🧊 Sxema” da — MapLibre’da.

@@ -879,10 +879,23 @@
       extra.murakkab_savol = multiParts.map(p => Object.assign({ tahlil: { quake: 'zilzila', flood: 'suv toshqini', fire: 'yongʻin xizmati', ambulance: 'tez yordam', access: 'koʻchalar holati' }[p.t] }, p.extra));
       local = multiParts.map(p => p.local).filter(Boolean).join('\n\n---\n\n');
     }
+    // Real 3D skan qilingan koʻcha (masalan, Angren koʻchasi): skan oʻlchovlari, kamchiliklar, profil — har qanday savolda qoʻshiladi
+    let SR = null;
+    if (!silent && NX.scanReport && NX.scanReport.match(q)) {
+      try { SR = await NX.scanReport.report(q); } catch (e) { SR = null; }
+      if (SR) { extra.real_3d_skan = SR.facts; if (!rainQ && !quakeQ && !svcQ && !multiParts) accQ = true; }
+    }
     if (accQ) {
       C.busy = 'Koʻchalar tekshirilmoqda'; renderKeepScroll();
       try { H = await auditRun(q, Object.assign({}, opts, { busy: t => { C.busy = t; renderKeepScroll(); } })); } catch (e) { console.warn('koʻcha auditi:', e); }
       if (H) { extra[H.kind === 'audit' ? 'koʻcha_auditi' : 'koʻchalar_reytingi'] = H.facts; local = H.local; }
+      if (SR) {
+        // skan natijasi — audit ustiga: tor joylar, past joylar, profil sxemasi; kamera real skanga
+        if (!H) H = showHazard({ kind: 'scan', items: SR.items });
+        else { H.items = SR.items.concat(H.items || []); showHazard(H); }
+        H.svg = SR.svg + (H.svg || ''); local = SR.local + (local ? '\n\n---\n\n' + local : '');
+        if (NX.city3d && NX.city3d.flyScan && !(NX.g3d && NX.g3d.active())) setTimeout(() => NX.city3d.flyScan(), 1500);
+      }
     } else if (svcQ) {
       C.busy = 'Favqulodda xizmatlar yetib borish vaqti hisoblanmoqda'; renderKeepScroll();
       try { H = await hazardRun('svc', q, null, opts); } catch (e) { console.warn('xizmatlar:', e); }
@@ -2332,6 +2345,7 @@
         case 'twin-mode': NX.map3d.setMode(b.dataset.mode); if (b.dataset.mode === 'flood' && twinState().dyn) twinShowFrame(twinState().dynFrame); if (b.dataset.mode === 'plan' && S.area && S.area.res && S.area.res.shadow) NX.map3d.flyTo(S.area.st.center[0], S.area.st.center[1], 16.5); renderKeepScroll(); break;
         case 'twin-base': NX.map3d.setBase(b.dataset.base); renderKeepScroll(); break;
         case 'twin-tour': NX.map3d.tour(); renderKeepScroll(); break;
+        case 'twin-measure': if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.measure(); break;
         case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); renderKeepScroll(); break; }
         case 'facade-pilot': { const P = NX.city3d.pilot(); if (!P) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const m = NX.map3d.map(); if (m) m.flyTo({ center: [P.c[1], P.c[0]], zoom: 18.4, pitch: 72, bearing: 30, duration: 2200 }); renderKeepScroll(); break; }
         case 'brief': makeBrief(); break;

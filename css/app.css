@@ -973,3 +973,4 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .scan-pin b { color: #fde68a; }
 @keyframes scanPulse { 50% { box-shadow: 0 0 0 9px rgba(94,234,212,.05), 0 8px 20px rgba(0,0,0,.45); } }
 #map3d.g3d-on .scan-pin { display: none !important; }
+.scan-prof { width: 100%; height: auto; display: block; margin: 8px 0; }
