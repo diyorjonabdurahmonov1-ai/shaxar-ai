@@ -981,3 +981,5 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .sh-h i { font-style: normal; font-size: 10px; color: #fbbf24; }
 .trf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0; }
 .trf-grid ol { margin: 4px 0 0 16px; padding: 0; }
+.fb-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(148,163,184,.25); }
+.fb-row .btn.xs { padding: 2px 8px; }

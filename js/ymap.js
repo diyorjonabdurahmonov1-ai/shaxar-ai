@@ -75,7 +75,9 @@
     },
     showActions(list) {
       if (!Y()) return;
-      if (!list || !list.length) { drop('ann'); return; }
+      if (!list || !list.length) { drop('ann'); if (!G.delta && !G.dyn) { NX.yandex.setTraffic(true); NX.map.updateLegend(); } return; }
+      // Tahlil natijasi koʻrinishi uchun Yandex’ning jonli probka qatlami vaqtincha yashiriladi (legendada qaytarish tugmasi)
+      NX.yandex.setTraffic(false); NX.map.updateLegend();
       const c = coll('ann');
       list.forEach((a, i) => {
         const bal = { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` };

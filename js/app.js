@@ -2412,6 +2412,17 @@
         case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); renderKeepScroll(); break; }
         case 'facade-pilot': { const P = NX.city3d.pilot(); if (!P) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const m = NX.map3d.map(); if (m) m.flyTo({ center: [P.c[1], P.c[0]], zoom: 18.4, pitch: 72, bearing: 30, duration: 2200 }); renderKeepScroll(); break; }
         case 'brief': makeBrief(); break;
+        case 'fb-up': case 'fb-down': {
+          const row = b.closest('.fb-row'), msg = b.closest('.chat-msg'), key = row && row.dataset.fb;
+          if (!key || NX.fbDone[key]) break;
+          let prev = msg && msg.previousElementSibling; while (prev && !prev.classList.contains('user')) prev = prev.previousElementSibling;
+          const q = prev ? prev.textContent.trim() : '', a = msg ? (msg.querySelector('.ai-text') || msg).textContent.trim() : '';
+          let note = '';
+          if (b.dataset.act === 'fb-down') { note = window.prompt('Nima notoʻgʻri? Qisqa yozing — AI keyingi javoblarda buni hisobga oladi (masalan: “maktab bor, 446 m da”, “yuklama Rudakiyga tushadi”):', '') || ''; }
+          NX.fbDone[key] = b.dataset.act === 'fb-up' ? 'up' : 'down';
+          NX.ai.feedback({ ok: b.dataset.act === 'fb-up', q, a: a.slice(0, 700), note, kind: S.tab }).then(sv => toast(sv ? 'Baho saqlandi — hamma xodimlar uchun.' : 'Baho shu brauzerda saqlandi.', 'ok'));
+          renderKeepScroll(); break;
+        }
         case 'trf-now': if (S.trf) S.trf.busy = true; renderKeepScroll(); NX.trafficWatch.sampleNow().then(() => toast('Chorrahalar oʻlchandi (Yandex).', 'ok')).catch(e => toast(e.message, 'warn')).finally(() => { if (S.trf) S.trf.busy = false; trfRefresh(); }); break;
         case 'brief-tg': briefShare('tg'); break;
         case 'brief-print': briefShare('print'); break;

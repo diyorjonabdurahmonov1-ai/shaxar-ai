@@ -11,6 +11,7 @@
    /traffic — tirbandlik kuzatuvi: yirik chorrahalarga kiruvchi yoʻllarda Yandex marshrut vaqti (probkali / probkasiz).
               Sayt ochiq turgan brauzer (yoki kuzatuv ekrani) har 15 daqiqada oʻlchab POST qiladi; Worker tarixni KV’da
               (kalit "trf:state") yigʻadi: oxirgi oʻlchov, 60 kunlik qatorlar, har kun xulosasi (doimiy), kun arxivi trf:day:YYYY-MM-DD (doimiy), haftaning ish/dam kunlari boʻyicha har 30 daqiqalik oʻrtacha.
+   /feedback — AI javoblariga xodimlar bahosi (👍/👎 + izoh), KV "feedback"; sayt salbiy baholarni keyingi promptlarga “oldingi xatolar” qilib qoʻshadi.
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
    Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
@@ -62,12 +63,13 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 10, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic'] }, 200, cors);
+    if (path === '/version') return json({ v: 11, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
     if (path === '/traffic') return traffic(req, env, cors, okOrigin);
+    if (path === '/feedback') return feedback(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
@@ -102,7 +104,7 @@ export default {
     }
     const out = { model: body.model, messages: body.messages.map(m => ({ role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user', content: cleanContent(m.content) })) };
     out.max_completion_tokens = Math.min(+body.max_completion_tokens || 900, 4000);
-    if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = 'low'; else if (/^gpt-/.test(body.model)) out.temperature = 0.3;
+    if (/^gpt-[56]/.test(body.model)) out.reasoning_effort = body.reasoning_effort === 'medium' ? 'medium' : 'low'; else if (/^gpt-/.test(body.model)) out.temperature = 0.3;
     // Prompt caching: bir turdagi soʻrovlar bitta kalit bilan (oʻzgarmas system prompt boshida)
     if (typeof body.prompt_cache_key === 'string') out.prompt_cache_key = body.prompt_cache_key.slice(0, 64);
 
@@ -191,6 +193,22 @@ async function reports(req, env, cors, okOrigin) {
   const out = list.concat([item]).slice(-20000);
   await env.CORRECTIONS.put('reports', JSON.stringify(out));
   return json({ item }, 200, cors);
+}
+
+// ---------- AI javoblariga xodimlar bahosi (👍/👎 + izoh) — AI keyingi javoblarda oldingi xatolarni hisobga oladi ----------
+async function feedback(req, env, cors, okOrigin) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  const list = JSON.parse((await env.CORRECTIONS.get('feedback')) || '[]');
+  if (req.method === 'GET') return json({ items: list.slice(-200) }, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (limit('fb:' + (req.headers.get('CF-Connecting-IP') || 'x'), 40)) return json({ error: { code: 'proxy_rate_limit', message: 'Bir soatda juda koʻp baho' } }, 429, cors);
+  let b;
+  try { b = JSON.parse((await req.text()).slice(0, 6000)); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
+  const item = { ts: Date.now(), ok: !!b.ok, q: String(b.q || '').slice(0, 300), a: String(b.a || '').slice(0, 700), note: String(b.note || '').slice(0, 400), kind: String(b.kind || '').slice(0, 20) };
+  if (!item.q) return json({ error: { code: 'bad_item', message: 'Savol yoʻq' } }, 400, cors);
+  await env.CORRECTIONS.put('feedback', JSON.stringify(list.concat([item]).slice(-500)));
+  return json({ ok: true }, 200, cors);
 }
 
 // ---------- Tirbandlik kuzatuvi (Yandex marshrut vaqtlari, sayt brauzeridan) ----------

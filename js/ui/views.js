@@ -157,7 +157,12 @@
     return checkBadge(m) + msgExtras0(m, fly);
   }
   // Javob tekshiruvi: AI javobidagi raqamlar sayt hisobi bilan mosligi
-  function checkBadge(m) {
+  // 👍/👎 — xodim bahosi; 👎 izohi AI’ga keyingi javoblarda “oldingi xato” boʻlib beriladi
+  const fbKey = t => { let h = 0; t = String(t || ''); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'h' + h; };
+  NX.fbKey = fbKey; NX.fbDone = NX.fbDone || {};
+  const fbRow = m => (m && m.role === 'ai' && m.text ? `<div class="fb-row" data-fb="${fbKey(m.text)}">${NX.fbDone[fbKey(m.text)] ? `<span class="small muted">${NX.fbDone[fbKey(m.text)] === 'up' ? '👍 Rahmat — baho saqlandi' : '👎 Saqlandi — AI keyingi javoblarda buni hisobga oladi'}</span>` : `<span class="small muted">Javob toʻgʻrimi?</span><button type="button" class="btn xs" data-act="fb-up">👍</button><button type="button" class="btn xs" data-act="fb-down">👎 Xato</button>`}</div>` : '');
+  function checkBadge(m) { return checkBadge0(m) + fbRow(m); }
+  function checkBadge0(m) {
     const c = m && m.check; if (!c || m.src !== 'ai') return m && m.verified ? '<p class="ans-check ok">🔎 Javob ikkinchi model tomonidan sayt maʼlumotlari bilan tekshirildi</p>' : '';
     const vf = m.verified ? '🔎 Ikkinchi model faktlar bilan tekshirib tuzatdi. ' : '';
     return c.bad.length ? `<p class="ans-check warn">${vf}⚠️ ${c.ok}/${c.n} raqam hisob bilan mos; hisobda topilmadi: ${c.bad.map(x => E(String(x))).join(', ')} — ehtiyot boʻling</p>` : `<p class="ans-check ok">${vf}✓ Javobdagi ${c.n} ta raqamning hammasi sayt hisobi bilan mos</p>`;

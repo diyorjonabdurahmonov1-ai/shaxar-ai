@@ -120,8 +120,10 @@
     const D = await corridors(), s = await state();
     if (!D) return null;
     const tm = parseTime(q), J = D.junctions, CR = D.corridors;
-    const streets = (opts && opts.streets || []).map(normName).filter(Boolean);
+    let streets = (opts && opts.streets || []).map(normName).filter(n => n && !/^chorra[hx]a/.test(n));
     const okC = c => !streets.length || streets.some(n => normName(c.road).includes(n) || normName(c.jname).includes(n));
+    // Savoldagi koʻcha kuzatiladigan yoʻllarning birortasiga mos kelmasa — filtr olinmaydi (masalan “chorrahalarda” ≠ Chorraxa koʻchasi)
+    if (streets.length && !CR.some(okC)) streets = [];
     const at = (id, slot, we) => { const P = s.prof[id]; if (!P) return null; const x = P[we][slot]; return x && x[0] ? { r: x[1] / x[0], n: x[0] } : null; };
     const nowR = id => (s.latest && s.latest.v[id] ? { r: s.latest.v[id][0] / s.latest.v[id][1] * 100, n: 1, d: s.latest.v[id][0] - s.latest.v[id][1] } : null);
     const val = c => (tm.now ? nowR(c.id) : tm.peaks ? null : at(c.id, tm.slot, tm.we));

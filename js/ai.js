@@ -24,6 +24,7 @@
     return Math.max(0, 1 - d / Math.max(3, c.length));
   }
 
+  const GENERIC = /^(chorra[hx]a|bozor|markaz|yangi|bog|maktab|ko.?prik|vokzal|aeroport|stadion|park|masjid|bekat|xiyobon|maydon|shahar|mahalla)/i;
   function detectStreets(q, M) {
     const words = norm(q).split(' ').filter(Boolean);
     const found = [];
@@ -38,6 +39,9 @@
           best = Math.max(best, sim / cw.length);
         }
       });
+      // Umumiy soʻzga oʻxshash nomlar (Chorraxa, Bozor, Markaz…) — faqat savolda yonida “koʻcha” soʻzi boʻlsa
+      const c1 = core(s.name).split(' ').filter(w => w.length >= 3);
+      if (best >= 0.8 && c1.length === 1 && GENERIC.test(c1[0]) && !new RegExp(c1[0].slice(0, 5) + '\\S*\\s+(ko.?ch|kuch|yo.?l)', 'i').test(norm(q))) best = 0;
       if (best >= 0.8) found.push({ s, score: best });
     });
     found.sort((a, b) => b.score - a.score || b.s.rank - a.s.rank);
@@ -152,8 +156,35 @@ Qoidalar:
     }
     return messages;
   }
+  // ---------- Barcha tahlil promptlariga umumiy qoidalar va xodimlar koʻrsatgan oldingi xatolar ----------
+  const ANALYST = `
+UMUMIY TAHLIL QOIDALARI (har javobda):
+1) Avval savolni aniqla: nima soʻralgan (joy, vaqt, son, “nega”, “nima qilish kerak”). Birinchi gap — shu savolga toʻgʻridan-toʻgʻri javob (raqam va nom bilan).
+2) Har xulosani sabab → oqibat bilan ayt (masalan: “Daxbet tomondan kirish 2.1 marta sekin → ertalab maktabga va bozorga oqim”). Umumiy, hamma joyga mos gaplar (“tirbandlik muammo”, “kompleks yondashuv”) YOZMA.
+3) Raqam, nom, masofa — faqat berilgan JSON’dan. JSON’da yoʻq narsani bilmasang — “maʼlumot yoʻq: … dan soʻrash kerak” de, oʻylab topma. “Yoʻq” va “maʼlumotda belgilanmagan” — har xil narsa.
+4) Bir nechta variant yoki joy boʻlsa — solishtir va eng yaxshisini tanla, nega ekanini bir gapda ayt.
+5) Takliflar: eng arzon va tez bajariladigandan boshlab, har biri aniq joyga (koʻcha, chorraha, belgi raqami) bogʻlangan; bosh rejaga zid taklif berma.
+6) Xaritada koʻrsatilgan belgilar (raqamlar, ranglar) boʻlsa — javobda shu raqamlar bilan ayt, foydalanuvchi xaritadan topa olsin.
+7) Taxminiy hisob — bir marta qisqa “taxminiy” de; ishonch past boʻlsa sababini ayt (masalan, oʻlchov kam).`;
+  let lessons = null, lessonsTs = 0;
+  async function loadLessons() {
+    if (lessons && Date.now() - lessonsTs < 10 * 60e3) return lessons;
+    let items = NX.store.get('ai:fb', []);
+    if (proxyUrl()) { try { const r = await NX.fetchJSON(proxyUrl().replace(/\/+$/, '') + '/feedback', {}, 8000); if (r.ok && r.data && Array.isArray(r.data.items)) items = r.data.items.concat(items.filter(x => x.local)); } catch (e) { /* */ } }
+    lessons = items.filter(x => !x.ok && (x.note || x.q)).slice(-10); lessonsTs = Date.now();
+    return lessons;
+  }
+  const lessonText = () => (lessons && lessons.length ? '\n\nXODIMLAR OLDINGI JAVOBLARDA KOʻRSATGAN XATOLAR (bularni takrorlama, oʻxshash savolda eʼtibor ber):\n' + lessons.map(x => `- Savol: “${x.q.slice(0, 160)}”${x.note ? ` — izoh: ${x.note.slice(0, 200)}` : ' — javob notoʻgʻri deb baholangan'}`).join('\n').slice(0, 1800) : '');
+  async function feedback(f) {
+    const it = Object.assign({ ts: Date.now() }, f);
+    if (!it.ok) { const L = NX.store.get('ai:fb', []); L.push(Object.assign({ local: true }, it)); NX.store.set('ai:fb', L.slice(-30)); }
+    lessonsTs = 0;
+    if (!proxyUrl()) return false;
+    try { const r = await NX.fetchJSON(proxyUrl().replace(/\/+$/, '') + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it) }, 10000); return r.ok; } catch (e) { return false; }
+  }
   async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
     let lastErr = null;
+    if (!/^(router|imgprompt)$/.test(cacheKey || '')) await loadLessons().catch(() => null);
     // Sozlamalarda tanlangan model (Claude/Gemini — faqat sayt Worker’i orqali) birinchi sinab koʻriladi
     const pref = NX.store.get('ai:pref', ''), base = (models || NX.config.openaiModels).slice();
     if (pref && (!key || /^gpt-/.test(pref)) && (models === NX.config.openaiDeep || /^gpt-/.test(pref))) { const i = base.indexOf(pref); if (i >= 0) base.splice(i, 1); base.unshift(pref); }
@@ -163,15 +194,18 @@ Qoidalar:
       // Oldingi bitta savol-javob ham beriladi — “u-chi?” kabi davomli savollar tushunilishi uchun
       const prev = (history || []).slice(-2).map(m => ({ role: m.role, content: String(m.content).slice(0, 1200) }));
       const body = { model, messages: messages || [{ role: 'system', content: SYSTEM }].concat(prev, [{ role: 'user', content: 'Savol: ' + ctx.savol + '\n\nSayt maʼlumotlari (JSON):\n' + JSON.stringify(ctx) }]) };
-      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 4000; body.reasoning_effort = 'low'; } else if (!/^gpt-/.test(model)) body.max_completion_tokens = 4000; else { body.max_completion_tokens = 900; body.temperature = 0.3; }
+      // Tahlil soʻrovlariga: umumiy qoidalar + oldingi xatolar (yoʻnaltiruvchi/rasm/tekshiruvchiga emas)
+      const tech = /^(router|imgprompt|verify)$/.test(cacheKey || '');
+      if (!tech && body.messages[0] && body.messages[0].role === 'system') body.messages = [Object.assign({}, body.messages[0], { content: body.messages[0].content + ANALYST + lessonText() })].concat(body.messages.slice(1));
+      if (/^gpt-[56]/.test(model)) { body.max_completion_tokens = 4000; body.reasoning_effort = models === NX.config.openaiDeep && cacheKey !== 'verify' ? 'medium' : 'low'; } else if (!/^gpt-/.test(model)) body.max_completion_tokens = 4000; else { body.max_completion_tokens = 900; body.temperature = 0.3; }
       // Prompt caching: oʻzgarmas qism (system) boshida turadi; bir xil turdagi soʻrovlar bitta kalit bilan — takroriy kirish arzonroq
       body.prompt_cache_key = 'cityjam-' + (cacheKey || 'chat');
       if (!key) body.messages = fitMessages(body.messages, BODY_SOFT);
       let r, tries = 0;
       const send = async () => { try {
         r = key
-          ? await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, 60000)
-          : await NX.fetchJSON(proxyUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 60000);
+          ? await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, body.reasoning_effort === 'medium' ? 120000 : 60000)
+          : await NX.fetchJSON(proxyUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, body.reasoning_effort === 'medium' ? 120000 : 60000);
       } catch (e) { throw new Error(e.timeout ? 'AI javob bermadi (vaqt tugadi). Qayta urinib koʻring.' : 'AI serveriga ulanib boʻlmadi. Internet aloqasini tekshiring.'); } };
       await send();
       // Worker eski versiyasi (30 ming belgi): maʼlumot qisqartirilib qayta yuboriladi
@@ -801,5 +835,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();
