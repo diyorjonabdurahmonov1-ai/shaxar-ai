@@ -48,6 +48,7 @@ const hits = new Map(); // Worker nusxasi ichidagi oddiy hisoblagich (eng yaxshi
 const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: Object.assign({ 'Content-Type': 'application/json' }, headers) });
 
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(trafficCron(env)); },
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
     const okOrigin = ALLOWED_ORIGINS.includes(origin);
@@ -195,6 +196,51 @@ async function reports(req, env, cors, okOrigin) {
 // ---------- Tirbandlik kuzatuvi (Yandex marshrut vaqtlari, sayt brauzeridan) ----------
 // Holat: { latest:{ts,v:{id:[jams,free]}}, rows:[[ts,{id:ratio*100}]] (14 kun), prof:{id:{wd:[48×[n,sum]],we:[48×[n,sum]]}}, n, since }
 const TRF_MIN_GAP = 10 * 60e3, TRF_DAYS = 14;
+// Oʻlchovni tarixga qoʻshish (POST va cron uchun umumiy)
+function trfAdd(st, ts, v, r) {
+  const loc = new Date(ts + 5 * 3600e3), slot = loc.getUTCHours() * 2 + (loc.getUTCMinutes() >= 30 ? 1 : 0), we = loc.getUTCDay() === 0 || loc.getUTCDay() === 6 ? 'we' : 'wd';
+  st.latest = { ts, v };
+  st.rows = st.rows.filter(x => x[0] > ts - TRF_DAYS * 86400e3).concat([[ts, r]]);
+  Object.keys(r).forEach(id => {
+    const P = st.prof[id] || (st.prof[id] = { wd: Array.from({ length: 48 }, () => [0, 0]), we: Array.from({ length: 48 }, () => [0, 0]) });
+    P[we][slot][0]++; P[we][slot][1] += r[id];
+  });
+  st.n = (st.n || 0) + 1; st.since = st.since || ts;
+}
+// Cron (Cloudflare Triggers, masalan har 15 daqiqa): Yandex “API Матрицы расстояний” (maxfiy YANDEX_MATRIX_KEY) — sayt ochiq boʻlmasa ham.
+// Har chorraha: kiruvchi yoʻllar boshlari (origins) → chorraha (destination), avtomobil, joriy probkalar bilan.
+// Probkasiz vaqt = shu yoʻlda kuzatilgan eng tez vaqt (odatda kechasi), lekin 30 km/soatdan sekin emas.
+const SITE = 'https://diyorjonabdurahmonov1-ai.github.io/shaxar-ai/';
+async function trafficCron(env) {
+  if (!env.YANDEX_MATRIX_KEY || !env.CORRECTIONS) return;
+  const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
+  if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return;
+  const D = await (await fetch(SITE + 'data/traffic-corridors.json', { cf: { cacheTtl: 86400 } })).json();
+  const byJ = {}; D.corridors.forEach(c => { (byJ[c.j] = byJ[c.j] || []).push(c); });
+  const v = {}, r = {}; st.base = st.base || {};
+  let err = null;
+  for (const j of Object.keys(byJ)) {
+    const cs = byJ[j], dst = cs[0].path[cs[0].path.length - 1];
+    const url = 'https://api.routing.yandex.net/v2/distancematrix?mode=driving&origins=' + cs.map(c => c.path[0].join(',')).join('|') + '&destinations=' + dst.join(',') + '&apikey=' + encodeURIComponent(env.YANDEX_MATRIX_KEY);
+    try {
+      const res = await fetch(url), d = await res.json();
+      if (!res.ok) { err = res.status + ' ' + JSON.stringify(d).slice(0, 200); if (res.status === 401 || res.status === 403 || res.status === 429) break; continue; }
+      (d.rows || []).forEach((row, i) => {
+        const e = row.elements && row.elements[0], c = cs[i];
+        if (!c || !e || e.status !== 'OK' || !e.duration) return;
+        const dur = e.duration.value, dist = e.distance ? e.distance.value : c.len;
+        if (!(dur > 5) || dist > c.len * 2.2 + 150) return;   // aylanib oʻtadi (bir tomonlama) — olinmaydi
+        st.base[c.id] = Math.min(st.base[c.id] || Infinity, dur);
+        const free = Math.min(st.base[c.id], c.len / 8.3);   // 30 km/soat dan sekin boʻlsa ham “probkasiz” deb olinmaydi
+        v[c.id] = [dur, Math.round(Math.max(5, free))]; r[c.id] = Math.round(dur / Math.max(5, free) * 100);
+      });
+    } catch (e) { err = String(e.message || e); }
+  }
+  st.cronErr = Object.keys(v).length < 5 ? { ts: Date.now(), err } : null;
+  if (Object.keys(v).length >= 5) trfAdd(st, Date.now(), v, r);
+  st.src = 'Yandex API Матрицы расстояний (Worker cron)';
+  await env.CORRECTIONS.put('trf:state', JSON.stringify(st));
+}
 async function traffic(req, env, cors, okOrigin) {
   if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
   const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
@@ -216,14 +262,8 @@ async function traffic(req, env, cors, okOrigin) {
     v[id] = [Math.round(jams), Math.round(free)]; r[id] = Math.round(jams / free * 100);
   });
   if (Object.keys(v).length < 5) return json({ error: { code: 'bad_item', message: 'Oʻlchov yetarli emas' } }, 400, cors);
-  const ts = Date.now(), loc = new Date(ts + 5 * 3600e3), slot = loc.getUTCHours() * 2 + (loc.getUTCMinutes() >= 30 ? 1 : 0), we = loc.getUTCDay() === 0 || loc.getUTCDay() === 6 ? 'we' : 'wd';
-  st.latest = { ts, v };
-  st.rows = st.rows.filter(x => x[0] > ts - TRF_DAYS * 86400e3).concat([[ts, r]]);
-  Object.keys(r).forEach(id => {
-    const P = st.prof[id] || (st.prof[id] = { wd: Array.from({ length: 48 }, () => [0, 0]), we: Array.from({ length: 48 }, () => [0, 0]) });
-    P[we][slot][0]++; P[we][slot][1] += r[id];
-  });
-  st.n = (st.n || 0) + 1; st.since = st.since || ts;
+  const ts = Date.now();
+  trfAdd(st, ts, v, r);
   await env.CORRECTIONS.put('trf:state', JSON.stringify(st));
   return json({ ok: true, ts, n: st.n }, 200, cors);
 }
