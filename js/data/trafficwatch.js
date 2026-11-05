@@ -8,7 +8,8 @@
   const NX = window.NX;
   const GAP = 15 * 60e3, LOCAL = 'trf:local', DAYS = 14;
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
-  let C = null, St = null, stTs = 0, remote = null, busy = false, timer = null, lastErr = null;
+  let C = null, St = null, stTs = 0, remote = null, busy = false, timer = null, lastErr = null, denied = 0, nErr = 0;
+  const NO_ROUTE = 'Yandex kaliti marshrut xizmatiga ruxsat bermaydi (Yandex javobi: “Invalid api key”) — probka qatlami koʻrinadi, lekin yoʻl vaqtini oʻlchab boʻlmaydi. Yandex kabinetida (developer.tech.yandex.ru) marshrutlash yoqilgan kalit kerak.';
 
   const corridors = () => C || (C = fetch('data/traffic-corridors.json').then(r => (r.ok ? r.json() : null)).catch(() => null));
   const empty = () => ({ latest: null, rows: [], prof: {}, n: 0, since: null });
@@ -41,7 +42,7 @@
     if (!canMeasure()) throw new Error('Yandex xaritasi (API kaliti bilan) yuklanmagan — oʻlchab boʻlmaydi.');
     const D = await corridors(); if (!D) throw new Error('Chorrahalar fayli yuklanmadi.');
     const list = D.corridors, v = {};
-    let i = 0, done = 0;
+    let i = 0, done = 0; nErr = 0;
     const one = async c => {
       const P = c.path, pts = [P[0], P[Math.floor(P.length / 2)], P[P.length - 1]];
       try {
@@ -49,7 +50,7 @@
         if (!r) return;
         const jams = r.getJamsTime(), free = r.getTime(), len = r.getLength();
         if (free > 5 && len < c.len * 2.2 + 150) v[c.id] = [Math.round(Math.max(jams, free)), Math.round(free)];   // aylanib oʻtsa (bir tomonlama) — olinmaydi
-      } catch (e) { /* bu yoʻl oʻlchanmadi */ }
+      } catch (e) { nErr++; if (/scriptError|Invalid api key|Unauthorized|403|401/i.test(String((e && (e.message || e)) || ''))) denied = Date.now(); }
       done++; if (onStep) onStep(done, list.length);
     };
     const worker = async () => { while (i < list.length) await one(list[i++]); };
@@ -62,7 +63,7 @@
     busy = true;
     try {
       const v = await measure(onStep), ts = Date.now();
-      if (Object.keys(v).length < 5) throw new Error('Yandex marshrut vaqtlarini qaytarmadi.');
+      if (Object.keys(v).length < 5) throw new Error(denied && nErr > 3 ? NO_ROUTE : 'Yandex marshrut vaqtlarini qaytarmadi.');
       let sent = false;
       if (base() && remote !== false) {
         try { const r = await NX.fetchJSON(base() + '/traffic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ v }) }, 15000); sent = r.ok && r.data && (r.data.ok || r.data.skipped); if (!sent && r.status >= 400) remote = false; } catch (e) { /* */ }
@@ -78,7 +79,7 @@
   // Avtomatik: har 2 daqiqada tekshiradi — oxirgi umumiy oʻlchov 15 daqiqadan eski boʻlsa, oʻlchaydi
   function start() {
     if (timer || navigator.webdriver) return;
-    const tick = async () => { try { if (!canMeasure() || busy) return; const s = await state(true); if (!s.latest || Date.now() - s.latest.ts > GAP) await sampleNow(); } catch (e) { /* keyingi safar */ } };
+    const tick = async () => { try { if (!canMeasure() || busy || (denied && Date.now() - denied < 3600e3)) return; const s = await state(true); if (!s.latest || Date.now() - s.latest.ts > GAP) await sampleNow(); } catch (e) { /* keyingi safar */ } };
     timer = setInterval(tick, 120e3); setTimeout(tick, 20e3);
   }
 
@@ -159,7 +160,7 @@
     L.push('', `Xaritada: chorrahalar raqam bilan, sekin kirish yoʻllari rangli chiziq (sariq — sekin, qizil — tirband). Kuzatuv: ${R.total} ta yirik chorraha, har 15 daqiqada${R.remote ? '' : ' (hozircha faqat shu brauzerda — Worker yangilansa umumiy boʻladi)'}.`);
     return L.join('\n');
   }
-  function status() { return { n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure() }; }
+  function status() { return { n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
 
   NX.trafficWatch = { corridors, state, measure, sampleNow, start, query, items, facts, summary, parseTime, status, slotLabel, _addSample: addSample };
 })();
