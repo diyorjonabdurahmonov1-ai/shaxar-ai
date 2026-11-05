@@ -159,11 +159,12 @@
         const b = sel[i], k = SCAN_FIT.has(b.id) ? 'house' : kindOf(b), hs = hash(b.id || i);   // skanlangan uylar — hovli uyi devori (koʻp qavatli deraza emas)
         if (SCAN_HIDE.has(b.id) && !SCAN_FIT.has(b.id)) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
         // Skanlangan uy: real fasad oldinda, orqasida — shu uyning tomi va yon devorlari skandagi fasad balandligida (teshiklar ham yopiladi)
-        const h = SCAN_FIT.has(b.id) ? SCAN_FIT.get(b.id) : Math.max(2.8, b.height || (b.levels || 1) * 3);
+        const h = SCAN_FIT.has(b.id) ? SCAN_FIT.get(b.id)[0] : Math.max(2.8, b.height || (b.levels || 1) * 3);
         try {
           const outer = b.ring.slice(0, -1).map(c => loc(c[0], c[1]));
           // skanlangan uy — kontur 1.3 m ichkariga (real fasad doim oldinda koʻrinsin, maket devori uni toʻsmasin)
-          if (SCAN_FIT.has(b.id)) { const cx = outer.reduce((t, v) => t + v.x, 0) / outer.length, cy = outer.reduce((t, v) => t + v.y, 0) / outer.length; outer.forEach(v => { const dx = cx - v.x, dy = cy - v.y, d = Math.hypot(dx, dy) || 1, m = Math.min(1.3, d * 0.4); v.x += dx / d * m; v.y += dy / d * m; }); }
+          // skanlangan uy — maket koʻchadan uzoqqa surilgan (fasad toʻliq skandan, maket faqat tom va hovli tomoni)
+          if (SCAN_FIT.has(b.id)) { const f = SCAN_FIT.get(b.id); outer.forEach(v => { v.x += f[1]; v.y += f[2]; }); }
           if (outer.length < 3) continue;
           if (THREE.ShapeUtils.isClockWise(outer)) outer.reverse();
           const shape = new THREE.Shape(outer);
@@ -258,7 +259,7 @@
   async function loadScans() {
     const list = await scanListP;
     if (!list || !list.length) return;
-    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); Object.entries(sc.fit || {}).forEach(([id, h]) => SCAN_FIT.set(+id, h)); });
+    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); Object.entries(sc.fit || {}).forEach(([id, f]) => SCAN_FIT.set(+id, Array.isArray(f) ? f : [f, 0, 0])); });
     // Xaritada belgi: skanlangan koʻcha qayerda — bosilsa kamera koʻcha darajasiga tushadi
     if (window.maplibregl && window.maplibregl.Marker) {
       const groups = new Map(); list.forEach(sc => { const k = sc.nomi.replace(/\s*\(.*\)$/, ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sc); });
@@ -284,7 +285,7 @@
       scans.push(item);
       new window.THREE.GLTFLoader().load(sc.file, g => {
         const scn = new window.THREE.Scene();
-        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; t.encoding = window.THREE.LinearEncoding; t.anisotropy = 4; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });   // rang — suratdagidek (sRGB qayta kodlanmaydi)
+        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; t.encoding = window.THREE.LinearEncoding; t.anisotropy = 16; t.minFilter = window.THREE.LinearMipmapLinearFilter; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });   // rang — suratdagidek (sRGB qayta kodlanmaydi)
         scn.add(g.scene); item.scene = scn; map.triggerRepaint();
       }, undefined, e => console.warn('skan:', sc.file, e && e.message));
     });
