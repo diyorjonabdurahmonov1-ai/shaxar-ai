@@ -215,6 +215,9 @@ async function trafficCron(env) {
   if (!env.YANDEX_MATRIX_KEY || !env.CORRECTIONS) return;
   const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
   if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return;
+  // Soʻrovlarni tejash: faqat TRF_FROM–TRF_TO soatlarda (Samarqand vaqti, odatiy 6–23) + kechasi 3:00 da bitta (probkasiz vaqt uchun)
+  const lh = new Date(Date.now() + 5 * 3600e3), hh = lh.getUTCHours(), from = +(env.TRF_FROM || 6), to = +(env.TRF_TO || 23);
+  if ((hh < from || hh >= to) && !(hh === 3 && lh.getUTCMinutes() < 30)) return;
   const D = await (await fetch(SITE + 'data/traffic-corridors.json', { cf: { cacheTtl: 86400 } })).json();
   const byJ = {}; D.corridors.forEach(c => { (byJ[c.j] = byJ[c.j] || []).push(c); });
   const v = {}, r = {}; st.base = st.base || {};
