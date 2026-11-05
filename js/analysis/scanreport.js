@@ -84,9 +84,9 @@
   function summary(D, A) {
     const X = D.xulosa, L = [];
     L.push(`**${D.koʻcha} — real 3D skan boʻyicha.** Uzunligi ${X.uzunlik_m} m, eni oʻrtacha ${X.eni_med} m (eng tor ${X.eni_min} m, eng keng ${X.eni_max} m), balandlik farqi ${X.balandlik_farqi_m} m.`);
-    if (A.issues.length) { L.push('', '**Kamchiliklar**'); A.issues.forEach((i, k) => L.push(`${k + 1}. **${i.tur}** — ${i.joy}, ${i.qiymat}. ${i.nima}. _Qanday hisoblandi:_ ${i.hisob}. **Taklif:** ${i.taklif}.`)); }
+    if (A.issues.length) { L.push('', '**Kamchiliklar**'); A.issues.forEach((i, k) => L.push(`${k + 1}. **${i.tur}** — ${i.joy}, ${i.qiymat}. ${i.nima}. Qanday hisoblandi: ${i.hisob}. **Taklif:** ${i.taklif}.`)); }
     else L.push('', 'Skan boʻyicha jiddiy kamchilik topilmadi.');
-    L.push('', `_Maʼlumot: ${D.manba}._`);
+    L.push('', `Maʼlumot: ${D.manba}.`);
     return L.join('\n');
   }
   async function report(q) {
