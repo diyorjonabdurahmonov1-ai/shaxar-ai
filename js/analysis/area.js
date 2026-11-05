@@ -100,11 +100,13 @@
     const pros = [], cons = [], todo = [];
     const fmt = NX.fmt;
     pros.push(`${fmt.int(b.residents)} kishi uchun yangi uy-joy (${b.flats} xonadon).`);
-    if (st.nearestStop && st.nearestStop.d <= 300) pros.push(`Avtobus bekati yaqin — ${st.nearestStop.d} m${st.lines.length ? ` (${st.lines.slice(0, 5).join(', ')})` : ''}. Aholining bir qismi jamoat transportida yuradi.`);
-    else if (st.nearestStop) { cons.push(`Eng yaqin bekat ${st.nearestStop.d} m uzoqda — odamlar mashinaga koʻproq tayanadi.`); todo.push('Yaqin atrofga avtobus bekati qoʻyish yoki yoʻnalishni shu yerdan oʻtkazish.'); }
+    const sn = st.nearestStop && st.nearestStop.name && st.nearestStop.name !== 'bekat' ? ` (“${st.nearestStop.name}”)` : '';
+    if (st.nearestStop && st.nearestStop.d <= 300) pros.push(`Avtobus bekati yaqin${sn} — ${st.nearestStop.d} m${st.lines.length ? ` (${st.lines.slice(0, 5).join(', ')})` : ''}. Aholining bir qismi jamoat transportida yuradi.`);
+    else if (st.nearestStop) { cons.push(`Eng yaqin bekat${sn} ${st.nearestStop.d} m uzoqda — odamlar mashinaga koʻproq tayanadi.`); todo.push('Yaqin atrofga avtobus bekati qoʻyish yoki yoʻnalishni shu yerdan oʻtkazish.'); }
     else cons.push('Atrofda avtobus bekati topilmadi.');
-    if (st.schoolsNear.length) pros.push(`500 m ichida ${st.schoolsNear.length} ta maktab/bogʻcha bor.`);
-    else { cons.push('500 m ichida maktab yoki bogʻcha yoʻq.'); todo.push(`~${b.pupils} oʻquvchi va ~${b.kids} bogʻcha yoshidagi bola uchun joy rejalashtirish.`); }
+    const R0 = st.poisStatic ? 800 : 500, sl = st.schoolsNear.slice(0, 3).map(x => `${x.kind === 'school' ? 'maktab' : 'bogʻcha'}${x.name ? ' “' + x.name + '”' : ''} — ${x.d} m`).join(', ');
+    if (st.schoolsNear.length) pros.push(`${R0} m ichida ${st.schoolsNear.length} ta maktab/bogʻcha bor: ${sl}.`);
+    else { cons.push(`${R0} m ichida maktab yoki bogʻcha OSM’da yoʻq.`); todo.push(`~${b.pupils} oʻquvchi va ~${b.kids} bogʻcha yoshidagi bola uchun joy rejalashtirish.`); }
     if (st.schoolsNear.length) cons.push(`~${b.pupils} yangi oʻquvchi va ~${b.kids} bogʻcha yoshidagi bola paydo boʻladi — yaqin maktablarda joy bormi, taʼlim boʻlimidan aniqlash kerak (sigʻim maʼlumoti saytda yoʻq).`);
     cons.push(`~${b.cars} ta mashina uchun turar joy kerak (hovlida yoki yer ostida), aks holda koʻcha chetlari band boʻladi.`);
     todo.push(`Kamida ${b.parking} ta avtoturargoh (yer osti yoki koʻp qavatli) loyihaga kiritish.`);

@@ -291,7 +291,7 @@ Qoidalar:
     if (!aiAvailable()) return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: 'AI ulanmagan.' }, meta);
     try {
       const r = await callOpenAI(key, ctx, opts.onModel, opts.history || []);
-      return Object.assign({ text: r.text, src: 'ai', model: r.model, check: checkNums(r.text, ctx) }, meta);
+      return Object.assign(await verify(q, ctx, { text: r.text, src: 'ai', model: r.model }), meta);
     } catch (e) {
       return Object.assign({ text: localAnswer(q, ctx), src: 'hisob', error: e.message }, meta);
     }
@@ -501,6 +501,8 @@ Qoidalar:
 - Foydalanuvchi xonadon yoki qavat sonini aytmagan boʻlsa — hisobda qaysi raqam olinganini ayt.
 - Faqat soʻralgan savolga javob ber; soʻralmagan boʻlim yozma. JSON kalit nomlarini, “null” kabi texnik soʻzlarni hech qachon yozma.
 - FAQAT qurilish (dom, bino) soʻralganda tuzilma: **Hozir**, **Dom qurilsa** (aholi, mashinalar, qaysi koʻchalarga qancha yuk — xaritada qizil), **Yutuqlar**, **Muammolar**, **Nima qilish kerak**, **Kelajakda (5 yil)**. Har biri 2–4 nuqta, raqamlar bilan.
+- “harakat_hisobi_ertalab.yoʻnalishlar” yoki “chiqish_yoʻnalishlari” berilgan boʻlsa — **Dom qurilsa** boʻlimida HAR yoʻnalishni yoz: Y raqami, qaysi koʻchalar orqali qaysi asosiy yoʻlga (C raqami — chiqish chorrahasi), necha mashina/soat va ulushi, NEGA u yoqqa (eng tez yoʻl, necha daqiqa/metr — yaqinroq va tezroq asosiy yoʻlga koʻproq mashina ketadi). Eng tor joy va toʻlish foizi; tor koʻchalar; chiqishda svetofor yoʻqligi; chiqish yonidagi bekat (avtobus toʻxtashi yoʻlni toraytiradi); yoʻl boʻyidagi maktab/bogʻcha — bolalar xavfsizligi. “eng_yaqin_maktab_bogcha” va “eng_yaqin_bekat_m/nomi” dagi nom va masofalarni aniq ayt (maktab bor boʻlsa “belgilanmagan” DEMA). Takliflar shu joylarga bogʻlangan boʻlsin (masalan: C1 da svetofor/burilish yoʻlagi, maktab oldida zebra va 20 km/soat).
+- “soya” berilgan boʻlsa (qurilish savolida yoki soya soʻralsa) — soatma-soat ayt: qishda soat nechadan nechagacha soya uylarga tushadi, eng koʻp qaysi soatda (necha uy, soya necha metr), nechta uy 3+ soat soyada qoladi; yozda qisqa. Xaritada soya ranglari va uylar ranglarini tushuntir. Taklif: bino joyini/qavatini oʻzgartirish, shimol tomonga surish.
 - Saytda yoʻq maʼlumot (maktab sigʻimi, suv, elektr, kanalizatsiya, yer egaligi) kerak boʻlsa — “maʼlumot yoʻq, … dan soʻrash kerak” deb ayt.
 - Agar “internet” maʼlumoti berilgan boʻlsa — tegishlisini qisqa, manbasi bilan ayt.
 - “bosh_reja” berilgan boʻlsa — qurilish yoki oʻzgartirish tavsiyasidan OLDIN tekshir: “ziddiyatlar” boʻlsa, javob boshida ⚠️ bilan aniq ayt (konservatsiya zonasi, UNESCO asosiy hududi yoki bufer zonasi, Afrosiyob, qavat cheklovi) va u yerda qurishni TAVSIYA QILMA — muqobil (rekonstruksiya, yashil hudud) taklif qil. Ziddiyat yoʻq boʻlsa — bir qatorda “Bosh reja: …” (UNESCO yodgorligigacha masofa, rasmiy zonalar fayli yuklanganmi). UNESCO maʼlumoti “TAXMINIY” boʻlsa, buni ayt va Madaniy meros agentligidan tasdiqlashni tavsiya qil.
@@ -520,23 +522,31 @@ ${MAPRULE}`;
     const sim = r => r ? { shahar_boʻyicha_yol_vaqti_ozgarishi_foiz: +r.ttChangePct.toFixed(1), koproq_yuklanadigan_koʻchalar: r.affected.filter(x => x.dv > 0 && x.name).slice(0, 6).map(x => ({ koʻcha: x.name, qoʻshimcha_mashina_soat: Math.round(x.dv), toʻlishi_foiz: Math.round(x.scenVC * 100) })), sigmay_qoladigan_koʻchalar: r.overloaded.slice(0, 6).map(x => x.name || 'nomsiz yoʻl'), binodan_yoʻlgacha_m: r.build && r.build.dist } : null;
     return {
       hudud_osm: {
-        model_chegarasi: st.outside ? 'hudud transport modeli (tarixiy markaz) dan tashqarida — koʻchalarga yuklama (simulyatsiya) hisoblanmagan, koʻcha va obyektlar butun shahar maʼlumotidan' : 'transport modeli ichida',
+        model_chegarasi: st.outside ? 'hudud transport modeli (tarixiy markaz) dan tashqarida — yuklama butun shahar koʻchalar tarmogʻi boʻyicha alohida hisoblangan (harakat_hisobi_ertalab: yoʻnalishlar Y1…, chiqish chorrahalari C1…); bekat/maktab — saytning shahar fayli (OSM)' : 'transport modeli ichida',
         maydon_ga: +st.areaHa.toFixed(1), koʻchalar: st.streets.filter(s => s.name).slice(0, 10).map(s => s.name), koʻcha_km: +st.streetKm.toFixed(1),
         muammolar: g, bekatlar_ichida: st.stops, bekat_400m_qamrovi_foiz: st.coverage != null ? Math.round(st.coverage) : null,
-        eng_yaqin_bekat_m: st.nearestStop && st.nearestStop.d, avtobus_liniyalari_400m: st.lines.slice(0, 12),
+        eng_yaqin_bekat_m: st.nearestStop && st.nearestStop.d, eng_yaqin_bekat_nomi: st.nearestStop && st.nearestStop.name, avtobus_liniyalari_400m: st.lines.slice(0, 12),
         svetoforlar: st.signals, piyoda_otishlar: st.crossings, maktab_bogcha_ichida: st.schoolsIn.length, maktab_bogcha_500m: st.schoolsNear.length, registondan_m: st.distCenter,
       },
       hozirgi_harakat_yandex: A.live && A.live.list && A.live.list.length ? A.live.list.map(r => ({ qayerga: r.name, hozir_daqiqa: Math.round(r.jams / 60), probkasiz_daqiqa: Math.round(r.free / 60), km: +(r.len / 1000).toFixed(1) })) : 'olinmadi',
       shahar_tirbandligi_yandex_ball: X.level != null ? X.level : null,
       qurilish_hisobi: R ? Object.assign({ ishlatilgan_raqamlar: A.A }, R.b) : 'hali hisoblanmagan',
-      harakat_hisobi_ertalab: R ? sim(R.sim) : null,
-      kelajak_5_yil_oqim_15foiz: R ? sim(R.fut) : null,
+      harakat_hisobi_ertalab: R ? (st.outside ? (R.out ? NX.outload.facts(R.out) : null) : sim(R.sim)) : null,
+      chiqish_yoʻnalishlari: R && R.out && !st.outside ? NX.outload.facts(R.out) : null,
+      kelajak_5_yil_oqim_15foiz: R && !st.outside ? sim(R.fut) : null,
+      eng_yaqin_maktab_bogcha: st.schoolsNear ? st.schoolsNear.slice(0, 6).map(x => ({ tur: x.kind === 'school' ? 'maktab' : 'bogʻcha', nomi: x.name, masofa_m: x.d })) : null,
       sayt_bahosi: R ? R.ev : null,
       nomzod_joylar: X.cand || null,
       ehtiyojlar: X.needs || null,
       bosh_reja: X.plan || null,
       internet: X.internet || null,
-      soya_qishda: R && R.shadow ? { soyada_qoladigan_binolar: R.shadow.shaded.length, quyosh: R.shadow.list.filter(s => s.sun.alt > 2).map(s => `${s.label} ${s.hour}:00 — ${Math.round(s.sun.alt)}°`) } : null,
+      soya: R && R.shadow ? {
+        izoh: 'Yangi bino soyasi har soat (8:00–17:00) 3 kun uchun: soya uzunligi = bino balandligi / tan(quyosh balandligi); uy soyada — konturi soya ichida. Relyef va boshqa binolar soyasi hisobga olinmagan. Xaritada: qishki soya har soat oʻz rangida (yorligʻi “9:00”), uylar: qizil 3+ soat, sariq 2, och sariq 1 soat.',
+        bino_balandligi_m: Math.round(R.shadow.planned.height),
+        qishda_soya_tushadigan_uylar: R.shadow.shaded.length, qishda_3_soatdan_koʻp_soyada: R.shadow.blds.filter(x => x.lost >= 3).length, qishda_quyoshli_soatlar: R.shadow.sunH,
+        soatlar: ['qish', 'bahor', 'yoz'].map(k => ({ kun: k === 'qish' ? '21-dekabr' : k === 'bahor' ? '21-mart' : '21-iyun', soatlar: R.shadow.list.filter(r => r.key === k && r.sun.alt > 2).map(r => ({ soat: r.hour + ':00', quyosh_balandligi: Math.round(r.sun.alt), soya_m: r.len, uylar: r.ids.length })) })),
+        eng_koʻp_soyada_qoladigan_uylar: R.shadow.blds.slice(0, 8).map(x => ({ qavat: x.levels, qishda_soatlar: x.hours.qish.map(h => h + ':00'), yozda_soatlar: x.hours.yoz.map(h => h + ':00') })),
+      } : null,
       hududdagi_binolar_osm: R && R.blds ? R.blds : null,
       shahar_tizimlari: systemsFacts(st),
     };
@@ -562,7 +572,7 @@ ${MAPRULE}
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: DEEP }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
     const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'deep');
-    return { text: r.text, src: 'ai', model: r.model, check: checkNums(r.text, facts) };
+    return verify(q, facts, { text: r.text, src: 'ai', model: r.model });
   }
   // 3D egizak: suv toshqini, zilzila, quyosh — stsenariy natijalari asosida
   const TWIN = `Sen Samarqand shahar hokimiyati uchun favqulodda vaziyatlar va shahar infratuzilmasi boʻyicha bosh tahlilchisan. Javobing rahbariyatga koʻrsatiladi.
@@ -634,6 +644,29 @@ Faqat aniq koʻringan narsani yoz; koʻrinmasa — “noaniq”. Taxmin qilma.`;
     const bad = nums.filter(x => !near(x));
     return { n: nums.length, ok: nums.length - bad.length, bad: bad.slice(0, 6) };
   }
+  // Tekshiruvchi (2-bosqich, kuchli model): javobdagi har bir raqam va daʼvo faktlar bilan solishtiriladi.
+  // Ishga tushadi: (a) faktlarda yoʻq raqam bor; (b) javob “yoʻq/belgilanmagan/topilmadi” deydi, lekin faktlarda shu narsa bor (maktab, bekat, svetofor…).
+  const VERIFY = `Sen qatʼiy tekshiruvchisan. Senga savol, saytning REAL maʼlumotlari (JSON) va boshqa model yozgan javob beriladi.
+Vazifa: javobni JSON bilan solishtir va TUZATILGAN javobni yoz (oʻsha tuzilma, oʻsha til, oʻsha uslub, qisqa).
+- JSON’da yoʻq yoki undan farq qiladigan har bir raqam/nom — JSON’dagi toʻgʻrisi bilan almashtir; JSON’da umuman yoʻq boʻlsa — olib tashla.
+- “yoʻq”, “belgilanmagan”, “topilmadi” degan gap JSON’da bor narsaga zid boʻlsa (masalan maktab/bogʻcha, bekat, svetofor roʻyxati bor) — aniq nomi va masofasi bilan toʻgʻrila.
+- Javobda savolga kerakli muhim fakt tushib qolgan boʻlsa (masalan yuklama qaysi yoʻlga qancha ketadi va nega, soya qaysi soatda nechta uyga tushadi) — qisqa qoʻsh.
+- Taxminiy hisoblar “taxminiy” boʻlib qolsin. Yangi narsa oʻylab topma. Faqat tuzatilgan javob matnini yoz — izoh, “tuzatdim” kabi soʻzlarsiz.`;
+  const CLAIM_NO = /(maktab|bogʻcha|bog'cha|bekat|svetofor|oʻtish joy|o'tish joy)[^.\n]{0,60}(yoʻq|yo'q|belgilanmagan|topilmadi)|(yoʻq|belgilanmagan|topilmadi)[^.\n]{0,30}(maktab|bogʻcha|bekat|svetofor)/i;
+  function factsHave(facts, re) { let hit = false; const walk = (v, k) => { if (hit || v == null) return; if (Array.isArray(v)) { if (v.length && re.test(k || '')) hit = true; else v.forEach(x => walk(x, k)); } else if (typeof v === 'object') Object.keys(v).forEach(kk => walk(v[kk], kk)); else if (typeof v === 'number' && v > 0 && re.test(k || '')) hit = true; }; walk(facts, ''); return hit; }
+  async function verify(q, facts, r) {
+    if (!r || !r.text || !facts) return r;
+    const chk = checkNums(r.text, facts), m = r.text.match(CLAIM_NO);
+    const contra = !!m && ((/maktab|bog/i.test(m[0]) && factsHave(facts, /maktab|bogcha|bogʻcha|school/i)) || (/bekat/i.test(m[0]) && factsHave(facts, /bekat|stop/i)) || (/svetofor/i.test(m[0]) && factsHave(facts, /svetofor|signal/i)));
+    if (!((chk && chk.bad.length) || contra)) return Object.assign({}, r, { check: chk });
+    try {
+      const v = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VERIFY }, { role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) + '\n\nTekshiriladigan javob:\n' + r.text }], NX.config.openaiDeep, 'verify');
+      const c2 = checkNums(v.text, facts);
+      // Tuzatilgani yaxshiroq boʻlsa (faktlarda yoʻq raqamlar kamaygan) — shu olinadi
+      if (v.text && v.text.trim().length > 40 && (!c2 || !chk || c2.bad.length <= chk.bad.length)) return Object.assign({}, r, { text: v.text, check: c2, verified: true });
+    } catch (e) { /* tekshiruvchi ishlamadi — birinchi javob qoladi */ }
+    return Object.assign({}, r, { check: chk });
+  }
   // Savol turini aniqlash (regex topa olmaganda): engil model, faqat bitta soʻz qaytaradi
   const ROUTE_TYPES = ['quake', 'flood', 'evac', 'fire', 'ambulance', 'police', 'access', 'traffic', 'needs', 'build', 'plan', 'road', 'climate', 'solar', 'general'];
   const ROUTER = `Sen Samarqand hokimiyati saytining savol yoʻnaltiruvchisisan. Savol oʻzbek, rus yoki aralash tilda, imlo xatolari bilan boʻlishi mumkin.
@@ -655,7 +688,7 @@ Oldingi savol berilgan boʻlsa va yangi savol uning davomi boʻlsa (“u-chi?”
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: TWIN }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
     const r = await callOpenAI(userKey(), null, null, null, messages, NX.config.openaiDeep, 'twin');
-    return { text: r.text, src: 'ai', check: checkNums(r.text, facts) };
+    return verify(q, facts, { text: r.text, src: 'ai' });
   }
 
   // Chatdan rasm: savol + natijalar → rasm modeli uchun inglizcha tavsif → rasm (3D koʻrinish asos boʻlishi mumkin)
@@ -714,7 +747,7 @@ No text, no labels, no logos. Output only the prompt.`;
     if (!aiAvailable()) return { text: local(), src: 'hisob', error: 'AI ulanmagan.' };
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
     const messages = [{ role: 'system', content: AREA }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
-    try { const r = await callOpenAI(userKey(), null, null, null, messages); return { text: r.text, src: 'ai', check: checkNums(r.text, facts) }; }
+    try { const r = await callOpenAI(userKey(), null, null, null, messages); return await verify(q, facts, { text: r.text, src: 'ai' }); }
     catch (e) { return { text: local(), src: 'hisob', error: e.message }; }
   }
 
@@ -754,5 +787,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

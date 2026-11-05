@@ -85,12 +85,14 @@
           c.add(new window.ymaps.Placemark([a.lat, a.lon], { iconContent: a.id || String(i + 1), hintContent: a.title, balloonContent: NX.place.html(a) }, { preset: 'islands#circleIcon', iconColor: a.color || '#16a34a', zIndex: 1000, balloonMaxWidth: 320 }));
           return;
         }
+        if (a.kind === 'zone' && a.list === false) { c.add(new window.ymaps.Polygon([a.ring], { hintContent: a.title }, { strokeColor: a.color, strokeWidth: 1, fillColor: a.color, fillOpacity: 0.7 })); return; }
         if (a.kind === 'zone') c.add(new window.ymaps.Polygon([a.ring], bal, { strokeColor: a.color, strokeWidth: 2, fillColor: a.color, fillOpacity: 0.3 }));
+        if (a.kind === 'zone' && a.lat == null) return;
         if (a.kind === 'line' && a.path) c.add(new window.ymaps.Polyline(a.path, bal, { strokeColor: a.color || '#16a34a', strokeWidth: a.dash ? 4 : 6, strokeStyle: a.dash ? 'dash' : 'solid', strokeOpacity: 0.95 }));
         if (a.dash) return;
         else if (a.kind === 'line') c.add(new window.ymaps.Polyline([a.from, a.to], bal, { strokeColor: '#7c3aed', strokeWidth: 6, strokeStyle: 'dash', strokeOpacity: 0.95 }));
         const p = a.kind === 'line' && !a.path ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon];
-        c.add(new window.ymaps.Placemark(p, { iconContent: String(i + 1), hintContent: a.title, balloonContent: NX.place.html(Object.assign({}, a, { lat: p[0], lon: p[1] }), i + 1) }, { preset: 'islands#violetCircleIcon', balloonMaxWidth: 320 }));
+        c.add(new window.ymaps.Placemark(p, { iconContent: a.id && a.id.length <= 5 ? a.id : String(i + 1), hintContent: a.title, balloonContent: NX.place.html(Object.assign({}, a, { lat: p[0], lon: p[1] }), i + 1) }, { preset: 'islands#violetCircleIcon', balloonMaxWidth: 320 }));
       });
     },
     clearDynamic() { drop('dyn'); NX.yandex.setTraffic(true); },

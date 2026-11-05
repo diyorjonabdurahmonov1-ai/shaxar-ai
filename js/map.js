@@ -387,7 +387,7 @@
     (list || []).forEach((a, i) => {
       // Xaritada ixcham: raqam + belgi; toʻliq yozuv — sichqoncha ustida / bosilganda va chatdagi roʻyxatda
       const ico = (String(a.title).match(/^\p{Extended_Pictographic}\uFE0F?/u) || [''])[0] || (a.kind === 'line' ? '🛣' : '📍');
-      const label = `<span class="ann-n">${i + 1}</span><span class="ann-i" title="${NX.esc(a.title)}">${ico}</span>`;
+      const label = `<span class="ann-n">${/^\d{1,2}:00$/.test(a.id || '') ? a.id : i + 1}</span><span class="ann-i" title="${NX.esc(a.title)}">${ico}</span>`;
       // Favqulodda vaziyat natijasi: chiziq va hudud — jonli qatlamda (NX.fx); bu yerda faqat bosiladigan ixcham belgi
       if (a.fx) {
         if (a.kind === 'line' || a.kind === 'water') return;
@@ -395,7 +395,10 @@
         L.marker([a.lat, a.lon], { icon: L.divIcon({ className: 'ann hz-ann', html: `<span class="hz-tag" style="--c:${a.color || '#16a34a'}">${NX.esc(a.id || String(i + 1))}</span>`, iconSize: null }), riseOnHover: true, zIndexOffset: 1000 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).bindPopup(NX.place.html(a), { maxWidth: 320, minWidth: 260 }).addTo(L_.ann);
         return;
       }
+      // list:false zona (masalan soyada qoladigan uy) — raqamsiz, ustiga kelsa yozuv
+      if (a.kind === 'zone' && a.list === false) { L.polygon(a.ring, { renderer, color: a.color, weight: 1.5, fillColor: a.color, fillOpacity: 0.7 }).bindTooltip(NX.esc(a.title), { direction: 'top' }).addTo(L_.ann); return; }
       if (a.kind === 'zone') L.polygon(a.ring, { renderer, color: a.color, weight: 2, fillColor: a.color, fillOpacity: 0.3, interactive: false }).addTo(L_.ann);
+      if (a.kind === 'zone' && a.lat == null) return;
       if (a.kind === 'line' && a.path) {
         L.polyline(a.path, { renderer, color: '#ffffff', weight: 9, opacity: 0.85, interactive: false }).addTo(L_.ann);
         L.polyline(a.path, { renderer, color: a.color || '#16a34a', weight: a.dash ? 4 : 5, dashArray: a.dash ? '9 7' : null, opacity: 0.95, interactive: false }).addTo(L_.ann);

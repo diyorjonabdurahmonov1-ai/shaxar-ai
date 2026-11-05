@@ -471,19 +471,46 @@
     return { fp: [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]], height: floors * 3.2 };
   }
   // 21-dekabr (eng qisqa kun) va 21-iyun, 9:00 / 12:00 / 15:00 (Samarqand vaqti)
+  // Soya: 21-dekabr (eng qisqa kun), 21-mart (tengkunlik), 21-iyun — har soat 8:00–17:00 (Samarqand vaqti, UTC+5).
+  // Har bir qoʻshni bino: qaysi soatlarda yangi bino soyasida (kontur nuqtalaridan biri yoki markazi soya ichida) — taxminiy (yer sathi, tom balandligi hisobga olinmaydi).
+  const DAYS = [['Qishda (21-dekabr)', 11, 21, 'qish'], ['Bahor/kuzda (21-mart)', 2, 21, 'bahor'], ['Yozda (21-iyun)', 5, 21, 'yoz']];
   function shadows(center, footprint, floors, buildings) {
     const pb = planned(center, footprint, floors), year = new Date().getFullYear(), res = [];
-    [['Qishda (21-dekabr)', 11, 21], ['Yozda (21-iyun)', 5, 21]].forEach(([label, m, d]) => [9, 12, 15].forEach(hh => {
-      const t = new Date(Date.UTC(year, m, d, hh - 5, 0)), sun = sunPos(t, center[0], center[1]), poly = shadow(pb.fp, pb.height, sun);
-      res.push({ label, hour: hh, sun, poly });
-    }));
-    // Qishda soyada qoladigan binolar (kamida bir soatda)
-    const winter = res.filter(r => r.label.startsWith('Qish') && r.poly), shaded = new Set();
     const inPoly = (poly, x, y) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
-    (buildings || []).forEach(b => { const [x, y] = G.xy(b.c[0], b.c[1]); if (Math.hypot(x - pb.fp[0][0], y - pb.fp[0][1]) > 500) return; if (inPoly(pb.fp, x, y)) return; if (winter.some(w => inPoly(w.poly, x, y))) shaded.add(b); });
+    const near = (buildings || []).map(b => { const [x, y] = G.xy(b.c[0], b.c[1]); return { b, x, y }; }).filter(o => Math.hypot(o.x - pb.fp[0][0], o.y - pb.fp[0][1]) <= 450 && !inPoly(pb.fp, o.x, o.y))
+      .map(o => Object.assign(o, { pts: [[o.x, o.y]].concat((o.b.ring || []).map(c => G.xy(c[1], c[0]))) }));
+    const hits = new Map();
+    DAYS.forEach(([label, m, d, key]) => { for (let hh = 8; hh <= 17; hh++) {
+      const t = new Date(Date.UTC(year, m, d, hh - 5, 0)), sun = sunPos(t, center[0], center[1]), poly = shadow(pb.fp, pb.height, sun), ids = [];
+      if (poly) near.forEach(o => { if (o.pts.some(q => inPoly(poly, q[0], q[1]))) { ids.push(o.b.id); let h = hits.get(o.b); if (!h) hits.set(o.b, h = { qish: [], bahor: [], yoz: [] }); h[key].push(hh); } });
+      res.push({ label, key, hour: hh, sun, poly, ids, len: poly ? Math.round(Math.min(400, pb.height / Math.tan(sun.alt * Math.PI / 180))) : 0 });
+    } });
+    // Qishda quyoshli soatlar (quyosh > 2°) va har bino uchun qolgan quyoshli soat
+    const sunH = res.filter(r => r.key === 'qish' && r.sun.alt > 2).length;
+    const shaded = [...hits.keys()].filter(b => hits.get(b).qish.length);
     const toLL = poly => poly.map(q => { const ll = G.ll(q[0], q[1]); return [ll[1], ll[0]]; });
-    return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded: [...shaded] };
+    const blds = shaded.map(b => ({ b, id: b.id, ring: b.ring, c: b.c, levels: b.levels, hours: hits.get(b), lost: hits.get(b).qish.length, left: sunH - hits.get(b).qish.length })).sort((a, b) => b.lost - a.lost);
+    return { planned: Object.assign({ ring: toLL(pb.fp.concat([pb.fp[0]])) }, pb), list: res.map(r => Object.assign({}, r, { ring: r.poly ? toLL(r.poly.concat([r.poly[0]])) : null })), shaded, blds, sunH };
+  }
+  // Soya — xarita belgilari: qishki har soat soyasi (rangi soatga qarab, yorligʻi “9:00”) va soyada qoladigan uylar (rangi — necha soat)
+  const HCOL = { 8: '#1e3a8a', 9: '#3730a3', 10: '#4f46e5', 11: '#6d28d9', 12: '#7e22ce', 13: '#a21caf', 14: '#be185d', 15: '#c2410c', 16: '#b45309', 17: '#92400e' };
+  function shadowItems(sh, key) {
+    if (!sh || !sh.list) return [];
+    key = key || 'qish';
+    const out = [];
+    sh.list.filter(r => r.key === key && r.ring).forEach(r => {
+      // yorliq — soya uchida (bino markazidan quyoshga teskari, soya uzunligining 85%)
+      const c = sh.planned.ring.slice(0, -1).reduce((a, q) => [a[0] + q[1] / 4, a[1] + q[0] / 4], [0, 0]), az = r.sun.az * Math.PI / 180, L = r.len * 0.85;
+      const tip = G.ll(G.xy(c[0], c[1])[0] - Math.sin(az) * L, G.xy(c[0], c[1])[1] - Math.cos(az) * L);
+      out.push({ kind: 'zone', id: r.hour + ':00', ring: r.ring.map(q => [q[1], q[0]]), lat: tip[0], lon: tip[1], color: HCOL[r.hour] || '#475569', title: `🌑 ${r.hour}:00 — soya ${r.len} m (quyosh ${Math.round(r.sun.alt)}°), ${r.ids.length} ta uyga tushadi`, note: `${r.label}. Quyosh balandligi ${Math.round(r.sun.alt)}°, azimuti ${Math.round(r.sun.az)}°. Soya uzunligi = bino balandligi ${Math.round(sh.planned.height)} m / tan(${Math.round(r.sun.alt)}°).` });
+    });
+    (sh.blds || []).slice(0, 60).forEach(x => {
+      const hrs = x.hours[key] || []; if (!hrs.length || !x.ring) return;
+      const col = hrs.length >= 3 ? '#ef4444' : hrs.length === 2 ? '#f59e0b' : '#facc15';
+      out.push({ kind: 'zone', list: false, ring: x.ring.map(q => [q[1], q[0]]), lat: x.c[0], lon: x.c[1], color: col, title: `🏠 ${hrs.map(h => h + ':00').join(', ')} da soyada (${hrs.length} soat)` });
+    });
+    return out;
   }
 
-  NX.twin = { ground, roadsFromModel, climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, CITY };
+  NX.twin = { ground, roadsFromModel, climate, UZHYDROMET, EGOV_RAIN, dem, grid40, flood2d, frameSegs, rain, solarYear, flood, scenario, hydro, roads, streetNet, streetScenario, zAt, cellPoly, roofKwh, SOLAR, sunPos, shadows, shadowItems, CITY };
 })();

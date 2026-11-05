@@ -81,9 +81,14 @@
     </section>
     <section class="card">
       <h3>🏗 Yangi bino va uning soyasi</h3>
-      ${S.area && S.area.res && S.area.res.shadow ? `<p>Rejadagi bino: ${S.area.spec.flats} xonadon, ${S.area.spec.floors} qavat (~${Math.round(S.area.spec.floors * 3.2)} m). Qishda (21-dekabr, 9:00–15:00) <b>${S.area.res.shadow.shaded.length}</b> ta qoʻshni bino soyada qoladi.</p>
-        <ul class="small">${S.area.res.shadow.list.filter(s => s.sun.alt > 2).map(s => `<li>${E(s.label)}, ${s.hour}:00 — quyosh ${Math.round(s.sun.alt)}°, soya ~${Math.round(Math.min(400, S.area.spec.floors * 3.2 / Math.tan(s.sun.alt * Math.PI / 180)))} m</li>`).join('')}</ul>
-        <p class="small muted">Binafsha — rejadagi bino, kulrang — qishki soya va soyada qoladigan binolar (“🏗 Yangi bino va soya” rejimi).</p>`
+      ${S.area && S.area.res && S.area.res.shadow ? (() => { const sh = S.area.res.shadow, hc = { 8: '#1e3a8a', 9: '#3730a3', 10: '#4f46e5', 11: '#6d28d9', 12: '#7e22ce', 13: '#a21caf', 14: '#be185d', 15: '#c2410c', 16: '#b45309', 17: '#92400e' };
+        const row = k => sh.list.filter(r => r.key === k && r.sun.alt > 2).map(r => `<span class="sh-h" style="--c:${hc[r.hour]}" title="quyosh ${Math.round(r.sun.alt)}°, ${r.ids.length} ta uy">${r.hour}:00<b>${r.len} m</b><i>${r.ids.length} uy</i></span>`).join('');
+        const bad = (sh.blds || []).filter(x => x.lost >= 3).length;
+        return `<p>Rejadagi bino: ${S.area.spec.flats} xonadon, ${S.area.spec.floors} qavat (~${Math.round(S.area.spec.floors * 3.2)} m). Qishda (21-dekabr) <b>${sh.shaded.length}</b> ta qoʻshni uyga soya tushadi, ulardan <b>${bad}</b> tasi 3 soat va undan koʻp soyada qoladi.</p>
+        <p class="small"><b>Qishda</b> (soat — soya uzunligi — necha uyga):</p><div class="sh-row">${row('qish')}</div>
+        <p class="small"><b>Bahor/kuzda</b>:</p><div class="sh-row">${row('bahor')}</div>
+        <p class="small"><b>Yozda</b>:</p><div class="sh-row">${row('yoz')}</div>
+        <p class="small muted">Xaritada: soya — har soat oʻz rangida (ertalab koʻk → kechqurun toʻq sariq, yorligʻi “9:00”); uylar: qizil — 3+ soat, sariq — 2 soat, och sariq — 1 soat soyada. Hisob: quyosh holati (astronomik formula) va bino balandligi; relyef va boshqa binolar soyasi hisobga olinmagan — taxminiy.</p>`; })()
         : '<p class="small muted">Xarita boʻlimida “✏️ Hudud belgilash” → AI’ga “… xonadonli … qavatli dom qursam?” deb yozing — bino va soyasi shu yerda 3D koʻrinadi.</p>'}
     </section>
     </details>`;
@@ -153,8 +158,9 @@
   }
   // Javob tekshiruvi: AI javobidagi raqamlar sayt hisobi bilan mosligi
   function checkBadge(m) {
-    const c = m && m.check; if (!c || m.src !== 'ai') return '';
-    return c.bad.length ? `<p class="ans-check warn">⚠️ ${c.ok}/${c.n} raqam hisob bilan mos; hisobda topilmadi: ${c.bad.map(x => E(String(x))).join(', ')} — ehtiyot boʻling</p>` : `<p class="ans-check ok">✓ Javobdagi ${c.n} ta raqamning hammasi sayt hisobi bilan mos</p>`;
+    const c = m && m.check; if (!c || m.src !== 'ai') return m && m.verified ? '<p class="ans-check ok">🔎 Javob ikkinchi model tomonidan sayt maʼlumotlari bilan tekshirildi</p>' : '';
+    const vf = m.verified ? '🔎 Ikkinchi model faktlar bilan tekshirib tuzatdi. ' : '';
+    return c.bad.length ? `<p class="ans-check warn">${vf}⚠️ ${c.ok}/${c.n} raqam hisob bilan mos; hisobda topilmadi: ${c.bad.map(x => E(String(x))).join(', ')} — ehtiyot boʻling</p>` : `<p class="ans-check ok">${vf}✓ Javobdagi ${c.n} ta raqamning hammasi sayt hisobi bilan mos</p>`;
   }
   function msgExtras0(m, fly) {
     const list = m.hz ? m.hz.filter(a => a.kind !== 'water' && a.list !== false).slice(0, 40) : null;

@@ -987,11 +987,11 @@
           // Kesh 40 ta javob bilan cheklanadi (eskilari oʻchadi) — localStorage toʻlib, sozlamalar saqlanmay qolmasin
           const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('ans:')) { let t = 0; try { t = JSON.parse(localStorage.getItem(k)).ts || 0; } catch (e) { /* */ } ks.push([k, t]); } }
           if (ks.length >= 40) ks.sort((a, b) => a[1] - b[1]).slice(0, ks.length - 39).forEach(([k]) => localStorage.removeItem(k));
-          localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src, check: r.check } }));
+          localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), r: { text: r.text, src: r.src, check: r.check, verified: r.verified } }));
         } catch (e) { /* */ }
       }
     }
-    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
+    const msg = { role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, verified: r.verified, sources: extra.internet ? extra.internet.manbalar : null, hz: H ? H.items : null, photos: H && H.photos ? H.photos : null, svg: H && H.svg ? H.svg : null, img: H && H.sat ? { src: H.sat, edited: false, sat: true } : undefined };
     C.msgs.push(msg);
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (!accQ && /rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
@@ -1056,9 +1056,23 @@
   async function enrichArea(A) {
     const st = A.st, B = NX.config.bbox, c = st.center;
     const outside = c[0] < B.s || c[0] > B.n || c[1] < B.w || c[1] > B.e || st.streetKm < 0.05;
-    if (!outside) return;
-    st.outside = true;
     const inP = (la, lo) => NX.area.inside(st.poly, la, lo);
+    // Har doim saytning oʻz fayli (data/pois-samarqand.json — butun shahar, OSM) — Overpass javob bermasa ham toʻgʻri boʻlsin
+    try {
+      const P = await Promise.race([NX.outload.pois(), NX.sleep(15000).then(() => null)]);
+      if (P) {
+        const [cx, cy] = NX.geo.xy(c[0], c[1]), dist = p => { const [px, py] = NX.geo.xy(p[0], p[1]); return Math.round(Math.hypot(px - cx, py - cy)); };
+        st.stops = Math.max(st.stops || 0, (P.stop || []).filter(p => inP(p[0], p[1])).length);
+        const ns = (P.stop || []).map(p => ({ name: p[2] || 'bekat', d: dist(p) })).sort((a, b) => a.d - b.d)[0]; if (ns && (!st.nearestStop || ns.d < st.nearestStop.d)) st.nearestStop = ns;
+        st.signals = Math.max(st.signals || 0, (P.signal || []).filter(p => inP(p[0], p[1])).length); st.crossings = Math.max(st.crossings || 0, (P.crossing || []).filter(p => inP(p[0], p[1])).length);
+        const sch = [].concat((P.school || []).map(p => ({ p, kind: 'school' })), (P.kindergarten || []).map(p => ({ p, kind: 'kindergarten' })));
+        st.schoolsIn = sch.filter(x => inP(x.p[0], x.p[1])).map(x => ({ name: x.p[2], kind: x.kind, lat: x.p[0], lon: x.p[1] }));
+        st.schoolsNear = sch.map(x => ({ name: x.p[2], kind: x.kind, d: dist(x.p) })).filter(x => x.d <= 800).sort((a, b) => a.d - b.d);
+        st.poisStatic = true;
+      }
+    } catch (e) { /* */ }
+    if (!outside) { if (st.poisStatic && S.area === A) renderKeepScroll(); return; }
+    st.outside = true;
     try {
       const roads = await Promise.race([NX.twin.roads(), NX.sleep(20000).then(() => null)]);
       if (roads && roads.length) {
@@ -1068,6 +1082,7 @@
         st.streetKm = st.streets.reduce((t, x) => t + x.len, 0) / 1000;
       }
     } catch (e) { /* */ }
+    if (st.poisStatic) { if (S.area === A) renderKeepScroll(); return; }
     // OSM nuqtalari: bekat, svetofor, oʻtish joyi, maktab/bogʻcha (hudud + 600 m)
     let s0 = 90, w0 = 180, n0 = -90, e0 = -180; st.poly.forEach(p => { s0 = Math.min(s0, p[0]); n0 = Math.max(n0, p[0]); w0 = Math.min(w0, p[1]); e0 = Math.max(e0, p[1]); });
     const d = 0.006, bb = [s0 - d, w0 - d, n0 + d, e0 + d].map(v => v.toFixed(4)).join(',');
@@ -1250,22 +1265,30 @@
       if (S.area !== A) return;
       A.res = { b, sim, fut, ev: NX.area.assess(A.st, b, sim, fut) };
       // Hudud transport modeli (tarixiy markaz) dan tashqarida — harakat taʼsiri hisobi ishonchli emas, aytiladi
-      if (A.st.outside) { A.res.ev.pros = A.res.ev.pros.filter(t => !/harakat/i.test(t)); A.res.ev.cons = A.res.ev.cons.filter(t => !/harakat|tirband|yuklan/i.test(t)); A.res.ev.cons.push('Koʻchalarga yuklama hisoblanmadi: bu hudud batafsil transport modeli (tarixiy markaz) chegarasidan tashqarida — koʻchalar va obyektlar butun shahar maʼlumotidan olindi.'); }
+      // Mashinalar qaysi koʻchalar orqali qaysi asosiy yoʻlga chiqadi (Y1…, C1…) — har qanday hududda (butun shahar koʻchalari)
+      try { const roads = await withTimeout(NX.twin.roads(), 25000); A.res.out = roads && roads.length ? await NX.outload.run(A.st.center, Math.round(b.peak * 0.7), roads) : null; } catch (e) { A.res.out = null; }
+      if (!A.st.outside && A.res.out && A.res.out.routes.length) { const r0 = A.res.out.routes[0]; A.res.ev.cons.push(`Ertalab ~${A.res.out.trips} mashina/soat hududdan chiqadi: asosan ${r0.exit.yoʻl}ga (${Math.round(r0.share * 100)}%, ${r0.streets.join(' → ')}) — xaritada Y1…, chiqish chorrahasi C1….`); }
+      if (A.st.outside) { A.res.ev.pros = A.res.ev.pros.filter(t => !/harakat/i.test(t)); A.res.ev.cons = A.res.ev.cons.filter(t => !/harakat|tirband|yuklan/i.test(t)); if (A.res.out && A.res.out.routes.length) { const r0 = A.res.out.routes[0]; A.res.ev.cons.push(`Ertalab ~${A.res.out.trips} mashina/soat chiqadi: asosan ${r0.exit.yoʻl}ga (${Math.round(r0.share * 100)}%, ${r0.streets.join(' → ')}); eng tor joy — ${r0.weak.koʻcha} (${r0.weak.toʻlish_foiz}% toʻladi).`); } else A.res.ev.cons.push('Koʻchalarga yuklama hisoblanmadi: koʻchalar tarmogʻi yuklanmadi.'); }
       // Yangi bino soyasi (qishda qaysi binolar soyada qoladi) — binolar xaritasi boʻyicha
       try {
         const bl = await withTimeout(NX.buildings.load(t => { A.busy = { p: 1, label: t }; }), 25000);
         const sh = NX.twin.shadows(A.st.center, b.footprint, A.spec.floors, bl);
         A.res.shadow = sh;
-        if (sh.shaded.length) A.res.ev.cons.push(`Qishda (21-dekabr, 9:00–15:00) ${sh.shaded.length} ta qoʻshni bino ${A.spec.floors} qavatli bino soyasida qoladi — “3D egizak”da koʻring.`);
+        if (sh.shaded.length) { const w = sh.list.filter(r => r.key === 'qish' && r.ids.length), pk = w.slice().sort((a, b) => b.ids.length - a.ids.length)[0], bad = sh.blds.filter(x => x.lost >= 3).length;
+          A.res.ev.cons.push(`Qishda (21-dekabr) ${sh.shaded.length} ta qoʻshni uyga ${A.spec.floors} qavatli bino soyasi tushadi: ${w[0].hour}:00 dan ${w[w.length - 1].hour}:00 gacha, eng koʻp — ${pk.hour}:00 da (${pk.ids.length} ta uy, soya ${pk.len} m)${bad ? `; ${bad} ta uy 3 soat va undan koʻp soyada qoladi` : ''} — xaritada har soat soyasi va uylar rangda.`); }
         else A.res.ev.pros.push('Qishda ham qoʻshni binolarga soya tushmaydi.');
         const inA = bl.filter(x => NX.area.inside(A.st.poly, x.c[0], x.c[1]));
         A.res.blds = { n: inA.length, area: Math.round(inA.reduce((t, x) => t + x.area, 0)), maxLv: inA.reduce((m, x) => Math.max(m, x.est ? 0 : x.levels), 0) };
         NX.map3d.set({ plan: sh });
       } catch (e) { /* binolar yuklanmadi — soya hisoblanmaydi */ }
-      if (!A.from3d) {
-      ensureLeaflet();
-      NX.view.showDeltas(sim, S.simInfo.pieces);
-      NX.view.drawArea(A.st.poly, A.st.center, false);
+      // Xaritada: yangi bino soyasi (qishda har soat, rangi soatga qarab) + soyada qoladigan uylar + mashinalar yoʻnalishlari (Y1…, C1…)
+      const its = [].concat(A.res.shadow ? NX.twin.shadowItems(A.res.shadow, 'qish') : [], A.res.out && A.res.out.routes.length ? NX.outload.items(A.res.out) : []);
+      if (A.from3d) { if (its.length) NX.map3d.setHazard(its); }
+      else {
+        ensureLeaflet();
+        if (A.st.outside && A.res.out && A.res.out.routes.length) NX.view.clearDeltas(); else NX.view.showDeltas(sim, S.simInfo.pieces);
+        NX.view.showActions(its.length ? its : null);
+        NX.view.drawArea(A.st.poly, A.st.center, false);
       }
     } catch (e) {
       console.error(e);
@@ -1421,7 +1444,7 @@
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && A.qaBusy) { A.qaBusy = tc.busy + '…'; renderKeepScroll(); } }, 1200);
       let m = null;
       try { m = await twinAsk(q, { area: true, display: shown, resolved: true }); } finally { clearInterval(tick); }
-      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, check: m.check, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
+      A.qa.push(m ? { role: 'ai', text: m.text, src: m.src, error: m.error, check: m.check, verified: m.verified, sources: m.sources, actions: m.hz || [], img: m.img, imgErr: m.imgErr, svg: m.svg, photos: m.photos, hz: m.hz } : { role: 'ai', text: 'Hisoblab boʻlmadi.', src: 'hisob' });
       A.qaBusy = null; renderKeepScroll();
       return;
     }
@@ -1494,7 +1517,7 @@
     r.text = pa.text;
     pa.actions = (needQ ? needMapPoints(A) : areaMapPoints(A)).concat(pa.actions.filter(a => !(needQ && a.id && /^L/.test(a.id)))).slice(0, 14);
     if (pa.actions.length) { A.actions = pa.actions; ensureLeaflet(); NX.view.showActions(pa.actions); }
-    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, opts: r.opts, sources: r.sources, actions: pa.actions });
+    A.qa.push({ role: 'ai', text: r.text, src: r.src, error: r.error, check: r.check, verified: r.verified, opts: r.opts, sources: r.sources, actions: pa.actions });
     A.qaBusy = null;
     if (S.tab === 'map' && S.area === A) renderKeepScroll();
   }
@@ -2108,7 +2131,7 @@
           const localDeep = () => { const st = S.model.streets[dp.sid], lv = ['✅ tavsiya etiladi', '⚠️ ehtiyotkorlik bilan', '⛔ tavsiya etilmaydi']; return { text: `**${st ? st.name : 'Koʻcha'} — ${dp.opts.length} ta variant hisoblandi** (talab ${NX.fmt.int(S.demand)} safar/soat, taxminiy model):\n${dp.opts.map(o => `- ${o === dp.best ? '⭐ ' : ''}**${o.label}** — umumiy yoʻl vaqti ${NX.fmt.signed(o.r.ttChangePct, 1)}%, ortiqcha yuklangan koʻchalar: ${o.r.overloadedCount}; ${lv[o.v.level] || ''}. ${(o.v.why || [])[0] || ''}`).join('\n')}\n\n**Eng yaxshi variant:** ${dp.best.label}. Xaritada — shu variantda qaysi koʻchalarga mashina koʻpayadi (qizil) va kamayadi (yashil).`, src: 'hisob' }; };
           const r = NX.ai.available() ? await NX.ai.deepAsk(q, Object.assign({ shahar_tizimlari: NX.ai.systemsFacts() }, dp.facts), prev.map(m => ({ role: m.role, text: m.content }))).catch(() => localDeep()) : localDeep();
           S.sim.last = { street: dp.sid, type: dp.best.type, label: dp.best.label, demand: S.demand, result: dp.best.r, verdict: dp.best.v, iters: 10 };
-          S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src || 'ai', check: r.check, sim: simSummary(S.sim.last) });
+          S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src || 'ai', check: r.check, verified: r.verified, sim: simSummary(S.sim.last) });
           S.chat.busy = null; renderChat();
           return;
         }
@@ -2127,7 +2150,7 @@
         state: S, history: prev,
       });
       if (res.street && S.chatStreet == null) S.chatStreet = res.street.id;
-      const msg = { role: 'ai', text: res.text, src: res.src, error: res.error, check: res.check, sim: res.sim ? simSummary(res.sim) : null };
+      const msg = { role: 'ai', text: res.text, src: res.src, error: res.error, check: res.check, verified: res.verified, sim: res.sim ? simSummary(res.sim) : null };
       S.chat.msgs.push(msg);
       // “rasmini chiz” — javob asosida AI rasm
       if (it.image && NX.ai.available()) {

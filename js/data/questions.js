@@ -14,6 +14,7 @@
     evac: new RegExp(`эвакуац|evaku|avaku|xa[vf]{1,2}siz\\s*(yo${A}l|joy)|qayerga\\s*qoch|boshpana|panoh|yig${A}ilish\\s*joy|chiqarib\\s*yubor|ko${A}chir`, 'i'),
     needs: /yangi\s*(maktab|bog[ʻ'‘`]?cha|poliklinika|shifoxona|park|dorixona)\s*\S*\s*(qayer|kerak)|qayerga\s*(kerak|qur)|nima\s*qur|nima\s*quril|nima\s*qo[ʻ'‘`]?y|nima\s*och|nima\s*yetishma|yetishmay|(maktab|bog[ʻ'‘`]?cha|poliklinika|shifoxona|dorixona|park)(lar)?\s*(kam|yetarli|yetmay|yo[ʻ'‘`]?q)|qanday\s*obyekt|foydali|ehtiyoj/i,
     build: /(\d{2,5})\s*(ta\s*)?(xonadon|kvartira|honadon)|(\d{1,2})\s*-?\s*(qavat|etaj)|\bdom\b|uy-joy|turar\s*joy\s*qur/i,
+    shade: /soya(si|lar|da|ni)?\s*(qayer|qachon|soat|nech|qaysi|tush)|soyada\s*qol|binoning\s*soya|uylarga\s*soya|soya\s*tush/i,
     traffic: /пробк|затор|дтп|авари|avariya|yo[ʻ'‘`]?l[\s-]*transport\s*hodis|prop|probk|tirban|tiqil|tig[ʻ'‘`]?iz|navbat|oqim|bir\s*tomon|yops|svetofor|polosa|yo[ʻ'‘`]?lak|chorraha|bekat|avtobus|marshrut/i,
     // Koʻcha holati: avtomobil (qoplama, tezlik, turargoh), piyoda (trotuar, oʻtish joyi), nogironlar (pandus, bordyur, qiyalik, taktil plitka)
     access: new RegExp(`ko${A}cha\\s*chiro|chiroq(lar)?\\s*(yo${A}q|kam|yonmay|o${A}rnat)|yoritish|yoritil|qorong${A}i|trotuar|piyoda|nogiron|aravacha|ko${A}zi\\s*ojiz|ojizlar|imkoniyati\\s*cheklangan|pandus|bordyur|bordur|taktil|zinapoya|o${A}tish\\s*joy|zebra|avtoturargoh|turargoh|parkovka|to${A}xtash\\s*joy|tezlik\\s*(cheklov|chegara|belgi|me${A}yor)|qoplama|asfalt|o${A}nqir|chuqurlar|yamoq|(ko${A}cha|yo${A}l)(lar|si|i)?(ning)?\\s*holat|keksa(lar)?\\s*uchun\\s*(yo${A}l|ko${A}cha|yurish|qulay)|yurish\\s*(qulay|mumkin)|yurib\\s*bo${A}lmay|ko${A}cha\\s*audit|haydovchi(lar)?\\s*uchun|mashina(lar)?\\s*uchun\\s*qulay|avtomobil(lar)?\\s*uchun|qulay(mi|lik)|keksalar\\s*uchun\\s*(yo${A}l|ko${A}cha)|bolalar\\s*uchun\\s*xavfsiz`, 'i'),
@@ -39,6 +40,8 @@
   function intent(q) {
     const t = String(q || '');
     let main = ['quake', 'flood', 'fire', 'ambulance', 'police', 'evac', 'climate', 'solar', 'road', 'plan', 'access', 'needs', 'build', 'traffic'].find(k => R[k].test(t)) || 'general';
+    // “yangi binoning soyasi qayerga tushadi” — qurilish hisobi (soya soatma-soat)
+    if (R.shade.test(t) && !/panel/i.test(t)) main = 'build';
     // “dom qurilsa avtoturargoh yetadimi” — qurilish hisobi
     if (main === 'access' && R.build.test(t) && !/trotuar|piyoda|nogiron|pandus/i.test(t)) main = 'build';
     const fm = [['light', /chiroq|yorit|qorong/i], ['acc', /nogiron|aravacha|ojiz|pandus|bord[yu]*r|taktil|zinapoya|imkoniyati|keksa/i], ['ped', /piyoda|trotuar|o[ʻ'‘’`]?tish\s*joy|zebra|bolalar/i], ['car', /avtomobil|mashina|haydovchi|qoplama|asfalt|tezlik|turargoh|parkovka|o[ʻ'‘’`]?nqir|chuqurlar|yamoq|transport/i]].filter(x => x[1].test(t)).map(x => x[0]);
@@ -226,6 +229,7 @@
       ['Bu mahallada nima yetishmaydi — maktab, bogʻcha, poliklinika?', 'needs'],
       ['Bu yerga bogʻcha qursam foydalimi, qayer mos?', 'needs'],
       ['Bu yerga 300 xonadonli 12 qavatli dom qursak nima boʻladi?', 'build'],
+      ['Yangi 16 qavatli binoning soyasi qaysi uylarga va soat nechada tushadi?', 'build'],
       ['Shu hududga 1000 xonadonli turar joy majmuasi qurilsa yoʻllar koʻtaradimi?', 'build'],
       ['Bu yerga 200 xonadonli 5 qavatli uylar qursam maktab yetadimi?', 'build'],
       ['16 qavatli bino qurilsa atrofdagi koʻchalarga qancha mashina qoʻshiladi?', 'build'],
