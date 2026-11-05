@@ -156,10 +156,13 @@
       const photo = [], W = { house: bucket(), apt: bucket(), shop: bucket() }, F = { p: [], n: [], c: [] }, Rf = { p: [], n: [], c: [] }, done = [];
       const loc = (lon, lat) => new THREE.Vector2((lon - lon0) * KX, (lat - lat0) * KY);
       for (let i = 0; i < sel.length; i++) {
-        const b = sel[i], k = SCAN_FIT.has(b.id) ? 'house' : kindOf(b), hs = hash(b.id || i);   // skanlangan uylar — hovli uyi devori (koʻp qavatli deraza emas)
-        if (SCAN_HIDE.has(b.id) && !SCAN_FIT.has(b.id)) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
+        let b = sel[i];
+        // Skan boʻyidagi uylar: koʻcha tomonidagi qismi kesilgan (real fasad doim koʻrinadi) — faqat tom va hovli tomoni, fasad balandligida
+        if (SCAN_CLIP.has(b.id)) { const c = SCAN_CLIP.get(b.id); if (!c) { done.push(b.id); continue; } b = Object.assign({}, b, { ring: c[1], holes: null, area: 100, height: c[0], levels: 1, _clip: true }); }
+        const k = b._clip ? 'house' : SCAN_FIT.has(b.id) ? 'house' : kindOf(b), hs = hash(b.id || i);   // skanlangan uylar — hovli uyi devori (koʻp qavatli deraza emas)
+        if (SCAN_HIDE.has(b.id) && !SCAN_FIT.has(b.id) && !b._clip) { done.push(b.id); continue; }   // skanlangan uy — oʻrnida real 3D skan
         // Skanlangan uy: real fasad oldinda, orqasida — shu uyning tomi va yon devorlari skandagi fasad balandligida (teshiklar ham yopiladi)
-        const h = SCAN_FIT.has(b.id) ? SCAN_FIT.get(b.id)[0] : Math.max(2.8, b.height || (b.levels || 1) * 3);
+        const h = b._clip ? b.height : SCAN_FIT.has(b.id) ? SCAN_FIT.get(b.id)[0] : Math.max(2.8, b.height || (b.levels || 1) * 3);
         try {
           const outer = b.ring.slice(0, -1).map(c => loc(c[0], c[1]));
           // skanlangan uy — kontur 1.3 m ichkariga (real fasad doim oldinda koʻrinsin, maket devori uni toʻsmasin)
@@ -240,7 +243,7 @@
 
   // ---------- Real 3D skanlar: data/scans.json — [{id, nomi, file, lat, lon, heading, z, sana, muallif}] ----------
   // Skan oʻqlari (glTF): Y — yuqoriga, X — koʻcha boʻylab; lat/lon — skanning (0,0,0) nuqtasi, heading — X oʻqining azimuti (shimoldan, soat yoʻnalishida)
-  const scans = [], SCAN_HIDE = new Set(), SCAN_COVER = [], SCAN_FIT = new Map();
+  const scans = [], SCAN_HIDE = new Set(), SCAN_COVER = [], SCAN_FIT = new Map(), SCAN_CLIP = new Map();
   // Nuqta skan qamroviga tushadimi (koʻpburchaklar lat/lon da; mahalliy metrga oʻtkaziladi)
   function inCover(x, y, lat0, lon0, KX, KY) {
     if (!SCAN_COVER.length) return false;
@@ -254,12 +257,12 @@
   function flyScan() {
     const sc = scanList[0]; if (!sc || !map) return;
     const a = sc.heading * Math.PI / 180, d = 35, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
-    map.flyTo({ center: [lon, lat], zoom: 19.3, pitch: 76, bearing: sc.heading, duration: 2200 });
+    map.flyTo({ center: [lon, lat], zoom: 21, pitch: 78, bearing: sc.heading, duration: 2400 });
   }
   async function loadScans() {
     const list = await scanListP;
     if (!list || !list.length) return;
-    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); Object.entries(sc.fit || {}).forEach(([id, f]) => SCAN_FIT.set(+id, Array.isArray(f) ? f : [f, 0, 0])); });
+    list.forEach(sc => { (sc.hide || []).forEach(id => SCAN_HIDE.add(id)); (sc.cover || []).forEach(P => SCAN_COVER.push(P)); Object.entries(sc.fit || {}).forEach(([id, f]) => SCAN_FIT.set(+id, Array.isArray(f) ? f : [f, 0, 0])); Object.entries(sc.clip || {}).forEach(([id, c]) => SCAN_CLIP.set(+id, c)); });
     // Xaritada belgi: skanlangan koʻcha qayerda — bosilsa kamera koʻcha darajasiga tushadi
     if (window.maplibregl && window.maplibregl.Marker) {
       const groups = new Map(); list.forEach(sc => { const k = sc.nomi.replace(/\s*\(.*\)$/, ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sc); });
@@ -274,7 +277,8 @@
     // Skanlangan uylar MapLibre qatlamlarida ham koʻrsatilmaydi (tekis iz qolmasin)
     const ids = [...SCAN_HIDE];
     if (ids.length) ['bld', 'bld-roof', 'bld-foot'].forEach(L => { if (map.getLayer(L)) { const f0 = map.getFilter(L), f = ['!', ['in', ['get', 'id'], ['literal', ids]]]; map.setFilter(L, f0 ? ['all', f0, f] : f); } });
-    if (built) { built.R = -1; check(); }
+    // Maket skan maʼlumoti bilan qayta quriladi (birinchi qurilish skanlar yuklanmasdan boshlangan boʻlishi mumkin)
+    const again = () => { if (busy) return setTimeout(again, 300); if (built) built.R = -1; check(); }; again();
     // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
     if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
     list.forEach(sc => {

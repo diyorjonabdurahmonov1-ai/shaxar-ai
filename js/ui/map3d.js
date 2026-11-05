@@ -365,7 +365,7 @@
       if (!window.maplibregl) return reject(new Error('3D kutubxonasi yuklanmadi.'));
       const c = NX.config.center;
       map = new window.maplibregl.Map({
-        container: el, center: [66.9757, 39.6545], zoom: 16.6, pitch: 62, bearing: -20, maxPitch: 80, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
+        container: el, center: [66.9757, 39.6545], zoom: 16.6, pitch: 62, bearing: -20, maxPitch: 80, maxZoom: 23.5, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
         style: (() => {
           const sources = {}, layers = [];
           Object.keys(BASE).forEach(k => { sources['base-' + k] = Object.assign({ type: 'raster', tileSize: 256 }, BASE[k]); layers.push({ id: 'base-' + k, type: 'raster', source: 'base-' + k, layout: { visibility: k === base ? 'visible' : 'none' }, paint: k === 'sat' ? { 'raster-saturation': 0.15 } : k === 'twin' ? { 'raster-brightness-max': 0.8, 'raster-contrast': 0.15 } : {} }); });
