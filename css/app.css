@@ -979,3 +979,5 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .sh-h { display: inline-flex; flex-direction: column; align-items: center; min-width: 44px; padding: 3px 5px; border-radius: 8px; background: color-mix(in srgb, var(--c) 35%, #0b1220); border: 1px solid var(--c); font-size: 11px; color: #e2e8f0; line-height: 1.25; }
 .sh-h b { font-weight: 600; font-size: 10px; color: #cbd5e1; }
 .sh-h i { font-style: normal; font-size: 10px; color: #fbbf24; }
+.trf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 6px 0; }
+.trf-grid ol { margin: 4px 0 0 16px; padding: 0; }

@@ -568,6 +568,19 @@ Qoidalar:
 - Raqamlarni faqat berilgan maʼlumotdan ol. Real oʻlchov va model hisobini aralashtirma: hisobni “hisob boʻyicha” deb ayt.
 ${MAPRULE}
 - Oʻzbek tilida (lotin), aniq va londa.`;
+  // Tirbandlik kuzatuvi (Yandex marshrut vaqtlari tarixi): vaqt boʻyicha eng tirband chorrahalar
+  const TRAFFIC = `Sen Samarqand hokimiyati uchun transport tahlilchisisan. Senga yirik chorrahalarga kiruvchi yoʻllardagi REAL oʻlchovlar beriladi (Yandex marshrut vaqti probkali / probkasiz, har 15 daqiqada; soat boʻyicha — shu vaqtdagi barcha kunlar oʻrtachasi).
+Oʻzbek tilida (lotin), qisqa va aniq yoz. Savolga AYNAN javob ber:
+1-qator: soʻralgan vaqtda eng tirband 1–3 chorraha va qanchaga sekin (masalan “Rudakiy × Daxbet — 2.1 marta sekin”).
+**Chorrahalar** — 5–7 tasi raqami (T1…) bilan: necha marta sekin, qaysi tomondan kirish eng sekin, qoʻshimcha daqiqa (boʻlsa), shu chorrahaning eng tirband paytlari.
+**Nima qilish mumkin** — eng arzon va tez yechimdan: svetofor fazasini shu soatga moslash, burilish choʻntagi, chorraha yonida toʻxtashni taqiqlash, YPX nazoratchisi tirband soatda; har biri aniq chorrahaga bogʻlangan.
+Agar oʻlchovlar kam boʻlsa (kuzatuv kunlari 1–2, shu vaqtdagi oʻlchovlar 1–2) — bir gapda ayt: “kuzatuv yangi, kunlar oʻtgan sari aniqlashadi”. “eslatma” boʻlsa — boshida ayt.
+Faqat JSON’dagi raqam va nomlardan foydalan, yoʻqini oʻylab topma. JSON kalit nomlarini yozma. Xaritada T raqamlari bilan koʻrsatilganini ayt.`;
+  async function trafficAsk(q, facts, history) {
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: TRAFFIC }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]), NX.config.openaiDeep, 'traffic');
+    return verify(q, facts, { text: r.text, src: 'ai', model: r.model });
+  }
   async function deepAsk(q, facts, history) {
     const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1500) }));
     const messages = [{ role: 'system', content: DEEP }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]);
@@ -787,5 +800,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

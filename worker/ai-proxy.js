@@ -8,6 +8,9 @@
    /layers — shahar tizimlari xaritalari (kameralar, elektr, gaz, suv, kanalizatsiya; GeoJSON). Oʻqish — hamma xodimlar,
              yuklash/oʻchirish — xodim kodi bilan (ADMIN_PIN maxfiy oʻzgaruvchisi).
    Muhim: bu xizmat hokimiyat xodimlari uchun. Sayt va Worker’ni Cloudflare Access (kirish faqat xodimlar emaili bilan) ortiga qoʻyish tavsiya etiladi.
+   /traffic — tirbandlik kuzatuvi: yirik chorrahalarga kiruvchi yoʻllarda Yandex marshrut vaqti (probkali / probkasiz).
+              Sayt ochiq turgan brauzer (yoki kuzatuv ekrani) har 15 daqiqada oʻlchab POST qiladi; Worker tarixni KV’da
+              (kalit "trf:state") yigʻadi: oxirgi oʻlchov, 14 kunlik qatorlar, haftaning ish/dam kunlari boʻyicha har 30 daqiqalik oʻrtacha.
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
    Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
@@ -58,11 +61,12 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 9, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers'] }, 200, cors);
+    if (path === '/version') return json({ v: 10, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
+    if (path === '/traffic') return traffic(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
@@ -186,6 +190,42 @@ async function reports(req, env, cors, okOrigin) {
   const out = list.concat([item]).slice(-20000);
   await env.CORRECTIONS.put('reports', JSON.stringify(out));
   return json({ item }, 200, cors);
+}
+
+// ---------- Tirbandlik kuzatuvi (Yandex marshrut vaqtlari, sayt brauzeridan) ----------
+// Holat: { latest:{ts,v:{id:[jams,free]}}, rows:[[ts,{id:ratio*100}]] (14 kun), prof:{id:{wd:[48×[n,sum]],we:[48×[n,sum]]}}, n, since }
+const TRF_MIN_GAP = 10 * 60e3, TRF_DAYS = 14;
+async function traffic(req, env, cors, okOrigin) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
+  if (req.method === 'GET') {
+    const full = new URL(req.url).searchParams.get('full') === '1';
+    const out = full ? st : Object.assign({}, st, { rows: st.rows.filter(r => r[0] > Date.now() - 2 * 86400e3) });
+    return json(out, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
+  }
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return json({ skipped: true, latest: st.latest.ts }, 200, cors);
+  let b;
+  try { b = JSON.parse((await req.text()).slice(0, 60000)); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
+  const v = {}, r = {};
+  Object.keys(b.v || {}).slice(0, 200).forEach(id => {
+    if (!/^J\d{1,3}[a-d]$/.test(id)) return;
+    const [jams, free] = (b.v[id] || []).map(Number);
+    if (!(free > 5 && free < 3600 && jams >= free * 0.8 && jams < free * 15)) return;
+    v[id] = [Math.round(jams), Math.round(free)]; r[id] = Math.round(jams / free * 100);
+  });
+  if (Object.keys(v).length < 5) return json({ error: { code: 'bad_item', message: 'Oʻlchov yetarli emas' } }, 400, cors);
+  const ts = Date.now(), loc = new Date(ts + 5 * 3600e3), slot = loc.getUTCHours() * 2 + (loc.getUTCMinutes() >= 30 ? 1 : 0), we = loc.getUTCDay() === 0 || loc.getUTCDay() === 6 ? 'we' : 'wd';
+  st.latest = { ts, v };
+  st.rows = st.rows.filter(x => x[0] > ts - TRF_DAYS * 86400e3).concat([[ts, r]]);
+  Object.keys(r).forEach(id => {
+    const P = st.prof[id] || (st.prof[id] = { wd: Array.from({ length: 48 }, () => [0, 0]), we: Array.from({ length: 48 }, () => [0, 0]) });
+    P[we][slot][0]++; P[we][slot][1] += r[id];
+  });
+  st.n = (st.n || 0) + 1; st.since = st.since || ts;
+  await env.CORRECTIONS.put('trf:state', JSON.stringify(st));
+  return json({ ok: true, ts, n: st.n }, 200, cors);
 }
 
 // ---------- Internetdan qidirish (OpenAI Responses API + web_search) ----------

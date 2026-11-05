@@ -261,6 +261,7 @@
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     const wasProblems = S.tab === 'problems';
     S.tab = t;
+    if (t === 'report') trfRefresh();
     // 3D egizak — xarita oʻrnida MapLibre 3D koʻrinishi
     const el3 = $('#map3d');
     el3.hidden = t !== 'twin';
@@ -2057,6 +2058,37 @@
     };
   }
   const ROAD_HINT = '🛣 Xaritada koʻcha yoʻnalishini chizing: bosib-bosib nuqta qoʻying (yoki bosib turib chizing) va “✓ Tayyor”ni bosing. Chizilgach UNESCO muhofaza zonalari, bosh reja, yoʻlga tushadigan binolar va mavjud yoʻllar boʻyicha tekshiraman — natija xaritada rangli boʻlaklar bilan va shu yerda chiqadi.';
+  // Hisobot kartochkasi uchun: hozir, 8:00, 18:00 (ish kunlari)
+  async function trfRefresh() {
+    try { const TW = NX.trafficWatch; const [now, m, e] = await Promise.all([TW.query('hozir'), TW.query('soat 8:00'), TW.query('soat 18:00')]); S.trf = { now, m, e, st: TW.status() }; } catch (err) { S.trf = { err: err.message }; }
+    if (S.tab === 'report') renderKeepScroll();
+  }
+  // ---------- Tirbandlik kuzatuvi: vaqt boʻyicha savollar ----------
+  const WATCH_Q = q => /tirban|probk|prop|tiqil|sekin\s*yur|navbat/i.test(q) && /qachon|soat|\d{1,2}[:.]\d\d|\b\d{1,2}\s*(da|ga|larda)\b|ertalab|kechqurun|tushda|kechasi|hozir|qaysi\s*(chorraha|ko.?cha|yo.?l|joy)|qayer(da|lar)|eng\s*(ko.?p\s*)?tirband|chorraha|kun\s*davomida|dam\s*olish/i.test(q) && !/yops|bir\s*tomon|polosa|svetofor\s*qo|nima\s*qils|yechim|hal\s*qil|qursa|qurilsa|xonadon|ob.?havo|harorat|hodisa|avariya|avtobus|marshrut/i.test(q);
+  async function trafficAsk(q, history) {
+    const TW = NX.trafficWatch, streets = NX.ai.detectStreets(q, S.model).map(x => x.s.name).filter(Boolean);
+    let R = await TW.query(q, { streets });
+    let note = '';
+    // Shu vaqt uchun hali tarix yoʻq — hozir oʻlchanadi (Yandex), tarix yigʻilishi aytiladi
+    if ((!R || !R.rows.length) && NX.yandex.mode() === 'api') {
+      S.chat.busy = 'Yandex’dan hozirgi holat oʻlchanmoqda (chorrahalarga kiruvchi yoʻllar)…'; renderChat();
+      try { await TW.sampleNow((d, n) => { S.chat.busy = `Yandex’dan oʻlchanmoqda: ${d}/${n} yoʻl…`; renderChat(); }); } catch (e) { note = e.message; }
+      const R0 = R; R = await TW.query('hozir', { streets });
+      if (R0 && !R0.tm.now && R) note = `Soat ${R0.label} uchun hali oʻlchov yoʻq (kuzatuv ${R0.n ? R0.days + ' kundan beri, ' + R0.n + ' ta oʻlchov' : 'hozir boshlandi'}) — shu vaqtda sayt ochiq boʻlsa oʻlchov yigʻiladi. Hozirgi holat:`;
+    }
+    if (!R || !R.rows.length) {
+      const st = TW.status();
+      return { role: 'ai', src: 'hisob', text: `Tirbandlik kuzatuvi hali maʼlumot yigʻmagan${st.n ? ` (${st.n} ta oʻlchov bor, lekin bu vaqt uchun emas)` : ''}. ${NX.yandex.mode() === 'api' ? (note || 'Yandex marshrut vaqtlari olinmadi.') : 'Yandex xaritasi API kaliti bilan ochilmagan — oʻlchab boʻlmaydi.'}\n\nSayt ochiq turganda har 15 daqiqada ${(await TW.corridors() || { junctions: [] }).junctions.length} ta yirik chorrahaga kiruvchi yoʻllar oʻlchanadi; bir necha kundan keyin “soat 8 da qaysi chorrahada”, “qachon eng tirband” savollariga tarix boʻyicha javob beriladi.` };
+    }
+    const its = TW.items(R);
+    if (twinState().hz) hazardClear();
+    ensureLeaflet(); NX.view.clearDeltas(); NX.view.showActions(its); NX.view.fitPoints(its.filter(a => a.kind === 'point').map(a => [a.lat, a.lon]));
+    const local = (note ? note + '\n\n' : '') + TW.summary(R);
+    if (!NX.ai.available()) return { role: 'ai', src: 'hisob', text: local, hz: its, fly: 'ann-fly' };
+    const facts = Object.assign({ eslatma: note || null }, TW.facts(R));
+    try { const r = await NX.ai.trafficAsk(q, facts, history); return { role: 'ai', text: r.text, src: r.src, check: r.check, verified: r.verified, hz: its, fly: 'ann-fly' }; }
+    catch (e) { return { role: 'ai', src: 'hisob', text: local, error: e.message, hz: its, fly: 'ann-fly' }; }
+  }
   async function chatSend(q) {
     q = (q || '').trim();
     if (!q || S.chat.busy || !S.model) return;
@@ -2112,6 +2144,14 @@
       if (pb) { if (pb.flats) S.area.spec.flats = pb.flats; if (pb.floors) S.area.spec.floors = pb.floors; await runBuild(); }
       const r = await NX.ai.areaAsk(q, S.area, S.chat.msgs.slice(-3, -1), areaExtra());
       S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+      S.chat.busy = null; renderChat();
+      return;
+    }
+    // Vaqt/chorraha boʻyicha tirbandlik (“ertalab 8 da qaysi chorrahada”, “qachon eng tirband”, “hozir qayerda probka”) — doimiy kuzatuv tarixi
+    if (WATCH_Q(q)) {
+      S.chat.msgs.push({ role: 'user', text: shown });
+      S.chat.busy = 'Tirbandlik kuzatuvi tahlil qilinmoqda…'; renderChat();
+      try { const m = await trafficAsk(q, S.chat.msgs.slice(-3, -1)); S.chat.msgs.push(m); } catch (e) { S.chat.msgs.push({ role: 'ai', text: 'Xato: ' + e.message, src: 'hisob' }); }
       S.chat.busy = null; renderChat();
       return;
     }
@@ -2372,6 +2412,7 @@
         case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); renderKeepScroll(); break; }
         case 'facade-pilot': { const P = NX.city3d.pilot(); if (!P) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const m = NX.map3d.map(); if (m) m.flyTo({ center: [P.c[1], P.c[0]], zoom: 18.4, pitch: 72, bearing: 30, duration: 2200 }); renderKeepScroll(); break; }
         case 'brief': makeBrief(); break;
+        case 'trf-now': if (S.trf) S.trf.busy = true; renderKeepScroll(); NX.trafficWatch.sampleNow().then(() => toast('Chorrahalar oʻlchandi (Yandex).', 'ok')).catch(e => toast(e.message, 'warn')).finally(() => { if (S.trf) S.trf.busy = false; trfRefresh(); }); break;
         case 'brief-tg': briefShare('tg'); break;
         case 'brief-print': briefShare('print'); break;
         case 'acc': makeAccuracy(); break;
@@ -2517,6 +2558,8 @@
       onRoute: i => { S.route = i; NX.view.highlightRoute(i); },
     });
     bind();
+    NX.trafficWatch.start();
+    window.addEventListener('nx:traffic', () => { if (S.tab === 'report') trfRefresh(); });
     $('#btnYandex').addEventListener('click', toggleWidget);
     NX.view.onFix = f => { if (S.model) onFix(f); };
     NX.view.onSelClick = () => { if (S.tab === 'map') clearStreet(); };

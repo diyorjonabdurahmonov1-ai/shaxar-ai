@@ -923,7 +923,14 @@
         <div><b>${Ac.data.lvKnown != null ? Ac.data.lvKnown + '%' : '—'}</b><span>binolarning qavati maʼlum (${F.int(Ac.data.blds)} bino); qolgani oʻlchamiga qarab taxminiy</span></div>
       </div>${Ac.flood && Ac.flood.miss.length ? `<p class="small muted">Model koʻrsatmagan joylar: ${E(Ac.flood.miss.join(', '))} — odatda ariq/kanal tiqilishi sabab (modelda yoʻq).</p>` : ''}<button class="btn xs" data-act="acc">↻ Qayta hisoblash</button>` : `<p class="small muted">Sayt hisoblari haqiqiy hodisalar (OAV xabarlari, koʻcha suratlari) bilan qanchalik mos kelishini raqamda koʻrsatadi.</p><button class="btn sm primary" data-act="acc">🎯 Aniqlikni tekshirish</button>`}
     </section>`;
-    return briefCard + accCard + `
+    const T = S.trf, tl = R => (R && R.rows.length ? `<ol class="small">${R.rows.slice(0, 5).map(x => `<li><b>${E(x.j.name)}</b> — ${(x.r / 100).toFixed(1)}×${x.top ? ` <span class="muted">(${E(x.top.c.side)} tomondan)</span>` : ''}</li>`).join('')}</ol>` : '<p class="small muted">Hali oʻlchov yoʻq.</p>');
+    const trfCard = `<section class="card trf-card"><h3>🚦 Tirbandlik kuzatuvi (doimiy)</h3>
+      ${T && T.st ? `<p class="small">${T.st.n ? `<b>${T.st.n}</b> ta oʻlchov, ${new Date(T.st.since).toLocaleDateString('uz-UZ')} dan beri; oxirgisi ${T.st.latest ? new Date(T.st.latest).toLocaleTimeString('uz-UZ', { timeZone: 'Asia/Samarkand', hour: '2-digit', minute: '2-digit' }) : '—'}.` : 'Kuzatuv hali boshlanmagan.'} ${T.st.remote ? 'Tarix umumiy (Worker) — hamma xodimlar koʻradi.' : 'Tarix hozircha faqat shu brauzerda (Worker’ning yangi versiyasi deploy qilinsa — umumiy).'} ${T.st.can ? 'Sayt ochiq turganda har 15 daqiqada oʻzi oʻlchaydi.' : '⚠️ Yandex xaritasi API kaliti bilan yuklanmagan — oʻlchanmaydi.'}</p>
+      <div class="trf-grid"><div><b>Hozir</b>${tl(T.now)}</div><div><b>Ertalab 8:00</b>${tl(T.m)}</div><div><b>Kechqurun 18:00</b>${tl(T.e)}</div></div>
+      <p class="small muted">Har chorrahaga kiruvchi yoʻllarda (~400 m) Yandex marshrut vaqti: probkali / probkasiz (1.3× — sekin, 1.8× — tirband). AI yordamchida: “ertalab 8 da qaysi chorrahalarda tirbandlik?”, “Rudakiyda qachon eng tirband?”.</p>
+      <button class="btn xs" data-act="trf-now" ${T.busy ? 'disabled' : ''}>${T.busy ? '<span class="spinner sm"></span> Oʻlchanmoqda…' : '📡 Hozir oʻlchash'}</button>` : '<p class="small muted"><span class="spinner sm"></span> Yuklanmoqda…</p>'}
+    </section>`;
+    return trfCard + briefCard + accCard + `
     <section class="card">
       <h2>Hisobot</h2>
       <p class="muted small">Hudud: Samarqand tarixiy markazi, ${E(bboxText())}. OSM maʼlumoti: ${F.time(M.ts)}.</p>
