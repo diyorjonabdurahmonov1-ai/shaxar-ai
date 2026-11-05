@@ -574,6 +574,7 @@ Oʻzbek tilida (lotin), qisqa va aniq yoz. Savolga AYNAN javob ber:
 1-qator: soʻralgan vaqtda eng tirband 1–3 chorraha va qanchaga sekin (masalan “Rudakiy × Daxbet — 2.1 marta sekin”).
 **Chorrahalar** — 5–7 tasi raqami (T1…) bilan: necha marta sekin, qaysi tomondan kirish eng sekin, qoʻshimcha daqiqa (boʻlsa), shu chorrahaning eng tirband paytlari.
 **Nima qilish mumkin** — eng arzon va tez yechimdan: svetofor fazasini shu soatga moslash, burilish choʻntagi, chorraha yonida toʻxtashni taqiqlash, YPX nazoratchisi tirband soatda; har biri aniq chorrahaga bogʻlangan.
+Tarix (“kunlar_boʻyicha”, “oxirgi_7_kun”) boʻlsa — **Kunlar boʻyicha** qisqa boʻlim: qaysi chorrahalar har kuni takrorlanadi (nechta kunda), qaysi kun eng yomon boʻldi, oldingi haftaga nisbatan yomonlashgan/yaxshilangan chorrahalar (foiz). Bir martalik va doimiy tirbandlikni ajrat: doimiy — svetofor/chorraha yechimi, bir martalik — hodisa/taʼmir boʻlishi mumkin.
 Agar oʻlchovlar kam boʻlsa (kuzatuv kunlari 1–2, shu vaqtdagi oʻlchovlar 1–2) — bir gapda ayt: “kuzatuv yangi, kunlar oʻtgan sari aniqlashadi”. “eslatma” boʻlsa — boshida ayt.
 Faqat JSON’dagi raqam va nomlardan foydalan, yoʻqini oʻylab topma. JSON kalit nomlarini yozma. Xaritada T raqamlari bilan koʻrsatilganini ayt.`;
   async function trafficAsk(q, facts, history) {

@@ -2064,7 +2064,7 @@
     if (S.tab === 'report') renderKeepScroll();
   }
   // ---------- Tirbandlik kuzatuvi: vaqt boʻyicha savollar ----------
-  const WATCH_Q = q => /tirban|probk|prop|tiqil|sekin\s*yur|navbat/i.test(q) && /qachon|soat|\d{1,2}[:.]\d\d|\b\d{1,2}\s*(da|ga|larda)\b|ertalab|kechqurun|tushda|kechasi|hozir|qaysi\s*(chorraha|ko.?cha|yo.?l|joy)|qayer(da|lar)|eng\s*(ko.?p\s*)?tirband|chorraha|kun\s*davomida|dam\s*olish/i.test(q) && !/yops|bir\s*tomon|polosa|svetofor\s*qo|nima\s*qils|yechim|hal\s*qil|qursa|qurilsa|xonadon|ob.?havo|harorat|hodisa|avariya|avtobus|marshrut/i.test(q);
+  const WATCH_Q = q => /tirban|probk|prop|tiqil|sekin\s*yur|navbat/i.test(q) && /qachon|soat|\d{1,2}[:.]\d\d|\b\d{1,2}\s*(da|ga|larda)\b|ertalab|kechqurun|tushda|kechasi|hozir|qaysi\s*(chorraha|ko.?cha|yo.?l|joy)|qayer(da|lar)|eng\s*(ko.?p\s*)?tirband|chorraha|kun\s*davomida|dam\s*olish|kunlar|kunlik|hafta|oxirgi|tahlil|tarix|o.?zgar|ko.?paydi|kamaydi/i.test(q) && !/yops|bir\s*tomon|polosa|svetofor\s*qo|nima\s*qils|yechim|hal\s*qil|qursa|qurilsa|xonadon|ob.?havo|harorat|hodisa|avariya|avtobus|marshrut/i.test(q);
   async function trafficAsk(q, history) {
     const TW = NX.trafficWatch, streets = NX.ai.detectStreets(q, S.model).map(x => x.s.name).filter(Boolean);
     let R = await TW.query(q, { streets });

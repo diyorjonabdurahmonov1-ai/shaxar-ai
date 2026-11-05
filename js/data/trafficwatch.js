@@ -23,6 +23,8 @@
     st.rows = st.rows.filter(x => x[0] > ts - DAYS * 86400e3).concat([[ts, r]]);
     Object.keys(r).forEach(id => { const P = st.prof[id] || (st.prof[id] = { wd: Array.from({ length: 48 }, () => [0, 0]), we: Array.from({ length: 48 }, () => [0, 0]) }); P[we][slot][0]++; P[we][slot][1] += r[id]; });
     st.n = (st.n || 0) + 1; st.since = st.since || ts;
+    const day = new Date(ts + 5 * 3600e3).toISOString().slice(0, 10), d = ((st.daysum = st.daysum || {})[day] = (st.daysum[day] || {}));
+    Object.keys(r).forEach(id => { const x = d[id] || (d[id] = [0, 0, 0, 0]); if (r[id] > x[0]) { x[0] = r[id]; x[1] = slot; } x[2] += r[id]; x[3]++; });
     return st;
   }
   async function state(force) {
@@ -58,8 +60,20 @@
     return v;
   }
   // Oʻlchab, umumiy tarixga qoʻshish (Worker, boʻlmasa shu brauzer)
+  // Server oʻlchovi (Worker cron funksiyasi, Yandex “Матрица расстояний”) — xodim kodi bilan
+  async function serverRun() {
+    const pin = NX.fixes && NX.fixes.pin && NX.fixes.pin();
+    if (!base() || !pin) return null;
+    const r = await NX.fetchJSON(base() + '/traffic?run=1', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin }, body: '{}' }, 60000);
+    if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error.message : 'Server oʻlchovi: HTTP ' + r.status);
+    if (r.data && r.data.err && !r.data.n) throw new Error('Yandex (server): ' + r.data.err);
+    remote = true; await state(true); window.dispatchEvent(new CustomEvent('nx:traffic'));
+    return r.data;
+  }
   async function sampleNow(onStep) {
     if (busy) return null;
+    // Brauzerda Yandex marshrutga ruxsat yoʻq boʻlsa — server (Worker) oʻlchaydi
+    if (denied || !canMeasure()) { busy = true; try { const d = await serverRun(); if (d) { lastErr = null; return d; } } catch (e) { lastErr = e.message; throw e; } finally { busy = false; } }
     busy = true;
     try {
       const v = await measure(onStep), ts = Date.now();
@@ -74,7 +88,10 @@
       if (St && (!St.latest || St.latest.ts < ts - 60e3)) St = addSample(JSON.parse(JSON.stringify(St)), ts, v);   // Worker hali yangilamagan boʻlsa ham javob hozirgi oʻlchov bilan
       window.dispatchEvent(new CustomEvent('nx:traffic'));
       return v;
-    } catch (e) { lastErr = e.message; throw e; } finally { busy = false; }
+    } catch (e) {
+      if (denied) { try { const d = await serverRun(); if (d) { lastErr = null; return d; } } catch (e2) { lastErr = e2.message; throw e2; } }
+      lastErr = e.message; throw e;
+    } finally { busy = false; }
   }
   // Avtomatik: har 2 daqiqada tekshiradi — oxirgi umumiy oʻlchov 15 daqiqadan eski boʻlsa, oʻlchaydi
   function start() {
@@ -89,7 +106,7 @@
   function parseTime(q) {
     const t = String(q || '').toLowerCase(), we = /dam\s*olish|shanba|yakshanba|weekend|выходн/.test(t) ? 'we' : 'wd';
     if (/hozir|ayni\s*paytda|shu\s*payt|сейчас/.test(t)) return { now: true, we };
-    if (/qachon|qaysi\s*(soat|vaqt|payt)|eng\s*(ko.?p\s*)?tirband\s*(payt|vaqt|soat)|kun\s*davomida|soatlar\s*bo.?yicha/.test(t) && !/soat\s*\d|\d{1,2}\s*(:\d\d)?\s*(da|ga|lar)/.test(t)) return { peaks: true, we };
+    if (/qachon|kunlar|kunlik|hafta|oxirgi|tarix|qaysi\s*(soat|vaqt|payt)|eng\s*(ko.?p\s*)?tirband\s*(payt|vaqt|soat)|kun\s*davomida|soatlar\s*bo.?yicha/.test(t) && !/soat\s*\d|\d{1,2}\s*(:\d\d)?\s*(da|ga|lar)/.test(t)) return { peaks: true, we };
     let m = t.match(/(\d{1,2})[:.](\d{2})/) || t.match(/soat\s*(\d{1,2})/) || t.match(/\b(\d{1,2})\s*(?:da|ga|larda|dagi|-?\s*soat)\b/);
     let h = m ? +m[1] : null, mm = m && m[2] ? +m[2] : 0;
     const kech = /kechqurun|kechki|oqshom|вечер/.test(t), ert = /ertalab|tong|ertalabki|утр/.test(t), tush = /tush(da|dan|ki)|обед/.test(t), tun = /kechasi|tunda|ночь/.test(t);
@@ -121,7 +138,14 @@
     }).filter(x => x.r != null && (!streets.length || x.apps.length || x.peaks.length)).sort((a, b) => b.r - a.r);
     const days = s.since ? Math.max(1, Math.round((Date.now() - s.since) / 86400e3)) : 0;
     const nAt = tm.now ? (s.latest ? 1 : 0) : tm.peaks ? s.n : Math.max(0, ...Object.keys(s.prof).map(id => (s.prof[id][tm.we][tm.slot] || [0])[0]));
-    return { tm, rows, n: s.n || 0, nAt, days, since: s.since, latestTs: s.latest && s.latest.ts, remote, label: tm.now ? 'hozir' : tm.peaks ? 'kun davomida' : slotLabel(tm.slot), we: tm.we, total: J.length, streets };
+    // Kunma-kun (doimiy xulosalar): har kun eng tirband chorrahalar; oxirgi 7 kun va undan oldingi 7 kun solishtirish
+    const DS = s.daysum || {}, dayKeys = Object.keys(DS).sort(), WD = ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'];
+    const jDay = (day, j) => { let best = null; CR.filter(c => c.j === j.id && okC(c)).forEach(c => { const x = DS[day][c.id]; if (x && x[3] && (!best || x[0] > best.max)) best = { max: x[0], slot: x[1], avg: x[2] / x[3], n: x[3], road: c.road, side: c.side }; }); return best; };
+    const daily = dayKeys.slice(-30).map(day => ({ day, wd: WD[new Date(day + 'T12:00:00Z').getUTCDay()], top: J.map(j => Object.assign({ j }, jDay(day, j) || {})).filter(x => x.max).sort((a, b) => b.max - a.max).slice(0, 5) }));
+    const mean = a => (a.length ? a.reduce((t, x) => t + x, 0) / a.length : null);
+    const last7 = dayKeys.slice(-7), prev7 = dayKeys.slice(-14, -7);
+    const trend = J.map(j => { const a = mean(last7.map(d => jDay(d, j)).filter(Boolean).map(x => x.avg)), b = mean(prev7.map(d => jDay(d, j)).filter(Boolean).map(x => x.avg)), pk = mean(last7.map(d => jDay(d, j)).filter(Boolean).map(x => x.max)); return { j, a, b, pk, ch: a && b ? (a / b - 1) * 100 : null, every: last7.filter(d => { const x = jDay(d, j); return x && x.max >= 150; }).length }; }).filter(x => x.a != null).sort((x, y) => (y.pk || 0) - (x.pk || 0));
+    return { daily, trend, nDays: dayKeys.length, tm, rows, n: s.n || 0, nAt, days, since: s.since, latestTs: s.latest && s.latest.ts, remote, label: tm.now ? 'hozir' : tm.peaks ? 'kun davomida' : slotLabel(tm.slot), we: tm.we, total: J.length, streets };
   }
   // Xarita: chorrahalar (rangi — tirbandlik), kiruvchi yoʻllar (chiziq, rangi va qalinligi — qanchaga sekin)
   function items(R) {
@@ -141,6 +165,9 @@
       kuzatuv: { jami_olchovlar: R.n, shu_vaqtdagi_olchovlar: R.nAt, kuzatuv_kunlari: R.days, boshlangan: R.since ? new Date(R.since).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }) : null, oxirgi_olchov: R.latestTs ? new Date(R.latestTs).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }) : null, umumiy_tarix: R.remote ? 'ha (Worker, hamma xodimlar uchun)' : 'faqat shu brauzerda' },
       chorrahalar: R.rows.slice(0, 10).map((x, i) => ({ id: 'T' + (i + 1), chorraha: x.j.name, marta_sekin: +(x.r / 100).toFixed(2), eng_sekin_kirish: x.top ? `${x.top.c.road} (${x.top.c.side} tomondan)` : null, qoʻshimcha_daqiqa: x.top && x.top.d ? +(x.top.d / 60).toFixed(1) : null, eng_tirband_paytlar: x.peaks.map(p => `${slotLabel(p.slot)} — ${(p.r / 100).toFixed(1)}×`) })),
       kuzatiladigan_chorrahalar: R.total,
+      kunlar_boʻyicha: R.daily.map(d => ({ sana: d.day, hafta_kuni: d.wd, eng_tirband: d.top.slice(0, 3).map(x => `${x.j.name} — ${(x.max / 100).toFixed(1)}× (${slotLabel(x.slot)}, ${x.road})`) })),
+      oxirgi_7_kun: R.trend.slice(0, 10).map(x => ({ chorraha: x.j.name, kunlik_eng_yomon_oʻrtacha: +((x.pk || 0) / 100).toFixed(2), kun_oʻrtacha: +(x.a / 100).toFixed(2), oldingi_7_kunga_nisbatan_foiz: x.ch != null ? Math.round(x.ch) : null, nechta_kun_1_5x_dan_oshdi: x.every })),
+      saqlangan_kunlar: R.nDays,
     };
   }
   function summary(R) {
@@ -157,10 +184,18 @@
     });
     const free = R.rows.filter(x => x.r < 115).length;
     if (free && busyRows.length) L.push('', `Qolgan ${free} ta chorrahada harakat erkin.`);
-    L.push('', `Xaritada: chorrahalar raqam bilan, sekin kirish yoʻllari rangli chiziq (sariq — sekin, qizil — tirband). Kuzatuv: ${R.total} ta yirik chorraha, har 15 daqiqada${R.remote ? '' : ' (hozircha faqat shu brauzerda — Worker yangilansa umumiy boʻladi)'}.`);
+    if (R.nDays >= 2) {
+      L.push('', `**Kunlar boʻyicha** (${R.nDays} kun saqlangan):`);
+      R.daily.slice(-7).forEach(d => { if (d.top.length) L.push(`- ${d.day} (${d.wd}): ${d.top.slice(0, 2).map(x => `${x.j.name} ${(x.max / 100).toFixed(1)}× ${slotLabel(x.slot)} da`).join('; ')}`); });
+      const reg = R.trend.filter(x => x.every >= 3).slice(0, 3);
+      if (reg.length) L.push(`Har kuni deyarli takrorlanadi: ${reg.map(x => `${x.j.name} (${x.every} kunda 1.5× dan oshdi)`).join(', ')}.`);
+      const up = R.trend.filter(x => x.ch != null && x.ch > 10).slice(0, 2);
+      if (up.length) L.push(`Oldingi haftaga nisbatan yomonlashgan: ${up.map(x => `${x.j.name} +${Math.round(x.ch)}%`).join(', ')}.`);
+    }
+    L.push('', `Xaritada: chorrahalar raqam bilan, sekin kirish yoʻllari rangli chiziq (sariq — sekin, qizil — tirband). Kuzatuv: ${R.total} ta yirik chorraha, tarix doimiy saqlanadi${R.remote ? '' : ' (hozircha faqat shu brauzerda)'}.`);
     return L.join('\n');
   }
   function status() { return { n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
 
-  NX.trafficWatch = { corridors, state, measure, sampleNow, start, query, items, facts, summary, parseTime, status, slotLabel, _addSample: addSample };
+  NX.trafficWatch = { corridors, state, measure, sampleNow, serverRun, start, query, items, facts, summary, parseTime, status, slotLabel, _addSample: addSample };
 })();

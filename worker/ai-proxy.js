@@ -10,7 +10,7 @@
    Muhim: bu xizmat hokimiyat xodimlari uchun. Sayt va Worker’ni Cloudflare Access (kirish faqat xodimlar emaili bilan) ortiga qoʻyish tavsiya etiladi.
    /traffic — tirbandlik kuzatuvi: yirik chorrahalarga kiruvchi yoʻllarda Yandex marshrut vaqti (probkali / probkasiz).
               Sayt ochiq turgan brauzer (yoki kuzatuv ekrani) har 15 daqiqada oʻlchab POST qiladi; Worker tarixni KV’da
-              (kalit "trf:state") yigʻadi: oxirgi oʻlchov, 14 kunlik qatorlar, haftaning ish/dam kunlari boʻyicha har 30 daqiqalik oʻrtacha.
+              (kalit "trf:state") yigʻadi: oxirgi oʻlchov, 60 kunlik qatorlar, har kun xulosasi (doimiy), kun arxivi trf:day:YYYY-MM-DD (doimiy), haftaning ish/dam kunlari boʻyicha har 30 daqiqalik oʻrtacha.
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
    Asosiy manzil (/) — chat; xabarda Mapillary surati (rasm havolasi) boʻlishi mumkin — AI suratni koʻrib tahlil qiladi.
@@ -195,7 +195,7 @@ async function reports(req, env, cors, okOrigin) {
 
 // ---------- Tirbandlik kuzatuvi (Yandex marshrut vaqtlari, sayt brauzeridan) ----------
 // Holat: { latest:{ts,v:{id:[jams,free]}}, rows:[[ts,{id:ratio*100}]] (14 kun), prof:{id:{wd:[48×[n,sum]],we:[48×[n,sum]]}}, n, since }
-const TRF_MIN_GAP = 10 * 60e3, TRF_DAYS = 14;
+const TRF_MIN_GAP = 10 * 60e3, TRF_DAYS = 60;
 // Oʻlchovni tarixga qoʻshish (POST va cron uchun umumiy)
 function trfAdd(st, ts, v, r) {
   const loc = new Date(ts + 5 * 3600e3), slot = loc.getUTCHours() * 2 + (loc.getUTCMinutes() >= 30 ? 1 : 0), we = loc.getUTCDay() === 0 || loc.getUTCDay() === 6 ? 'we' : 'wd';
@@ -206,18 +206,27 @@ function trfAdd(st, ts, v, r) {
     P[we][slot][0]++; P[we][slot][1] += r[id];
   });
   st.n = (st.n || 0) + 1; st.since = st.since || ts;
+  // Kunlik xulosa — DOIM saqlanadi: har yoʻl uchun kunning eng yomon nisbati, uning yarim soati, kunlik oʻrtacha, oʻlchovlar soni
+  const day = loc.toISOString().slice(0, 10), DS = (st.daysum = st.daysum || {}), d = (DS[day] = DS[day] || {});
+  Object.keys(r).forEach(id => { const x = d[id] || (d[id] = [0, 0, 0, 0]); if (r[id] > x[0]) { x[0] = r[id]; x[1] = slot; } x[2] += r[id]; x[3]++; });
+  return day;
+}
+// Kunning xom oʻlchovlari — alohida kalitda, muddatsiz (tarixni keyin qayta tahlil qilish uchun)
+async function trfArchive(env, st, day) {
+  const rows = st.rows.filter(x => new Date(x[0] + 5 * 3600e3).toISOString().slice(0, 10) === day);
+  await env.CORRECTIONS.put('trf:day:' + day, JSON.stringify(rows));
 }
 // Cron (Cloudflare Triggers, masalan har 15 daqiqa): Yandex “API Матрицы расстояний” (maxfiy YANDEX_MATRIX_KEY) — sayt ochiq boʻlmasa ham.
 // Har chorraha: kiruvchi yoʻllar boshlari (origins) → chorraha (destination), avtomobil, joriy probkalar bilan.
 // Probkasiz vaqt = shu yoʻlda kuzatilgan eng tez vaqt (odatda kechasi), lekin 30 km/soatdan sekin emas.
 const SITE = 'https://diyorjonabdurahmonov1-ai.github.io/shaxar-ai/';
-async function trafficCron(env) {
-  if (!env.YANDEX_MATRIX_KEY || !env.CORRECTIONS) return;
+async function trafficCron(env, force) {
+  if (!env.YANDEX_MATRIX_KEY || !env.CORRECTIONS) return { err: 'YANDEX_MATRIX_KEY qoʻyilmagan' };
   const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
-  if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return;
+  if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return { skipped: true };
   // Soʻrovlarni tejash: faqat TRF_FROM–TRF_TO soatlarda (Samarqand vaqti, odatiy 6–23) + kechasi 3:00 da bitta (probkasiz vaqt uchun)
   const lh = new Date(Date.now() + 5 * 3600e3), hh = lh.getUTCHours(), from = +(env.TRF_FROM || 6), to = +(env.TRF_TO || 23);
-  if ((hh < from || hh >= to) && !(hh === 3 && lh.getUTCMinutes() < 30)) return;
+  if (!force && (hh < from || hh >= to) && !(hh === 3 && lh.getUTCMinutes() < 30)) return { skipped: true };
   const D = await (await fetch(SITE + 'data/traffic-corridors.json', { cf: { cacheTtl: 86400 } })).json();
   const byJ = {}; D.corridors.forEach(c => { (byJ[c.j] = byJ[c.j] || []).push(c); });
   const v = {}, r = {}; st.base = st.base || {};
@@ -240,20 +249,30 @@ async function trafficCron(env) {
     } catch (e) { err = String(e.message || e); }
   }
   st.cronErr = Object.keys(v).length < 5 ? { ts: Date.now(), err } : null;
-  if (Object.keys(v).length >= 5) trfAdd(st, Date.now(), v, r);
+  const day = Object.keys(v).length >= 5 ? trfAdd(st, Date.now(), v, r) : null;
   st.src = 'Yandex API Матрицы расстояний (Worker cron)';
   await env.CORRECTIONS.put('trf:state', JSON.stringify(st));
+  if (day) await trfArchive(env, st, day);
+  return { n: Object.keys(v).length, err };
 }
 async function traffic(req, env, cors, okOrigin) {
   if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
   const st = JSON.parse((await env.CORRECTIONS.get('trf:state')) || 'null') || { latest: null, rows: [], prof: {}, n: 0, since: null };
   if (req.method === 'GET') {
+    const dq = new URL(req.url).searchParams.get('day');
+    if (dq && /^\d{4}-\d{2}-\d{2}$/.test(dq)) return new Response((await env.CORRECTIONS.get('trf:day:' + dq)) || '[]', { status: 200, headers: Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cors) });
     const full = new URL(req.url).searchParams.get('full') === '1';
     const out = full ? st : Object.assign({}, st, { rows: st.rows.filter(r => r[0] > Date.now() - 2 * 86400e3) });
     return json(out, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
   }
   if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
   if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  // Hozir oʻlchash (server, Yandex Матрица расстояний) — xodim kodi bilan
+  if (new URL(req.url).searchParams.get('run') === '1') {
+    if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+    const res = await trafficCron(env, true);
+    return json(res || {}, 200, cors);
+  }
   if (st.latest && Date.now() - st.latest.ts < TRF_MIN_GAP) return json({ skipped: true, latest: st.latest.ts }, 200, cors);
   let b;
   try { b = JSON.parse((await req.text()).slice(0, 60000)); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
@@ -266,8 +285,9 @@ async function traffic(req, env, cors, okOrigin) {
   });
   if (Object.keys(v).length < 5) return json({ error: { code: 'bad_item', message: 'Oʻlchov yetarli emas' } }, 400, cors);
   const ts = Date.now();
-  trfAdd(st, ts, v, r);
+  const day = trfAdd(st, ts, v, r);
   await env.CORRECTIONS.put('trf:state', JSON.stringify(st));
+  await trfArchive(env, st, day);
   return json({ ok: true, ts, n: st.n }, 200, cors);
 }
 
