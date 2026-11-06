@@ -992,3 +992,11 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .measuring .scan-pin, .measuring .lm-tag { display: none !important; }
 .lm-tag.far span { font-size: .68rem; padding: 2px 8px; }
 .lm-tag.far i { height: 18px; }
+/* Suhbat boshlangach — panelda faqat suhbat */
+.chat-hide { display: none !important; }
+.chat-only-bar { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.qa-hist { margin: 0 0 8px; border: 1px solid rgba(148,163,184,.25); border-radius: 10px; padding: 4px 8px; }
+.qa-hist > summary { cursor: pointer; color: #94a3b8; font-size: .82rem; }
+/* AI javobidagi “Batafsil” — yigʻiq */
+details.ai-more { margin-top: 8px; border-top: 1px dashed rgba(148,163,184,.3); padding-top: 6px; }
+details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }

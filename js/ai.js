@@ -165,7 +165,9 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
 4) Bir nechta variant yoki joy boʻlsa — solishtir va eng yaxshisini tanla, nega ekanini bir gapda ayt.
 5) Takliflar: eng arzon va tez bajariladigandan boshlab, har biri aniq joyga (koʻcha, chorraha, belgi raqami) bogʻlangan; bosh rejaga zid taklif berma.
 6) Xaritada koʻrsatilgan belgilar (raqamlar, ranglar) boʻlsa — javobda shu raqamlar bilan ayt, foydalanuvchi xaritadan topa olsin.
-7) Taxminiy hisob — bir marta qisqa “taxminiy” de; ishonch past boʻlsa sababini ayt (masalan, oʻlchov kam).`;
+7) Taxminiy hisob — bir marta qisqa “taxminiy” de; ishonch past boʻlsa sababini ayt (masalan, oʻlchov kam).
+8) TUZILMA: avval QISQA javob (3–7 qator: xulosa, eng muhim raqamlar, asosiy taklif). Keyin alohida qatorda faqat **Batafsil** deb yoz va undan keyin qolgan tafsilotlarni ber (u yigʻiq koʻrinadi).
+9) Xaritada yechim/bosqichlar raqamlari (①②③④, Y1, T1…) berilgan boʻlsa — javobdagi yechim AYNAN shu bosqichlar boʻlsin (bir xil tartib, bir xil oʻlcham va narx); boshqa yechim oʻylab topma.`;
   let lessons = null, lessonsTs = 0;
   async function loadLessons() {
     if (lessons && Date.now() - lessonsTs < 10 * 60e3) return lessons;
@@ -350,8 +352,20 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
   }
 
   // **qalin** va qatorlarni xavfsiz HTML ga aylantirish
-  function render(text) {
-    return NX.esc(text).replace(/^\s*#{1,4}\s*(.+)$/gm, '**$1**').replace(/^\s*[-*] /gm, '• ').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  // Javob: qisqa qism koʻrinadi, qolgani “Batafsil” ostida (AI “**Batafsil**” qatorini yozadi; yozmasa — uzun javob avtomatik boʻlinadi)
+  function render(text, opt) {
+    const fmt = t => NX.esc(t).replace(/^\s*#{1,4}\s*(.+)$/gm, '**$1**').replace(/^\s*[-*] /gm, '• ').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+    const t = String(text || '');
+    if (opt && opt.full) return fmt(t);
+    const m = t.match(/^\s*(?:#{1,4}\s*)?\**\s*Batafsil(?:roq)?\s*\**\s*:?\s*\**\s*$/im);
+    let head = t, rest = '';
+    if (m) { head = t.slice(0, m.index); rest = t.slice(m.index + m[0].length); }
+    else if (t.length > 1100) {
+      const ps = t.split(/\n{2,}/); let n = 0, k = 0;
+      while (k < ps.length && (k < 2 || n < 500)) { n += ps[k].length; k++; }
+      if (k < ps.length - 1) { head = ps.slice(0, k).join('\n\n'); rest = ps.slice(k).join('\n\n'); }
+    }
+    return rest.trim() ? fmt(head.trim()) + `<details class="ai-more"><summary>Batafsil</summary>${fmt(rest.trim())}</details>` : fmt(t);
   }
 
   // ---------- Muammoni real surat bilan tekshirish ----------

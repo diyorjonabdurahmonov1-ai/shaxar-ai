@@ -164,13 +164,34 @@
         // Savol-javob guruhlari: har bir savol + undan keyingi javoblar
         const groups = []; let cur = null;
         items.forEach(x => { if (x.classList.contains('user')) { cur = [x]; groups.push(cur); } else if (cur) cur.push(x); });
-        groups.slice(0, -1).forEach(g => {
-          const q = g[0].textContent.trim(), d = document.createElement('details');
-          d.className = 'qa-old'; d.open = chatOpen.has(id + '|' + q);
-          d.innerHTML = `<summary><span class="qa-q">❓ ${NX.esc(q.length > 90 ? q.slice(0, 88) + '…' : q)}</span><span class="qa-hint">oldingi javob</span></summary>`;
-          d.addEventListener('toggle', () => { if (d.open) chatOpen.add(id + '|' + q); else chatOpen.delete(id + '|' + q); });
-          log.insertBefore(d, g[0]); g.forEach(x => d.appendChild(x));
-        });
+        // Oldingi savol-javoblar — bitta yigʻiq “Oldingi savollar (N)” ichida (faqat joriy suhbat koʻrinadi)
+        const olds = groups.slice(0, -1);
+        if (olds.length) {
+          const H = document.createElement('details'); H.className = 'qa-hist'; H.open = chatOpen.has(id + '|hist');
+          H.innerHTML = `<summary>🕘 Oldingi savollar (${olds.length})</summary>`;
+          H.addEventListener('toggle', () => { if (H.open) chatOpen.add(id + '|hist'); else chatOpen.delete(id + '|hist'); });
+          log.insertBefore(H, olds[0][0]);
+          olds.forEach(g => {
+            const q = g[0].textContent.trim(), d = document.createElement('details');
+            d.className = 'qa-old'; d.open = chatOpen.has(id + '|' + q);
+            d.innerHTML = `<summary><span class="qa-q">❓ ${NX.esc(q.length > 90 ? q.slice(0, 88) + '…' : q)}</span><span class="qa-hint">javob</span></summary>`;
+            d.addEventListener('toggle', () => { if (d.open) chatOpen.add(id + '|' + q); else chatOpen.delete(id + '|' + q); });
+            H.appendChild(d); g.forEach(x => d.appendChild(x));
+          });
+        }
+        // Suhbat boshlangach — panelda faqat suhbat (boshqa kartochkalar, savollar roʻyxati, muammolar yashirin); “☰ Boʻlim” bilan qaytadi
+        if (root && root.id === 'panel' && !window.__noChatOnly) {
+          const showAll = chatOpen.has(id + '|all');
+          let el = box;
+          while (el && el !== root && el.parentElement) { [...el.parentElement.children].forEach(sib => { if (sib !== el && sib.tagName !== 'DIALOG' && sib.tagName !== 'BUTTON' && !sib.classList.contains('back') && !sib.classList.contains('chat-keep')) sib.classList.toggle('chat-hide', !showAll); }); if (el.parentElement === root) break; el = el.parentElement; }
+          box.querySelectorAll('.ask-help').forEach(x => x.classList.toggle('chat-hide', !showAll));
+          if (!box.querySelector('.chat-only-bar')) {
+            const bar = document.createElement('div'); bar.className = 'chat-only-bar';
+            bar.innerHTML = `<button type="button" class="btn xs">${showAll ? '💬 Faqat suhbat' : '☰ Boʻlimning boshqa qismlari'}</button>`;
+            bar.querySelector('button').onclick = () => { if (chatOpen.has(id + '|all')) chatOpen.delete(id + '|all'); else chatOpen.add(id + '|all'); renderKeepScroll(); };
+            box.prepend(bar);
+          }
+        }
         const last = groups[groups.length - 1];
         last.forEach(x => x.classList.add('qa-cur'));
         // Savol yoziladigan joyda holat: “Tahlil qilinmoqda” yoki “Javob tayyor — koʻrish”

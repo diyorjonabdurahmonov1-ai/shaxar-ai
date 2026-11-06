@@ -38,8 +38,11 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 const results = [];
 const ok = (name, cond, extra) => { results.push([cond ? 'OK  ' : 'FAIL', name, extra || '']); if (!cond) process.exitCode = 1; };
 
+// Suhbat boshlangach panelda faqat suhbat — boshqaruv tugmalari “☰ Boʻlimning boshqa qismlari” bilan ochiladi
+async function reveal(page, sel) { if (!(await page.locator(sel).first().isVisible().catch(() => false))) { const b = page.locator('#panel .chat-only-bar button').first(); if (await b.isVisible().catch(() => false) && /boshqa/.test(await b.textContent())) { await b.click(); await page.waitForTimeout(200); } } }
 async function setupRoutes(ctx, opts = {}) {
   ctx.overpassCalls = 0; ctx.openaiBodies = [];
+  if (!opts.chatOnly) await ctx.addInitScript(() => { window.__noChatOnly = true; });
   // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)
@@ -292,7 +295,7 @@ async function roadBlock(browser) {
   const rs = await page.evaluate(() => { const H = NX.state.twin.hz; return { kind: H.kind, rescue: H.items.filter(a => a.style === 'rescue').length, amb: (H.rescue || []).every(r => r.kind === 'ambulance'), facts: Array.isArray(H.facts.qutqaruv_yoʻllari), legend: /tez yordam/.test((document.querySelector('.fix-legend') || {}).textContent || ''), text: /Qutqaruv mashinalari/.test(NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].text) || NX.state.twinChat.msgs[NX.state.twinChat.msgs.length - 1].src === 'ai' }; });
   ok('Zilzila + tez yordam: shifoxonadan zonalarga mashina yoʻllari (TY), legendada nima va qayoqqa', rs.kind === 'quake' && rs.rescue >= 1 && rs.amb && rs.facts && rs.legend && rs.text, JSON.stringify(rs));
   // 3D egizakda hudud chizish: AI savollarni shu hudud boʻyicha hisoblaydi; natija faqat 3D da (2D xaritaga chizilmaydi)
-  await page.click('[data-act=twin-draw]'); await page.waitForSelector('.draw3d-bar', { timeout: 5000 });
+  await reveal(page, '[data-act=twin-draw]'); await page.click('[data-act=twin-draw]'); await page.waitForSelector('.draw3d-bar', { timeout: 5000 });
   const cv = await page.evaluate(() => { const m = NX.map3d.map(); m.jumpTo({ center: [66.9700, 39.6520], zoom: 15.2, pitch: 0, bearing: 0 }); const r = m.getCanvas().getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await page.waitForTimeout(600);
   for (const [dx, dy] of [[-120, -90], [120, -90], [120, 90], [-120, 90]]) { await page.mouse.click(cv.x + dx, cv.y + dy); await page.waitForTimeout(150); }
@@ -594,7 +597,7 @@ async function roadBlock(browser) {
 
   // ---------- 3b. Kesh yoʻq + Overpass ishlamaydi + zaxira nusxa bor → sayt baribir ochiladi ----------
   const ctx3b = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await setupRoutes(ctx3b, { overpassDown: true, fallbackOn: true });
+  await setupRoutes(ctx3b, { overpassDown: true, fallbackOn: true, chatOnly: true });
   const p3b = await ctx3b.newPage();
   const e3b = watchErrors(p3b);
   await p3b.goto(BASE);
@@ -607,6 +610,9 @@ async function roadBlock(browser) {
   await p3b.waitForSelector('.draw-ov', { timeout: 10000 });
   ok('Qurilish savoli hudud belgilanmagan — xaritada chizish ochiladi, savol eslab qolinadi', await p3b.evaluate(() => !!document.querySelector('.draw-ov') && NX.state.pendingBuild && /300 xonadon/.test(NX.state.pendingBuild)));
   await p3b.keyboard.press('Escape');
+  await p3b.click('.tabs [data-tab=ai]'); await p3b.waitForTimeout(300);
+  const co = await p3b.evaluate(() => { const hid = [...document.querySelectorAll('#panel .chat-hide')].length, chat = document.querySelector('#chat'); return { hid, chatVis: !!(chat && chat.offsetParent), bar: !!document.querySelector('#panel .chat-only-bar button') }; });
+  ok('Suhbat boshlangach panelda faqat suhbat (boshqa kartochkalar yashirin, “☰” bilan qaytadi)', co.chatVis && co.bar && co.hid >= 1, JSON.stringify(co));
   await p3b.click('#btnSettings'); await p3b.click('#btnDiag');
   await p3b.waitForFunction(() => document.querySelectorAll('#diagList li').length >= 10, null, { timeout: 40000 });
   const dg = await p3b.evaluate(() => [...document.querySelectorAll('#diagList li')].map(x => x.textContent.slice(0, 40)));
