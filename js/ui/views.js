@@ -733,8 +733,8 @@
       ${Object.keys(groups).length ? `<ul class="street-probs">${Object.keys(groups).sort((a, b) => NX.PROBLEM[b].weight - NX.PROBLEM[a].weight).map(t => `<li><button class="link" data-act="problem" data-id="${groups[t][0].id}">${NX.PROBLEM[t].icon} ${E(NX.PROBLEM[t].short)} — ${groups[t].length} ta</button><small>${E(NX.PROBLEM[t].fix)}</small></li>`).join('')}</ul>` : '<p class="small ok-text">Hududda avtomatik topilgan muammo yoʻq.</p>'}
       ${live}
       <h4>🏙 Shahar tizimlari</h4>
-      <ul class="sys-area">${NX.systems.KEYS.map(k => { const T = NX.SYSTEMS[k], x = (st.systems || []).find(y => y.sys === k);
-        return `<li>${T.icon} ${E(T.uz)}: ${!x ? '<span class="muted">maʼlumot ulanmagan</span>' : k === 'camera' ? `<b>${x.points}</b> ta kamera` : `${x.km > 0.01 ? `<b>${F.num(x.km, 2)} km</b> liniya` : 'hududda liniya yoʻq'}${x.points ? `, ${x.points} ta obyekt` : ''}${isFinite(x.nearest) && !(x.km > 0.01) ? ` · eng yaqini ${F.km(x.nearest)}` : ''}`}</li>`; }).join('')}</ul>
+      <ul class="sys-area">${NX.systems.KEYS.filter(k => (st.systems || []).some(y => y.sys === k)).map(k => { const T = NX.SYSTEMS[k], x = (st.systems || []).find(y => y.sys === k);
+        return `<li>${T.icon} ${E(T.uz)}: ${!x ? '<span class="muted">maʼlumot ulanmagan</span>' : k === 'camera' ? `<b>${x.points}</b> ta kamera` : `${x.km > 0.01 ? `<b>${F.num(x.km, 2)} km</b> liniya` : 'hududda liniya yoʻq'}${x.points ? `, ${x.points} ta obyekt` : ''}${isFinite(x.nearest) && !(x.km > 0.01) ? ` · eng yaqini ${F.km(x.nearest)}` : ''}`}</li>`; }).join('')}</ul>${(() => { const miss = NX.systems.KEYS.filter(k => !(st.systems || []).some(y => y.sys === k)).map(k => NX.SYSTEMS[k].uz); return miss.length ? `<p class="small muted">${E(miss.join(', '))} xaritalari hali yuklanmagan — hokimiyatdagi tegishli xizmatdan GeoJSON/KML faylni “Tizimlar” boʻlimiga yuklasangiz, shu hudud boʻyicha tahlil qilinadi.</p>` : ''; })()}
       ${planBox(A)}
       <button class="btn xs" data-act="area-redraw">✏️ Qayta chizish</button>
     </section>

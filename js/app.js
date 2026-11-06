@@ -52,7 +52,13 @@
       NX.view.drawFixes(shownFixes());
       setStatus(res.source, res.data.ts);
       render();
-      if (res.refresh) res.refresh.then(r => { if (r && r.data && res.degraded) toast('Jonli maʼlumot tayyor (avtobus yoʻnalishlari bilan) — “Yangilash” tugmasini bosing.', 'ok'); });
+      // Zaxira nusxa bilan ochilgan (yangi kompyuter): jonli maʼlumot (avtobus yoʻnalishlari bilan) kelgach — foydalanuvchi band boʻlmasa, oʻzi yangilanadi
+      if (res.refresh) res.refresh.then(r => {
+        if (!r || !r.data) return;
+        const busy = (S.chat && S.chat.busy) || (S.twinChat && S.twinChat.busy) || S.area || S.road || NX.draw.active() || (NX.map3d.measuring && NX.map3d.measuring());
+        if (busy) { if (res.degraded) toast('Jonli maʼlumot tayyor (avtobus yoʻnalishlari bilan) — “🔄 Yangilash” tugmasini bosing.', 'ok'); return; }
+        loadData(false).then(() => toast(`Jonli maʼlumot yuklandi: ${S.model ? S.model.routes.length : 0} ta avtobus yoʻnalishi.`, 'ok'));
+      });
       if (res.warning) toast(res.warning, 'warn');
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
