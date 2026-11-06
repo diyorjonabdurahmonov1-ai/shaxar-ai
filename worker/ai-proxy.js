@@ -295,6 +295,8 @@ async function trafficCron(env, force) {
   // Soʻrovlarni tejash: faqat TRF_FROM–TRF_TO soatlarda (Samarqand vaqti, odatiy 6–23) + kechasi 3:00 da bitta (probkasiz vaqt uchun)
   const lh = new Date(Date.now() + 5 * 3600e3), hh = lh.getUTCHours(), from = +(env.TRF_FROM || 6), to = +(env.TRF_TO || 23);
   if (!force && (hh < from || hh >= to) && !(hh === 3 && lh.getUTCMinutes() < 30)) return { skipped: true };
+  // fv=2: eski formula (30 km/soat asos) bilan yozilgan tarix tozalanadi, oʻlchangan vaqtlar probkasiz asos sifatida qoladi
+  if (st.fv !== 2) { st.base = st.base || {}; if (st.latest) Object.keys(st.latest.v).forEach(id => { const j = st.latest.v[id][0]; st.base[id] = Math.min(st.base[id] || Infinity, j); }); Object.assign(st, { latest: null, rows: [], prof: {}, daysum: {}, n: 0, since: null, fv: 2 }); }
   const D = await (await fetch(SITE + 'data/traffic-corridors.json', { cf: { cacheTtl: 86400 } })).json();
   const byJ = {}; D.corridors.forEach(c => { (byJ[c.j] = byJ[c.j] || []).push(c); });
   const v = {}, r = {}; st.base = st.base || {};
@@ -311,7 +313,7 @@ async function trafficCron(env, force) {
         const dur = e.duration.value, dist = e.distance ? e.distance.value : c.len;
         if (!(dur > 5) || dist > c.len * 2.2 + 150) return;   // aylanib oʻtadi (bir tomonlama) — olinmaydi
         st.base[c.id] = Math.min(st.base[c.id] || Infinity, dur);
-        const free = Math.min(st.base[c.id], c.len / 8.3);   // 30 km/soat dan sekin boʻlsa ham “probkasiz” deb olinmaydi
+        const free = st.base[c.id];   // probkasiz vaqt = shu yoʻlda kuzatilgan eng tez vaqt (kechasi 3:00 oʻlchovi); Yandex vaqti chorraha/burilishni ham oʻz ichiga oladi
         v[c.id] = [dur, Math.round(Math.max(5, free))]; r[c.id] = Math.round(dur / Math.max(5, free) * 100);
       });
     } catch (e) { err = String(e.message || e); }
