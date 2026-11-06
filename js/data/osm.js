@@ -193,7 +193,7 @@ out body geom(${a});`;
       const snap = await snapshot();
       if (snap) {
         const refresh = fetchLive(null, false, null).then(r => r, () => null);
-        return { data: snap.data, source: 'snapshot', refresh, degraded: !snap.full, warning: snap.full ? null : 'Avtobus yoʻnalishlari hozircha yoʻq — jonli maʼlumot fonda yuklanmoqda; tayyor boʻlgach “Yangilash” tugmasini bosing.' };
+        return { data: snap.data, source: 'snapshot', refresh, degraded: !snap.full, warning: snap.full ? null : 'Xarita zaxira nusxadan ochildi — avtobus yoʻnalishlari bilan jonli maʼlumot fonda yuklanmoqda, tayyor boʻlgach oʻzi yangilanadi.' };
       }
     }
     try { return await fetchLive(cache, valid, onStep); } catch (e) {

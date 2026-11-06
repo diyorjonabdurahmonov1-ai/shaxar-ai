@@ -11,6 +11,7 @@
    /traffic — tirbandlik kuzatuvi: yirik chorrahalarga kiruvchi yoʻllarda Yandex marshrut vaqti (probkali / probkasiz).
               Sayt ochiq turgan brauzer (yoki kuzatuv ekrani) har 15 daqiqada oʻlchab POST qiladi; Worker tarixni KV’da
               (kalit "trf:state") yigʻadi: oxirgi oʻlchov, 60 kunlik qatorlar, har kun xulosasi (doimiy), kun arxivi trf:day:YYYY-MM-DD (doimiy), haftaning ish/dam kunlari boʻyicha har 30 daqiqalik oʻrtacha.
+   /stt — ovozni matnga (oʻzbekcha; OpenAI gpt-4o-mini-transcribe, zaxira whisper-1), IP boʻyicha 120/soat.
    /feedback — AI javoblariga xodimlar bahosi (👍/👎 + izoh), KV "feedback"; sayt salbiy baholarni keyingi promptlarga “oldingi xatolar” qilib qoʻshadi.
    /search — internetdan ochiq maʼlumot qidirish (OpenAI web_search), manba havolalari bilan.
    /image  — taklif qilingan yechimning AI rasmi (gpt-image); real surat (Mapillary) berilsa, shu surat ustiga chiziladi.
@@ -67,7 +68,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 12, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env'] }, 200, cors);
+    if (path === '/version') return json({ v: 13, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -75,6 +76,7 @@ export default {
     if (path === '/traffic') return traffic(req, env, cors, okOrigin);
     if (path === '/feedback') return feedback(req, env, cors, okOrigin);
     if (path === '/osm') return osmSnapshot(req, env, cors, okOrigin);
+    if (path === '/stt') return stt(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
@@ -198,6 +200,27 @@ async function reports(req, env, cors, okOrigin) {
   const out = list.concat([item]).slice(-20000);
   await env.CORRECTIONS.put('reports', JSON.stringify(out));
   return json({ item }, 200, cors);
+}
+
+// ---------- Ovozni matnga (oʻzbekcha): brauzer yozgan audio → OpenAI transcription ----------
+async function stt(req, env, cors, okOrigin) {
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
+  if (limit('stt:' + (req.headers.get('CF-Connecting-IP') || 'x'), 120)) return json({ error: { code: 'proxy_rate_limit', message: 'Bir soatda juda koʻp ovozli soʻrov' } }, 429, cors);
+  const buf = await req.arrayBuffer();
+  if (buf.byteLength < 800) return json({ error: { code: 'empty', message: 'Ovoz yozilmadi' } }, 400, cors);
+  if (buf.byteLength > 6e6) return json({ error: { code: 'too_large', message: 'Ovoz juda uzun (≤ 60 soniya)' } }, 413, cors);
+  const type = (req.headers.get('Content-Type') || 'audio/webm').split(';')[0], ext = /ogg/.test(type) ? 'ogg' : /mp4|m4a|aac/.test(type) ? 'm4a' : /wav/.test(type) ? 'wav' : 'webm';
+  const prompt = 'Samarqand shahar hokimiyati. City Jam. Oʻzbek tili, lotin yozuvi. Registon, Rudakiy, Daxbet, Ibn Sino, Amir Temur koʻchasi, mahalla, tirbandlik, probka, zilzila, suv toshqini, evakuatsiya, 3D egizak, xarita, hisobot.';
+  for (const model of ['gpt-4o-mini-transcribe', 'whisper-1']) {
+    const f = new FormData();
+    f.append('file', new Blob([buf], { type }), 'ovoz.' + ext); f.append('model', model); f.append('language', 'uz'); f.append('prompt', prompt);
+    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
+    if (r.ok) { const d = await r.json(); return json({ text: String(d.text || '').trim(), model }, 200, cors); }
+    if (r.status !== 404 && r.status !== 400) return json({ error: { code: 'stt_error', message: 'Ovozni tanish xatosi: HTTP ' + r.status } }, 502, cors);
+  }
+  return json({ error: { code: 'stt_error', message: 'Ovozni tanish modeli topilmadi' } }, 502, cors);
 }
 
 // ---------- Xarita maʼlumotining umumiy nusxasi (koʻchalar, bekatlar, avtobus yoʻnalishlari) ----------

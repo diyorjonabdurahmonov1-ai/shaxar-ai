@@ -133,27 +133,68 @@
   // Sahifa (window) aylantirilmaydi — xarita va chizma joyida qoladi.
   const chatSeen = new Map(), chatOpen = new Set(), chatAnsAt = new Map();
   // ---------- 🎤 Ovozli savol (brauzer nutqni tanish: oʻzbekcha, boʻlmasa ruscha) ----------
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recog = null;
+  // 🎤 Chat ichidagi ovoz tugmasi: gapiring → matn (NX.voice, oʻzbekcha) → savol oʻzi yuboriladi
   function addMics(root) {
-    if (!SR) return;
+    if (!NX.voice) return;
     root.querySelectorAll('form textarea').forEach(ta => {
       const form = ta.closest('form'); if (!form || form.querySelector('.mic-btn')) return;
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn mic-btn'; b.title = 'Ovoz bilan soʻrash (oʻzbekcha)'; b.textContent = '🎤';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn mic-btn'; b.title = 'Ovoz bilan soʻrash (oʻzbekcha) — gapiring, tugagach oʻzi yuboriladi'; b.textContent = '🎤';
       b.disabled = ta.disabled;
       const send = form.querySelector('button.primary'); if (send) send.before(b); else form.appendChild(b);
-      b.addEventListener('click', () => {
-        if (recog) { recog.stop(); return; }
-        recog = new SR(); recog.lang = 'uz-UZ'; recog.interimResults = true; recog.continuous = false;
-        const base = ta.value ? ta.value.trim() + ' ' : '';
-        b.classList.add('on'); b.textContent = '⏺';
-        recog.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; ta.value = base + t; };
-        recog.onerror = e => { if (e.error === 'language-not-supported' && recog.lang === 'uz-UZ') toast('Brauzer oʻzbek tilini tanimadi — ruscha gapiring yoki Chrome ishlating.', 'warn'); else if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Mikrofon: ' + e.error, 'warn'); };
-        recog.onend = () => { recog = null; b.classList.remove('on'); b.textContent = '🎤'; if (ta.value.trim()) ta.focus(); };
-        try { recog.start(); } catch (e) { recog = null; b.classList.remove('on'); b.textContent = '🎤'; }
+      b.addEventListener('click', async () => {
+        if (NX.voice.active()) { NX.voice.stop(); return; }
+        try {
+          const t = await NX.voice.listen({ onState: st => { b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy'); b.textContent = st === 'rec' ? '⏺' : st === 'busy' ? '⏳' : '🎤'; }, onLevel: lv => b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)), onPart: t => { ta.value = t; } });
+          if (!t) return;
+          ta.value = t;
+          if (send && !send.disabled) send.click(); else ta.focus();
+        } catch (e) { toast(e.message, 'warn'); }
       });
     });
   }
+  // 🎙 Ovozli yordamchi (butun sayt): “3D egizakka kir”, “hozir qaysi yoʻllarda probka”, “Registon koʻchasini koʻrsat”, “natijani yop”…
+  const VTAB = [['twin', /3\s*d|uch\s*d|egizak|tvin/], ['map', /xarita|karta(?!sh)/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /ai\s*yordamchi|yordamchi|chat/]];
+  async function voiceCommand(raw) {
+    const t0 = String(raw || '').trim();
+    const t = t0.toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam)[,.!\s]*/i, '').trim();
+    if (!t) return;
+    toast('🎙 «' + t0 + '»', 'ok');
+    const go = /(kir|och|ot|o\'?t|bor|kochir|korsat|qayt)\b|ga\b/.test(t);
+    // 1) Boʻlimlar
+    // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat / och / top”
+    const st0 = S.model && /korsat|och\b|top\b|qayerda/.test(t) && !/probka|tirband|suv|zilzila|evaku/.test(t) ? NX.ai.detectStreets(t0, S.model)[0] : null;
+    if (st0) { openStreet(st0.s.id); return; }
+    const tab = VTAB.find(([, re]) => re.test(t));
+    const rest = tab ? t.replace(tab[1], ' ').replace(/\b(ga|ka|qa|ni|kir|och|ot|bor|kochir|korsat|qayt|bolim|boʻlim|bolimiga|sahifa)\w*/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
+    if (tab && rest.split(/\s+/).filter(w => w.length > 2).length >= 2 && !go) { setTab(tab[0] === 'map' ? 'ai' : tab[0]); if (tab[0] === 'twin') twinAsk(t0); else chatSend(t0); return; }
+    if (tab && (go || t.split(/\s+/).length <= 3)) { setTab(tab[0]); if (tab[0] === 'twin' && /fotoreal|real/.test(t) && NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); return; }
+    // 2) Oddiy buyruqlar
+    if (/natija(ni)?\s*(yop|tozala|olib\s*tashla)|tozala|hammasini\s*yop/.test(t)) { hazardClear(); NX.view.showActions(null); toast('Natija yopildi.', 'ok'); return; }
+    if (/fotoreal/.test(t)) { setTab('twin'); if (NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); return; }
+    if (/maket|sxema/.test(t)) { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); return; }
+    if (/olcha(sh|b)?\b|olchov/.test(t) && !/tirband|probka/.test(t)) { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); setTimeout(() => NX.map3d.measure(), 600); return; }
+    if (/sayohat|tur\b/.test(t)) { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); return; }
+    if (/hudud\s*(belgila|chiz)/.test(t)) { if (S.tab === 'twin') drawArea3d(); else drawArea(); return; }
+    if (/(yangila|refresh)/.test(t) && t.split(/\s+/).length <= 3) { loadData(true); return; }
+    if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(t)) { $('#btnTheme') && $('#btnTheme').click(); return; }
+    if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(t)) { setTab('map'); NX.yandex.setTraffic(true); NX.map.updateLegend(); return; }
+    // 3) Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
+    if (S.tab === 'twin') { twinAsk(t0); return; }
+    if (S.tab !== 'ai') setTab('ai');
+    await chatSend(t0);
+    // “Hozir qayerda probka” — kuzatuv maʼlumoti boʻlmasa ham xaritada Yandex’ning jonli probka qatlami koʻrinsin
+    const lm = S.chat.msgs[S.chat.msgs.length - 1];
+    if (/probka|tirband|tiqil/.test(t) && !(lm && lm.hz && lm.hz.length)) { NX.yandex.setTraffic(true); NX.map.updateLegend(); toast('Xaritada Yandex’ning jonli probka qatlami (yashil — erkin, sariq — sekin, qizil — tirband).', 'ok'); }
+  }
+  async function voiceAgent() {
+    const b = $('#btnVoice');
+    if (NX.voice.active()) { NX.voice.stop(); return; }
+    try {
+      const t = await NX.voice.listen({ onState: st => { b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy'); b.title = st === 'rec' ? 'Tinglayapman… (gapirib boʻlgach oʻzi toʻxtaydi)' : st === 'busy' ? 'Matnga oʻgirilmoqda…' : 'Ovozli yordamchi'; if (st === 'rec') toast('🎙 Tinglayapman… gapiring (masalan: “3D egizakka kir”, “hozir qaysi yoʻllarda probka?”)', 'ok'); }, onLevel: lv => b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)) });
+      if (t) await voiceCommand(t);
+    } catch (e) { toast(e.message, 'warn'); }
+  }
+  NX.voiceCommand = voiceCommand;
   function enhanceChats(root) {
     addMics(root);
     root.querySelectorAll('.chat-log').forEach(log => {
@@ -2404,6 +2445,7 @@
     $('#btnDraw').addEventListener('click', drawArea);
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
+    $('#btnVoice').addEventListener('click', voiceAgent);
     $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));
