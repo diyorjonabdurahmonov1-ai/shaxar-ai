@@ -909,7 +909,11 @@
       // Evakuatsiya: hudud/mahalla aytilmasa — butun shahar rejasi (barcha turar joylar)
       const all = it.city || (show.routes && !it.mahalla);
       try { H = await hazardRun('quake', q, null, Object.assign({}, opts, { show, all })); } catch (e) { console.warn('xavf xaritasi:', e); }
-      if (H) { extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H); }
+      if (H) {
+        extra.xavf_xaritasi = H.facts; local = NX.hazard.summary(H);
+        // Savol evakuatsiya haqida — javob evakuatsiya rejasidan boshlanadi, zarar zonalari keyin
+        if (!quakeQ || it.evac) { const i = local.search(/\*\*(Butun shahar evakuatsiya rejasi|Evakuatsiya rejasi)\*\*/); if (i > 0) local = local.slice(i) + '\n\n**Zilzila boʻlsa eng xavfli hududlar**\n' + local.slice(0, i).replace(/^\*\*[^\n]*\n+(\*\*Xavfli hududlar\*\*\n)?/, '').trim(); }
+      }
     } else if (rainQ) {
       // Suv toshqini: “qaysi koʻchani suv bosadi” — koʻchalardagi suv (jonli); “qayerga olib chiqamiz / baland joy” — qoʻshimcha yoʻllar
       const W = R || sc0, wItems = W ? NX.hazard.waterItems(W, twinState().buildings) : [];
@@ -1030,6 +1034,8 @@
       NX.view.drawArea(poly, null, true);
       render(); focusPanel();
       loadAreaLive(S.area);
+      // Chatda hudud belgilanmasdan berilgan qurilish savoli — hudud chizilgach shu hudud uchun avtomatik javob
+      if (S.pendingBuild) { const q0 = S.pendingBuild; S.pendingBuild = null; setTimeout(() => areaAsk(q0), 300); }
     });
   }
   // Hudud obyekti (2D yoki 3D da chizilgan) — statistika, tizimlar, butun shahar maʼlumoti bilan toʻldirish
@@ -2064,6 +2070,48 @@
     try { const TW = NX.trafficWatch; const [now, m, e] = await Promise.all([TW.query('hozir'), TW.query('soat 8:00'), TW.query('soat 18:00')]); S.trf = { now, m, e, st: TW.status() }; } catch (err) { S.trf = { err: err.message }; }
     if (S.tab === 'report') renderKeepScroll();
   }
+  // ---------- Shahar boʻyicha xizmatlar qamrovi (hudud belgilanmagan): har mahalla markazidan eng yaqin bogʻcha/maktab/poliklinika ----------
+  let placesP = null;
+  const NEED_KINDS = [
+    { re: /bog[ʻ'‘’`]?cha|detsad|yasli/i, keys: ['kindergarten'], uz: 'bogʻcha', norm: 500 },
+    { re: /maktab|o[ʻ'‘’`]?quvchi|shkola/i, keys: ['school'], uz: 'maktab', norm: 750 },
+    { re: /poliklinika|shifoxona|kasalxona|klinika|tibbiy|vrach/i, keys: ['clinic', 'hospital'], uz: 'poliklinika/shifoxona', norm: 1000 },
+  ];
+  async function cityNeedsAsk(q, history) {
+    const P = await NX.outload.pois();
+    if (!placesP) placesP = fetch('data/places-samarqand.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const PL = await placesP;
+    if (!P || !PL || !PL.places) return null;
+    const asked = NEED_KINDS.filter(k => k.re.test(q)), kinds = asked.length ? asked : NEED_KINDS;
+    const d = (a, b) => Math.round(Math.hypot((a[1] - b[1]) * 111320 * Math.cos(a[0] * Math.PI / 180), (a[0] - b[0]) * 110574));
+    const res = kinds.map(K => {
+      const fac = [].concat(...K.keys.map(k => (P[k] || []).map(p => ({ c: [p[0], p[1]], name: p[2] || K.uz }))));
+      const rows = PL.places.map(m => { let best = null; fac.forEach(f => { const x = d(m.c, f.c); if (!best || x < best.d) best = { d: x, f }; }); return { m, best }; }).filter(r => r.best);
+      const bad = rows.filter(r => r.best.d > K.norm).sort((a, b) => b.best.d - a.best.d);
+      return { K, n: fac.length, rows, bad, ok: rows.length - bad.length };
+    });
+    // Xarita: meʼyordan uzoq mahallalar (qizil — 2 baravardan uzoq, sariq — meʼyordan uzoq) va eng yaqin obyektgacha shtrix
+    const its = [];
+    res.forEach(R => R.bad.slice(0, 10).forEach((r, i) => {
+      const col = r.best.d > R.K.norm * 2 ? '#ef4444' : '#f59e0b', id = (R.K.uz[0] || 'N').toUpperCase() + (i + 1);
+      its.push({ kind: 'point', id, lat: r.m.c[0], lon: r.m.c[1], color: col, title: `${id}: ${r.m.name} — eng yaqin ${R.K.uz} ${r.best.d} m (meʼyor ${R.K.norm} m)`, note: `Eng yaqini: ${r.best.f.name}. Masofa mahalla markazidan toʻgʻri chiziq boʻyicha (OSM).` });
+      its.push({ kind: 'line', dash: true, from: r.m.c, to: r.best.f.c, color: col, title: `${r.m.name} → ${r.best.f.name}` });
+    }));
+    if (twinState().hz) hazardClear();
+    ensureLeaflet(); NX.view.clearDeltas(); NX.view.showActions(its); NX.view.fitPoints(its.filter(a => a.kind === 'point').map(a => [a.lat, a.lon]));
+    const L = [];
+    res.forEach(R => {
+      L.push(`**${R.K.uz[0].toUpperCase() + R.K.uz.slice(1)}:** ${PL.places.length} ta mahalladan ${R.bad.length} tasida eng yaqini meʼyordan (${R.K.norm} m) uzoq (shaharda OSM boʻyicha ${R.n} ta).`);
+      R.bad.slice(0, 6).forEach((r, i) => L.push(`- **${(R.K.uz[0] || 'N').toUpperCase()}${i + 1} ${r.m.name}** — eng yaqini ${r.best.d} m (${r.best.f.name})`));
+    });
+    L.push('', `Xaritada: qizil — meʼyordan 2 baravar uzoq, sariq — meʼyordan uzoq; shtrix — eng yaqin obyektgacha. Masofa mahalla markazidan (taxminiy); aniq ehtiyoj (bolalar soni, sigʻim) uchun xaritada hudud belgilab “bu yerga nima kerak?” deb soʻrang.`);
+    if (!asked.length && /keksa|qariya|nogiron|maydoncha|sport|park/i.test(q)) L.unshift('Keksalar markazi, bolalar maydonchasi va sport maydonlari boʻyicha shahar maʼlumoti yoʻq (OSM’da toʻliq belgilanmagan) — quyida asosiy xizmatlar qamrovi:', '');
+    const local = L.join('\n');
+    const facts = { izoh: 'Har mahalla markazidan eng yaqin obyektgacha toʻgʻri chiziq masofa (OSM), meʼyor bilan solishtirildi. Xaritada mahallalar raqam bilan (B1… bogʻcha, M1… maktab, P1… poliklinika).', xizmatlar: res.map(R => ({ tur: R.K.uz, meyor_m: R.K.norm, shahardagi_soni: R.n, mahallalar: PL.places.length, meyordan_uzoq: R.bad.length, eng_uzoq: R.bad.slice(0, 8).map((r, i) => ({ id: (R.K.uz[0] || 'N').toUpperCase() + (i + 1), mahalla: r.m.name, eng_yaqin_m: r.best.d, eng_yaqini: r.best.f.name })) })) };
+    if (!NX.ai.available()) return { role: 'ai', src: 'hisob', text: local, hz: its, fly: 'ann-fly' };
+    try { const r = await NX.ai.factsAsk(q, facts, history); return { role: 'ai', text: r.text, src: r.src, check: r.check, verified: r.verified, hz: its, fly: 'ann-fly' }; }
+    catch (e) { return { role: 'ai', src: 'hisob', text: local, error: e.message, hz: its, fly: 'ann-fly' }; }
+  }
   // ---------- Tirbandlik kuzatuvi: vaqt boʻyicha savollar ----------
   const WATCH_Q = q => /tirban|probk|prop|tiqil|sekin\s*yur|navbat/i.test(q) && /qachon|soat|\d{1,2}[:.]\d\d|\b\d{1,2}\s*(da|ga|larda)\b|ertalab|kechqurun|tushda|kechasi|hozir|qaysi\s*(chorraha|ko.?cha|yo.?l|joy)|qayer(da|lar)|eng\s*(ko.?p\s*)?tirband|chorraha|kun\s*davomida|dam\s*olish|kunlar|kunlik|hafta|oxirgi|tahlil|tarix|o.?zgar|ko.?paydi|kamaydi/i.test(q) && !/yops|bir\s*tomon|polosa|svetofor\s*qo|nima\s*qils|yechim|hal\s*qil|qursa|qurilsa|xonadon|ob.?havo|harorat|hodisa|avariya|avtobus|marshrut/i.test(q);
   async function trafficAsk(q, history) {
@@ -2097,7 +2145,7 @@
     if (NX.intent(q).main === 'general') { S.chat.busy = 'Tahlil qilinmoqda…'; renderChat(); try { q = await smartQ(q, lastUser(S.chat.msgs)); } finally { S.chat.busy = null; } }
     const it = NX.intent(q);
     // Favqulodda vaziyat (zilzila, suv, yongʻin, evakuatsiya) — 3D egizak hisobi; natija shu xaritada ham chiziladi
-    if (it.hazard || it.main === 'climate' || it.main === 'solar' || it.main === 'access') {
+    if (it.hazard || it.main === 'climate' || it.main === 'solar' || it.main === 'access' || (NX.scanReport && NX.scanReport.match(q))) {
       S.chat.msgs.push({ role: 'user', text: shown });
       S.chat.busy = 'Hisoblanmoqda (relyef, binolar, koʻcha tarmogʻi)…'; renderChat();
       const tick = setInterval(() => { const tc = S.twinChat; if (tc && tc.busy && S.chat.busy) { S.chat.busy = tc.busy + '…'; renderChat(); } }, 1200);
@@ -2145,6 +2193,22 @@
       if (pb) { if (pb.flats) S.area.spec.flats = pb.flats; if (pb.floors) S.area.spec.floors = pb.floors; await runBuild(); }
       const r = await NX.ai.areaAsk(q, S.area, S.chat.msgs.slice(-3, -1), areaExtra());
       S.chat.msgs.push({ role: 'ai', text: r.text, src: r.src, error: r.error });
+      S.chat.busy = null; renderChat();
+      return;
+    }
+    // Qurilish savoli, hudud yoʻq — avval hudud chiziladi, keyin savol shu hudud uchun avtomatik hisoblanadi
+    if (it.main === 'build' && !S.area) {
+      S.chat.msgs.push({ role: 'user', text: shown }, { role: 'ai', src: 'ai', text: '🏗 Qurilish taʼsirini hisoblash uchun joy kerak. **Xarita ochildi — sichqoncha bilan qurilish hududini chizing** (bosib turib chegarani aylantiring). Chizib boʻlishingiz bilan savolingiz shu hudud uchun avtomatik hisoblanadi: aholi, mashinalar qaysi koʻchalarga chiqadi, maktab/bogʻcha, bekat, soya, bosh reja.' });
+      S.pendingBuild = q; renderChat();
+      drawArea();
+      return;
+    }
+    // Hudud belgilanmagan “qaysi mahallada bogʻcha/maktab yetishmaydi” — shahar boʻyicha qamrov
+    if (it.main === 'needs' && !S.area) {
+      S.chat.msgs.push({ role: 'user', text: shown });
+      S.chat.busy = 'Mahallalar boʻyicha xizmatlar qamrovi hisoblanmoqda…'; renderChat();
+      let m = null; try { m = await cityNeedsAsk(q, S.chat.msgs.slice(-3, -1)); } catch (e) { console.warn(e); }
+      S.chat.msgs.push(m || { role: 'ai', src: 'hisob', text: 'Xizmatlar maʼlumoti yuklanmadi. Xaritada hudud belgilab “bu yerga nima kerak?” deb soʻrang.' });
       S.chat.busy = null; renderChat();
       return;
     }
@@ -2437,7 +2501,6 @@
         case 'twin-labels': NX.map3d.labels(!NX.map3d.labelsOn()); renderKeepScroll(); break;
         case 'twin-measure': if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.measure(); break;
         case 'scan-fly': { const L = NX.city3d.scans(); if (!L.length) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); renderKeepScroll(); break; }
-        case 'facade-pilot': { const P = NX.city3d.pilot(); if (!P) break; if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); const m = NX.map3d.map(); if (m) m.flyTo({ center: [P.c[1], P.c[0]], zoom: 18.4, pitch: 72, bearing: 30, duration: 2200 }); renderKeepScroll(); break; }
         case 'brief': makeBrief(); break;
         case 'fb-up': case 'fb-down': {
           const row = b.closest('.fb-row'), msg = b.closest('.chat-msg'), key = row && row.dataset.fb;

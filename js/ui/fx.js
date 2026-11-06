@@ -37,7 +37,11 @@
     const water = data.water.map(w => { const a = P(w.a[0], w.a[1]), b = P(w.b[0], w.b[1]); return a && b ? [a[0], a[1], b[0], b[1], w.d] : null; }).filter(Boolean);
     const routes = data.routes.map(rt => { const pts = rt.path.map(q => P(q[0], q[1])); const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return Object.assign({}, rt, { pts, cum, L: cum[cum.length - 1] }); });
     const points = data.points.map(p => Object.assign({}, p, { p: P(p.lat, p.lon) }));
-    cache = { key, per: Math.max(2, Math.floor(2000 / Math.max(1, routes.length))), zones, water, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
+    // Juda koʻp yoʻl (masalan butun shahar evakuatsiyasi) — faqat eng koʻp odamli 100 tasi jonli; qolganlari bitta yoʻl sifatida soyasiz (sahifa qotmasin)
+    const plain = routes.map((rt, i) => [i, rt]).filter(x => !x[1].style && !x[1].dash);
+    const heavy = routes.length > 120, top = new Set(heavy ? plain.sort((a, b) => (b[1].ppl || 0) - (a[1].ppl || 0)).slice(0, 100).map(x => x[0]) : []);
+    if (heavy) routes.forEach((rt, i) => { rt.bg = !rt.style && !rt.dash && !top.has(i); });
+    cache = { key, heavy, per: Math.max(2, Math.floor(2000 / Math.max(1, routes.length))), zones, water, routes, points, epi: data.epi ? P(data.epi[0], data.epi[1]) : null, cellPx: 40 / mPerPx };
     return cache;
   }
   function at(rt, d) {
@@ -96,7 +100,15 @@
       }
       // 3) Yoʻllar: qorongʻi asos + yorugʻ chiziq; ustida oqim
       g.lineCap = 'round'; g.lineJoin = 'round';
+      if (C.heavy) {
+        const byCol = new Map(); C.routes.forEach(rt => { if (rt.bg) { if (!byCol.has(rt.color)) byCol.set(rt.color, []); byCol.get(rt.color).push(rt); } });
+        byCol.forEach((L, col) => {
+          g.beginPath(); L.forEach(rt => rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))));
+          g.strokeStyle = 'rgba(2,6,16,0.45)'; g.lineWidth = 6; g.stroke(); g.strokeStyle = rgba(col, 0.8); g.lineWidth = 3; g.stroke();
+        });
+      }
       C.routes.forEach(rt => {
+        if (rt.bg) return;
         if (rt.style === 'traffic') {
           // Tirbandlik: rangli koʻcha + mashinalar (tezligi real tezlik nisbatiga mos)
           g.beginPath(); rt.pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])));
@@ -141,7 +153,7 @@
         g.setLineDash(rt.dash ? [10, 8] : []);
         g.lineDashOffset = rt.dash ? -T * 20 : 0;
         path(); g.strokeStyle = 'rgba(2,6,16,0.55)'; g.lineWidth = rt.dash ? 6 : 10; g.stroke();
-        path(); g.strokeStyle = rgba(rt.color, rt.dash ? 0.85 : 0.95); g.lineWidth = rt.dash ? 3 : 5; g.shadowColor = rt.color; g.shadowBlur = rt.dash ? 0 : 12; g.stroke(); g.shadowBlur = 0;
+        path(); g.strokeStyle = rgba(rt.color, rt.dash ? 0.85 : 0.95); g.lineWidth = rt.dash ? 3 : 5; g.shadowColor = rt.color; g.shadowBlur = rt.dash || C.heavy ? 0 : 12; g.stroke(); g.shadowBlur = 0;
         g.setLineDash([]);
         if (rt.L < 8) return;
         // Yoʻnalish oʻqlari (chevron) — har 70 px, siljib boradi
@@ -157,14 +169,16 @@
         const n = Math.min(C.per, rt.dash ? 4 : Math.max(6, Math.min(36, Math.round((rt.ppl || 300) / 120)))), v = rt.dash ? 18 : 55;
         for (let k = 0; k < n; k++) {
           const d = ((T * v + (k / n) * rt.L) % rt.L), q = at(rt, d);
-          g.fillStyle = '#ffffff'; g.shadowColor = rt.color; g.shadowBlur = 10;
+          g.fillStyle = '#ffffff'; g.shadowColor = rt.color; g.shadowBlur = C.heavy ? 0 : 10;
           g.beginPath(); g.arc(q[0], q[1], rt.dash ? 1.8 : 2.6, 0, Math.PI * 2); g.fill();
         }
         g.shadowBlur = 0;
       });
       // 4) Joylar: yigʻilish (yashil), baland joy (moviy-yashil), stansiya (qizil), uzoq hudud (toʻq sariq)
+      const manyPts = C.points.length > 60;
       C.points.forEach((p, i) => {
         if (!p.p) return;
+        if (manyPts) { g.fillStyle = rgba(p.color, 0.95); g.beginPath(); g.arc(p.p[0], p.p[1], 5, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(p.p[0], p.p[1], 2, 0, Math.PI * 2); g.fill(); return; }
         const ph = ((T * 0.8 + i * 0.37) % 1);
         g.strokeStyle = rgba(p.color, 0.8 * (1 - ph)); g.lineWidth = 2.5; g.beginPath(); g.arc(p.p[0], p.p[1], 8 + ph * 26, 0, Math.PI * 2); g.stroke();
         g.fillStyle = rgba(p.color, 0.95); g.shadowColor = p.color; g.shadowBlur = 16; g.beginPath(); g.arc(p.p[0], p.p[1], 7, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;

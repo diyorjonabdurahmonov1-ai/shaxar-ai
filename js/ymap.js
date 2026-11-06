@@ -79,10 +79,12 @@
       // Tahlil natijasi koʻrinishi uchun Yandex’ning jonli probka qatlami vaqtincha yashiriladi (legendada qaytarish tugmasi)
       NX.yandex.setTraffic(false); NX.map.updateLegend();
       const c = coll('ann');
+      let nfx = 0;
       list.forEach((a, i) => {
         const bal = { balloonContent: `<b>${NX.esc(a.title)}</b><p>${NX.esc(a.note || '')}</p>` };
         if (a.fx) {
           if (a.kind === 'line' || a.kind === 'water') return;
+          if (a.kind === 'point' && a.list !== false && ++nfx > 40) { c.add(new window.ymaps.Circle([[a.lat, a.lon], 8], { hintContent: a.title }, { fillColor: a.color || '#16a34a', strokeColor: '#0b1220', strokeWidth: 1 })); return; }
           if (a.list === false && a.kind === 'point') { c.add(new window.ymaps.Circle([[a.lat, a.lon], 6], { hintContent: a.title }, { fillColor: a.color || '#f59e0b', strokeColor: '#fff7ed', strokeWidth: 2 })); return; }
           c.add(new window.ymaps.Placemark([a.lat, a.lon], { iconContent: a.id || String(i + 1), hintContent: a.title, balloonContent: NX.place.html(a) }, { preset: 'islands#circleIcon', iconColor: a.color || '#16a34a', zIndex: 1000, balloonMaxWidth: 320 }));
           return;

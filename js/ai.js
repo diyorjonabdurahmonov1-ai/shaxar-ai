@@ -183,7 +183,7 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
     try { const r = await NX.fetchJSON(proxyUrl().replace(/\/+$/, '') + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it) }, 10000); return r.ok; } catch (e) { return false; }
   }
   async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
-    let lastErr = null;
+    let lastErr = null, down = 0;
     if (!/^(router|imgprompt)$/.test(cacheKey || '')) await loadLessons().catch(() => null);
     // Sozlamalarda tanlangan model (Claude/Gemini — faqat sayt Worker’i orqali) birinchi sinab koʻriladi
     const pref = NX.store.get('ai:pref', ''), base = (models || NX.config.openaiModels).slice();
@@ -222,6 +222,8 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
         continue;
       }
       const code = err && (err.code || err.type);
+      // Worker’ning oʻzi ishlamayapti (5xx, xato kodi yoʻq) — boshqa modellarni sinab vaqt yoʻqotilmaydi: 2 marta shunday boʻlsa — zaxira javob
+      if (!key && r.status >= 500 && !code && ++down >= 2) { lastErr = new Error('AI xizmati vaqtincha javob bermadi'); break; }
       if (code === 'provider_off' || code === 'provider_error') { if (code === 'provider_off') markBad(model); lastErr = new Error(`“${model}” ishlamadi.`); continue; }
       if (code === 'proxy_rate_limit') throw new Error('Bir soatda juda koʻp savol berildi. Birozdan keyin qayta urinib koʻring.');
       if (code === 'forbidden_origin' || code === 'no_server_key') throw new Error('AI xizmati hozircha sozlanmagan.');
@@ -260,13 +262,29 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
       const sys = ctx.shahar_tizimlari, loaded = sys && Array.isArray(sys) ? sys.filter(x => x.yuklangan || x.loaded) : [];
       return `Bu mavzu boʻyicha saytda hali real maʼlumot yoʻq: ${/kanaliz/.test(n) ? 'kanalizatsiya tarmogʻi' : /ichimlik|suv/.test(n) ? 'suv taʼminoti tarmogʻi' : /elektr/.test(n) ? 'elektr tarmogʻi' : /gaz/.test(n) ? 'gaz tarmogʻi' : /chiroq|yoritish/.test(n) ? 'koʻcha yoritish' : /chiqindi|axlat/.test(n) ? 'chiqindi tashish' : 'havo sifati va shovqin oʻlchovlari'} xaritasi ulanmagan${loaded.length ? '' : ''}.\n\n**Nima qilish mumkin:** “Tizimlar” boʻlimiga tegishli xizmatdan olingan GeoJSON/KML/CSV faylni yuklang — shundan keyin AI shu tarmoq boʻyicha xaritada tahlil qiladi (eski quvurlar, qamrov, muammoli joylar).`;
     }
-    if (s && (/shu|bu|ushbu|koʻcha|ko'cha|yoʻl|yo'l/.test(n) || (NX.state && NX.state.model && detectStreets(q, NX.state.model).length))) {
+    if (s && !/qaysi\s*(kocha|yol)lar|eng\s*(xavfli|yomon|muammoli|katta)|shahar\s*boyicha/.test(n) && (/shu|bu|ushbu|koʻcha|ko'cha|kocha|yoʻl|yo'l|yol/.test(n) || (NX.state && NX.state.model && detectStreets(q, NX.state.model).length))) {
       const t = s.tomtom && s.tomtom.tirbandlik_foiz != null ? `Hozir: ${s.tomtom.joriy_tezlik_kmh} km/soat (odatda ${s.tomtom.erkin_tezlik_kmh}).` : 'Hozirgi tirbandligi oʻlchanmagan.';
       return `${s.nomi}: ${s.harakat}, ${NX.fmt.km(s.uzunlik_m)}. Avtobuslar: ${s.avtobus_liniyalari.length ? s.avtobus_liniyalari.join(', ') : 'yoʻq'}. ${t}`;
     }
     if (/tirband|tiqilin|probka/.test(n)) {
       const t = ctx.hozirgi_tirbandlik;
       return t && t.length ? t.slice(0, 5).map(x => `- ${x.koʻcha}: ${x.tezlik_kmh} km/soat (odatda ${x.odatdagi_kmh})`).join('\n') : 'Hozircha oʻlchangan koʻcha yoʻq. Xaritadagi ranglar — real tirbandlik; koʻchani bossangiz, uning tezligi oʻlchanadi.';
+    }
+    // Savolda koʻcha nomi bor, lekin xaritada topilmadi — buni ochiq aytish (boshqa koʻcha haqida gapirmaslik)
+    const askedSt = (String(q).match(/([A-Za-zʻ'‘’`ʼА-Яа-яЁёЎўҚқҒғҲҳ-]{3,}(?:\s+[A-Za-zʻ'‘’`ʼА-Яа-яЁёЎўҚқҒғҲҳ-]{3,})?)\s+(?:ko[ʻ'‘’`ʼ]?cha|kucha|улиц)/i) || [])[1];
+    if (askedSt && !/^(bu|shu|ushbu|qaysi|eng|har|bir|katta|tor|asosiy)$/i.test(askedSt.split(/\s+/).pop()) && NX.state && NX.state.model && !detectStreets(q, NX.state.model).length) return `**“${askedSt} koʻchasi” xaritadagi maʼlumotda topilmadi** (shahar markazi modeli: ${NX.state.model.namedStreets.length} ta nomli koʻcha). OSM’da nomi boshqacha yozilgan boʻlishi mumkin (masalan, ruscha) — koʻchani xaritada bosing yoki qidiruvda nomini yozib tanlang, keyin savolni qayta bering.`;
+    // Umumiy savol (“eng katta muammo”, “qaysi koʻchalar xavfli”) — saytning oʻz hisobidan qisqa sharh
+    const M0 = NX.state && NX.state.model;
+    if (M0 && (/muammo|xavfli|eng yomon|eng katta|asosiy|holat|ahvol|qanday|nima qilish/.test(n) || true)) {
+      const out2 = [];
+      const groups = (ctx.muammolar || []).slice().sort((a, b) => b.soni - a.soni);
+      const risky = M0.namedStreets.slice().sort((a, b) => b.risk.value - a.risk.value).slice(0, 5);
+      if (groups.length) out2.push('**Shahar markazidagi asosiy muammolar** (ochiq xarita + hisob):', ...groups.slice(0, 5).map(g => `- **${g.turi}** — ${g.soni} ta joy${g.misollar && g.misollar.length ? ` (masalan: ${g.misollar.slice(0, 2).join('; ')})` : ''}. Yechim: ${g.yechim}`));
+      if (risky.length) out2.push('', '**Xavf boʻyicha eng muammoli koʻchalar:** ' + risky.map(x => `${x.name} (${Math.round(x.risk.value)} ball)`).join(', ') + '.');
+      const u = ctx.umumiy;
+      if (u) out2.push('', `Umumiy: ${u.liniyalar_soni} ta avtobus liniyasi, bekatlar 400 m qamrovi ${u.bekat_400m_qamrovi_foiz != null ? u.bekat_400m_qamrovi_foiz + '%' : '—'}, svetoforsiz katta chorrahalar — ${u.svetoforsiz_katta_chorrahalar}.`);
+      out2.push('', 'Aniqroq tahlil uchun: koʻcha nomi bilan soʻrang (“Rudakiy koʻchasida tirbandlikni qanday kamaytiramiz?”), xaritada hudud belgilang yoki “Muammolar” boʻlimini oching.');
+      if (out2.length > 2) return out2.join('\n');
     }
     return 'Bu savolga AI’siz javob bera olmayman. Koʻcha nomi bilan “yopsak nima boʻladi?”, “bir tomonlama qilsak?” kabi savol bering yoki koʻchani xaritada bosing.';
   }
@@ -602,6 +620,14 @@ Qoidalar:
 - Raqamlarni faqat berilgan maʼlumotdan ol. Real oʻlchov va model hisobini aralashtirma: hisobni “hisob boʻyicha” deb ayt.
 ${MAPRULE}
 - Oʻzbek tilida (lotin), aniq va londa.`;
+  // Umumiy: saytning hisobi (JSON) asosida javob — har qanday maxsus tahlil uchun (mahallalar qamrovi va h.k.)
+  const FACTS = `Sen Samarqand shahar hokimiyati uchun shaharsozlik va ijtimoiy infratuzilma tahlilchisisan. Senga saytning real maʼlumotdan hisobi (JSON) beriladi.
+Oʻzbek tilida (lotin), qisqa va aniq yoz. Savolga AYNAN javob ber: 1-qator — eng muhim xulosa raqam va nom bilan; keyin roʻyxat (xaritadagi raqamlar bilan); oxirida eng arzon va tez amaliy taklif (mavjud binoning 1-qavati, maktab qoshidagi guruh, mobil xizmat) va qaysi idoradan aniq maʼlumot soʻrash kerak (taʼlim boʻlimi — bolalar soni va sigʻim, tibbiyot boshqarmasi). JSON kalit nomlarini yozma.`;
+  async function factsAsk(q, facts, history) {
+    const prev = (history || []).slice(-2).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text).slice(0, 1200) }));
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: FACTS }].concat(prev, [{ role: 'user', content: 'Savol: ' + q + '\n\nMaʼlumot (JSON):\n' + JSON.stringify(facts) }]), NX.config.openaiDeep, 'facts');
+    return verify(q, facts, { text: r.text, src: 'ai', model: r.model });
+  }
   // Tirbandlik kuzatuvi (Yandex marshrut vaqtlari tarixi): vaqt boʻyicha eng tirband chorrahalar
   const TRAFFIC = `Sen Samarqand hokimiyati uchun transport tahlilchisisan. Senga yirik chorrahalarga kiruvchi yoʻllardagi REAL oʻlchovlar beriladi (Yandex marshrut vaqti probkali / probkasiz, har 15 daqiqada; soat boʻyicha — shu vaqtdagi barcha kunlar oʻrtachasi).
 Oʻzbek tilida (lotin), qisqa va aniq yoz. Savolga AYNAN javob ber:
@@ -835,5 +861,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, factsAsk, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

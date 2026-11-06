@@ -13,7 +13,8 @@
 
   // Real fasadlar (pilot): Mapillary suratlaridan devorga proyeksiya qilingan teksturalar — data/facades-pilot.json
   let FAC = null, facTex = new Map();
-  fetch('data/facades-pilot.json').then(r => (r.ok ? r.json() : null)).then(j => { if (!j) return; FAC = j; FAC.by = new Map(); j.walls.forEach(w => { const k = w.id; if (!FAC.by.has(k)) FAC.by.set(k, []); FAC.by.get(k).push(w); }); if (built) built.R = -1; if (map) check(); }).catch(() => {});
+  // Real fasadlar pilot (Kattaqoʻrgʻon koʻchasi) — foydalanuvchi talabi bilan olib tashlandi
+  if (false) fetch('data/facades-pilot.json').then(r => (r.ok ? r.json() : null)).then(j => { if (!j) return; FAC = j; FAC.by = new Map(); j.walls.forEach(w => { const k = w.id; if (!FAC.by.has(k)) FAC.by.set(k, []); FAC.by.get(k).push(w); }); if (built) built.R = -1; if (map) check(); }).catch(() => {});
   function facMat(f) {
     if (!facTex.has(f)) { const t = new THREE.TextureLoader().load(FAC.dir + f, () => map && map.triggerRepaint()); t.anisotropy = 4; facTex.set(f, new THREE.MeshBasicMaterial({ map: t, color: 0xe8e8e8, side: THREE.DoubleSide })); }
     return facTex.get(f);

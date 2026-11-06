@@ -602,6 +602,11 @@ async function roadBlock(browser) {
   const f3b = await p3b.evaluate(() => ({ st: document.getElementById('dataStatus').textContent, streets: NX.state.model.namedStreets.length, stops: NX.state.model.stops ? NX.state.model.stops.length : null }));
   ok('Yangi kompyuter + Overpass yoʻq: zaxira nusxa bilan darhol ochiladi', /Zaxira/.test(f3b.st) && f3b.streets > 30, JSON.stringify(f3b));
   ok('Konsolda xato yoʻq (zaxira nusxa)', e3b.length === 0, e3b.join(' || '));
+  await p3b.click('.tabs [data-tab=ai]');
+  await p3b.fill('#chat textarea[name=q]', 'Bu yerga 300 xonadonli 12 qavatli dom qursak nima boʻladi?'); await p3b.click('#chat form button.primary');
+  await p3b.waitForSelector('.draw-ov', { timeout: 10000 });
+  ok('Qurilish savoli hudud belgilanmagan — xaritada chizish ochiladi, savol eslab qolinadi', await p3b.evaluate(() => !!document.querySelector('.draw-ov') && NX.state.pendingBuild && /300 xonadon/.test(NX.state.pendingBuild)));
+  await p3b.keyboard.press('Escape');
   await p3b.click('#btnSettings'); await p3b.click('#btnDiag');
   await p3b.waitForFunction(() => document.querySelectorAll('#diagList li').length >= 10, null, { timeout: 40000 });
   const dg = await p3b.evaluate(() => [...document.querySelectorAll('#diagList li')].map(x => x.textContent.slice(0, 40)));
