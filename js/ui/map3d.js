@@ -270,8 +270,9 @@
   function landmarks() {
     if (!window.maplibregl.Marker) return;
     lmMarks = LANDMARKS.map(l => { const el = document.createElement('div'); el.className = 'lm-tag'; el.innerHTML = `<i></i><span>${NX.esc(l.n)}</span>`; el.onclick = () => map.flyTo({ center: [l.c[1], l.c[0]], zoom: l.z, pitch: 65, bearing: l.b, duration: 2500 }); return new window.maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([l.c[1], l.c[0]]).addTo(map); });
-    const vis = () => { const show = map.getZoom() >= 13.8 && !data.hz; lmMarks.forEach(m => { m.getElement().style.display = show ? '' : 'none'; }); };
-    map.on('zoomend', vis); vis(); landmarks.vis = vis;
+    // Yozuvlar 3D’ni toʻsmasin: faqat umumiy koʻrinishda (zoom 13.8–16.2), yaqinlashganda, oʻlchashda va natija koʻrsatilganda yashirin; foydalanuvchi oʻchirsa — eslab qolinadi
+    const vis = () => { const z = map.getZoom(), show = z >= 13.8 && z < 16.2 && !data.hz && !meas && NX.store.get('lm:labels', true); lmMarks.forEach(m => { m.getElement().style.display = show ? '' : 'none'; m.getElement().classList.toggle('far', z < 15); }); };
+    map.on('zoom', vis); vis(); landmarks.vis = vis;
   }
   let tourOn = false, tourT = null;
   function tourStop() { tourOn = false; clearTimeout(tourT); if (map) map.stop(); document.dispatchEvent(new Event('nx:tour')); }
@@ -615,30 +616,67 @@
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   }
-  // ---------- 📏 Oʻlchash: xaritada nuqtalarni bosib masofa (koʻcha eni, uy uzunligi, ariqgacha) ----------
+  // ---------- 📏 Oʻlchash (3D): nuqta skan / uy yuzasiga yopishadi (raycast) — masofa, balandlik farqi, gorizontal masofa ----------
+  // Yaqinlashib bir nuqta, uzoqlashib yoki burib keyingisi — nuqtalar real joyida qoladi. Balandlik (uy, ariq chuqurligi), diametr (quvur) — ikki nuqta.
   let meas = null;
   function measure() {
     if (!map) return;
     if (meas) { measureStop(); return; }
-    const src = { type: 'FeatureCollection', features: [] };
-    if (!map.getSource('meas')) { map.addSource('meas', { type: 'geojson', data: src }); map.addLayer({ id: 'meas-line', type: 'line', source: 'meas', filter: ['==', ['geometry-type'], 'LineString'], paint: { 'line-color': '#fde047', 'line-width': 3, 'line-dasharray': [2, 1] } }); map.addLayer({ id: 'meas-pt', type: 'circle', source: 'meas', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#fde047', 'circle-stroke-color': '#111827', 'circle-stroke-width': 2 } }); }
-    const pts = [], host = map.getContainer(), bar = document.createElement('div'); bar.className = 'draw3d-bar meas-bar';
-    bar.innerHTML = '<span>📏 Nuqtalarni bosing — masofa: <b class="meas-v">0 m</b></span><button type="button" data-d="undo">↶</button><button type="button" data-d="x">✕</button>';
+    const C3 = NX.city3d, host = map.getContainer(), bar = document.createElement('div'); bar.className = 'draw3d-bar meas-bar';
+    bar.innerHTML = '<span class="meas-txt">📏 Oʻlchanadigan joyni bosing (skan, uy, yer)</span><button type="button" data-d="new" title="Yangi oʻlchash">＋</button><button type="button" data-d="undo" title="Oxirgi nuqtani olib tashlash">↶</button><button type="button" data-d="x" title="Yopish">✕</button>';
     host.appendChild(bar);
-    const dist = (a, b) => Math.hypot((b[0] - a[0]) * 111320 * Math.cos(a[1] * Math.PI / 180), (b[1] - a[1]) * 110574);
-    const upd = () => {
-      let L = 0; for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
-      const seg = pts.length > 1 ? dist(pts[pts.length - 2], pts[pts.length - 1]) : 0;
-      bar.querySelector('.meas-v').textContent = pts.length > 2 ? `${L.toFixed(2)} m (oxirgi ${seg.toFixed(2)} m)` : `${L.toFixed(2)} m`;
-      map.getSource('meas').setData({ type: 'FeatureCollection', features: pts.map(p => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p } })).concat(pts.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: pts } }] : []) });
+    const labs = document.createElement('div'); labs.className = 'meas-labs'; host.appendChild(labs);
+    const pts = [];   // { m: [mx, my, mz], kind }
+    let loc = [];
+    const f2 = v => (Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1));
+    const seg = (A, B) => { const dh = Math.hypot(B[0] - A[0], B[1] - A[1]), dz = B[2] - A[2]; return { d: Math.hypot(dh, dz), dh, dz }; };
+    const where = k => ({ skan: '3D skan', maket: 'uy', yer: 'yer' }[k] || k);
+    const draw = () => {
+      loc = C3 && C3.setMeasure ? C3.setMeasure(pts.map(p => p.m)) : [];
+      let L = 0; for (let i = 1; i < loc.length; i++) L += seg(loc[i - 1], loc[i]).d;
+      const t = bar.querySelector('.meas-txt');
+      if (!pts.length) t.innerHTML = '📏 Oʻlchanadigan joyni bosing (skan, uy, yer)';
+      else if (pts.length === 1) t.innerHTML = `📏 1-nuqta: <b>${where(pts[0].kind)}</b>, balandligi ${f2(loc[0][2])} m — keyingi nuqtani bosing (kerak boʻlsa yaqinlashing/buring)`;
+      else { const s = seg(loc[loc.length - 2], loc[loc.length - 1]); t.innerHTML = `📏 <b>${f2(s.d)} m</b> <span class="muted">(gorizontal ${f2(s.dh)} m · balandlik farqi ↕ ${f2(Math.abs(s.dz))} m)</span>${pts.length > 2 ? ` · jami <b>${f2(L)} m</b>` : ''}`; }
+      labels();
     };
-    const click = e => { pts.push([e.lngLat.lng, e.lngLat.lat]); upd(); };
-    bar.addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; if (b.dataset.d === 'undo') { pts.pop(); upd(); } else measureStop(); });
-    map.on('click', click); map.getCanvas().style.cursor = 'crosshair';
-    meas = { bar, click };
+    // Segment yorliqlari — har kadrda ekranga proyeksiya (chiziq bilan birga yuradi)
+    const labels = () => {
+      if (!C3 || !C3.project) return;
+      let html = '';
+      for (let i = 1; i < pts.length; i++) {
+        const A = pts[i - 1].m, B = pts[i].m, mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2], p = C3.project(mid);
+        if (!p) continue;
+        const s = seg(loc[i - 1], loc[i]);
+        html += `<span style="left:${p[0].toFixed(0)}px;top:${p[1].toFixed(0)}px">${f2(s.d)} m${Math.abs(s.dz) > 0.05 ? `<i>↕ ${f2(Math.abs(s.dz))}</i>` : ''}</span>`;
+      }
+      labs.innerHTML = html;
+    };
+    let picking = false;
+    const click = e => {
+      if (picking) return; picking = true;
+      bar.querySelector('.meas-txt').innerHTML = '⏳ Nuqta 3D yuzada aniqlanmoqda…'; map.getCanvas().style.cursor = 'progress';
+      // brauzer yozuvni chizib ulgursin — keyin raycast (katta skanlarda ~1 s)
+      setTimeout(() => {
+        try { const P = C3 && C3.pick ? C3.pick(e.point.x, e.point.y) : null; const mc = window.maplibregl.MercatorCoordinate.fromLngLat(e.lngLat, 0); pts.push(P || { m: [mc.x, mc.y, mc.z], kind: 'yer' }); }
+        finally { picking = false; if (meas) map.getCanvas().style.cursor = 'crosshair'; draw(); }
+      }, 40);
+    };
+    bar.addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; if (b.dataset.d === 'undo') { pts.pop(); draw(); } else if (b.dataset.d === 'new') { pts.length = 0; draw(); } else measureStop(); });
+    map.on('click', click); map.on('render', labels); map.getCanvas().style.cursor = 'crosshair';
+    document.documentElement.classList.add('measuring');
+    meas = { bar, labs, click, labels };
+    if (landmarks.vis) landmarks.vis();
   }
-  function measureStop() { if (!meas) return; map.off('click', meas.click); meas.bar.remove(); map.getCanvas().style.cursor = ''; if (map.getSource('meas')) map.getSource('meas').setData({ type: 'FeatureCollection', features: [] }); meas = null; }
-  NX.map3d = { measure, measuring: () => !!meas, setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  function measureStop() {
+    if (!meas) return;
+    map.off('click', meas.click); map.off('render', meas.labels); meas.bar.remove(); meas.labs.remove(); map.getCanvas().style.cursor = '';
+    if (NX.city3d && NX.city3d.setMeasure) NX.city3d.setMeasure(null);
+    document.documentElement.classList.remove('measuring');
+    meas = null;
+    if (landmarks.vis) landmarks.vis();
+  }
+  NX.map3d = { labels: on => { NX.store.set('lm:labels', !!on); if (landmarks.vis) landmarks.vis(); }, labelsOn: () => NX.store.get('lm:labels', true), measure, measuring: () => !!meas, setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 
   // ---------- Fotoreal 3D (Cesium, js/ui/google3d.js) — 3D egizakning asosiy koʻrinishi (token boʻlsa) ----------
   // Barcha natijalar ikkala koʻrinishga beriladi: fotoreal ochiq boʻlsa — u yerda, “🧊 Sxema” da — MapLibre’da.

@@ -985,3 +985,10 @@ body.big3d:not(.panel-hide) #map3d .maplibregl-ctrl-top-right { right: calc(min(
 .fb-row .btn.xs { padding: 2px 8px; }
 .diag-box button { align-self: flex-start; }
 .diag-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+/* 📏 3D oʻlchash yorliqlari (chiziq bilan birga yuradi) */
+.meas-labs { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.meas-labs span { position: absolute; transform: translate(-50%, -140%); padding: 2px 8px; border-radius: 8px; background: rgba(3, 7, 16, .85); border: 1px solid #fde047; color: #fde047; font: 700 .78rem system-ui; white-space: nowrap; display: flex; gap: 6px; }
+.meas-labs span i { font-style: normal; color: #67e8f9; }
+.measuring .scan-pin, .measuring .lm-tag { display: none !important; }
+.lm-tag.far span { font-size: .68rem; padding: 2px 8px; }
+.lm-tag.far i { height: 18px; }

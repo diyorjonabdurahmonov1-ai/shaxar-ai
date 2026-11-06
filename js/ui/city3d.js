@@ -294,6 +294,58 @@
       }, undefined, e => console.warn('skan:', sc.file, e && e.message));
     });
   }
+  // ---------- 📏 3D oʻlchash: ekrandagi nuqta → skan / maket uy yuzasidagi haqiqiy 3D nuqta (raycast) ----------
+  let lastM = null;
+  const MS = { scene: null, l: null, O: null, k: 1, pts: [] };
+  // x, y — xarita konteyneridagi piksel. Natija: mercator [x, y, z] (z = balandlik × k), qayerga tushgani
+  function pick(x, y) {
+    if (!map || !lastM || !THREE) return null;
+    const cv = map.getCanvas(), W = cv.clientWidth, H = cv.clientHeight, nx = x / W * 2 - 1, ny = -(y / H) * 2 + 1;
+    const rc = new THREE.Raycaster(), cand = [];
+    if (map.getZoom() >= 14.5) scans.forEach(sc => { if (sc.scene) cand.push({ obj: sc.scene, l: sc.l, kind: 'skan' }); });
+    if (built && on()) cand.push({ obj: built.grp, l: built.l, kind: 'maket' });
+    let best = null;
+    cand.forEach(c => {
+      const P = lastM.clone().multiply(c.l), inv = P.clone().invert();
+      const a = new THREE.Vector3(nx, ny, -1).applyMatrix4(inv), b = new THREE.Vector3(nx, ny, 1).applyMatrix4(inv);
+      rc.set(a, b.clone().sub(a).normalize()); rc.far = a.distanceTo(b);
+      c.obj.updateMatrixWorld(true);
+      const h = rc.intersectObject(c.obj, true)[0];
+      if (!h) return;
+      const clip = h.point.clone().applyMatrix4(P);
+      if (!best || clip.z < best.z) best = { z: clip.z, m: h.point.clone().applyMatrix4(c.l), kind: c.kind };
+    });
+    if (best) return { m: [best.m.x, best.m.y, best.m.z], kind: best.kind };
+    const ll = map.unproject([x, y]), mc = window.maplibregl.MercatorCoordinate.fromLngLat(ll, 0);
+    return { m: [mc.x, mc.y, mc.z], kind: 'yer' };
+  }
+  // Oʻlchash nuqtalarini 3D’da chizish (mercator nuqtalar roʻyxati); null — tozalash. Qaytaradi: har nuqta metrda [sharq, shimol, balandlik]
+  function setMeasure(list) {
+    if (!THREE || !map) return [];
+    if (MS.scene) { MS.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); }); MS.scene = null; }
+    if (!list || !list.length) { map.triggerRepaint(); return []; }
+    const O = list[0], mc = new window.maplibregl.MercatorCoordinate(O[0], O[1], 0), k = mc.meterInMercatorCoordinateUnits();
+    const loc = list.map(p => [(p[0] - O[0]) / k, -(p[1] - O[1]) / k, p[2] / k]);
+    const sc = new THREE.Scene(), pos = new THREE.Float32BufferAttribute(loc.flat(), 3);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', pos);
+    if (loc.length > 1) sc.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xfde047, depthTest: false, transparent: true })));
+    const gp = new THREE.BufferGeometry(); gp.setAttribute('position', pos.clone());
+    sc.add(new THREE.Points(gp, new THREE.PointsMaterial({ color: 0xfde047, size: 9, sizeAttenuation: false, depthTest: false, transparent: true })));
+    // Balandlik farqi koʻrinsin: har nuqtadan oldingi nuqta balandligiga ingichka vertikal chiziq
+    const vv = []; for (let i = 1; i < loc.length; i++) { const A = loc[i - 1], B = loc[i]; if (Math.abs(B[2] - A[2]) > 0.05) vv.push(B[0], B[1], B[2], B[0], B[1], A[2], B[0], B[1], A[2], A[0], A[1], A[2]); }
+    if (vv.length) { const gv = new THREE.BufferGeometry(); gv.setAttribute('position', new THREE.Float32BufferAttribute(vv, 3)); const ls = new THREE.LineSegments(gv, new THREE.LineDashedMaterial({ color: 0x67e8f9, dashSize: 0.15, gapSize: 0.1, depthTest: false, transparent: true, opacity: 0.85 })); ls.computeLineDistances(); sc.add(ls); }
+    MS.scene = sc; MS.O = O; MS.k = k; MS.l = new THREE.Matrix4().makeTranslation(O[0], O[1], 0).scale(new THREE.Vector3(k, -k, k));
+    map.triggerRepaint();
+    return loc;
+  }
+  // Mercator nuqtani ekranga (yorliqlar uchun); orqada boʻlsa null
+  function project(m) {
+    if (!lastM || !map) return null;
+    const v = new THREE.Vector4(m[0], m[1], m[2], 1).applyMatrix4(lastM);
+    if (v.w <= 0) return null;
+    const cv = map.getCanvas();
+    return [(v.x / v.w + 1) / 2 * cv.clientWidth, (1 - v.y / v.w) / 2 * cv.clientHeight];
+  }
   async function attach(m, getBuildings, getM, getRoads) {
     if (layer) return;
     map = m; getB = getBuildings; getMode = getM; getR = getRoads;
@@ -312,11 +364,13 @@
         this.renderer.autoClear = false;
       },
       render(gl, matrix) {
-        const M = new THREE.Matrix4().fromArray(matrix);
+        const M = new THREE.Matrix4().fromArray(matrix); lastM = M;
         this.renderer.resetState();
         if (built && on()) { this.camera.projectionMatrix = M.clone().multiply(built.l); this.renderer.render(this.scene, this.camera); }
         // Real 3D skanlar (Polycam va h.k.) — har biri oʻz joyida, istalgan rejimda (zoom ≥ 14.5)
         if (map.getZoom() >= 14.5) scans.forEach(sc => { if (!sc.scene) return; this.camera.projectionMatrix = M.clone().multiply(sc.l); this.renderer.render(sc.scene, this.camera); });
+        // 📏 Oʻlchash chiziqlari — haqiqiy 3D nuqtalarda (skan/uy yuzasida), har doim koʻrinadi
+        if (MS.scene) { this.renderer.clearDepth(); this.camera.projectionMatrix = M.clone().multiply(MS.l); this.renderer.render(MS.scene, this.camera); }
       },
     };
     map.addLayer(layer, map.getLayer('lm3d') ? 'lm3d' : map.getLayer('hz-zone') ? 'hz-zone' : undefined);
@@ -328,5 +382,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { pick, setMeasure, project, _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();

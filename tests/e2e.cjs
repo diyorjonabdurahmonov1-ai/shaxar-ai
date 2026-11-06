@@ -1150,6 +1150,21 @@ async function roadBlock(browser) {
   const g3 = await p11.evaluate(() => { const d = document.getElementById('settingsDlg'), o = d.open; if (o) d.close(); return { dlg: o, cesium: !!window.Cesium }; });
   ok('3D: Registon madrasalari va boshqa obidalar batafsil modellari (three.js qatlam), qoʻshimcha tugmalarsiz, qavatlar legendasi; Google 3D — kalitsiz Sozlamalar', lmk.layer && lmk.reg >= 3 && lmk.h === 14 && lmk.three && lmk.btns === 0 && lmk.leg && g3.dlg && !g3.cesium, JSON.stringify([lmk, g3]));
   ok('Fon almashadi va eslab qolinadi', await p11.evaluate(() => NX.map3d.base() === 'sat' && localStorage.getItem('m3d:base') === 'sat' && NX.map3d.map().getLayoutProperty('roads-core', 'visibility') === 'none' && !NX.map3d.map().getPaintProperty('bld', 'fill-extrusion-pattern') && NX.map3d.map().getLayoutProperty('bld-roof', 'visibility') === 'none' && NX.map3d.map().getLayoutProperty('base-sat', 'visibility') === 'visible' && NX.map3d.map().getLayoutProperty('base-twin', 'visibility') === 'none' && NX.map3d.map().getLayoutProperty('v-major', 'visibility') === 'none'));
+
+  // 📏 3D oʻlchash: nuqtalar real joyga yopishadi — kamera burilsa ham yorliq chiziq bilan birga yuradi; obidalar yozuvlari oʻlchashda yashirin
+  await p11.evaluate(() => NX.map3d.map().jumpTo({ center: [66.9757, 39.6547], zoom: 17, pitch: 60, bearing: 0 }));
+  await p11.waitForTimeout(1500);
+  await p11.evaluate(() => NX.map3d.measure());
+  const mb = await p11.evaluate(() => { const r = NX.map3d.map().getCanvas().getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  await p11.mouse.click(mb.x + mb.w * 0.4, mb.y + mb.h * 0.6); await p11.waitForTimeout(700);
+  await p11.mouse.click(mb.x + mb.w * 0.6, mb.y + mb.h * 0.6); await p11.waitForTimeout(700);
+  const m1 = await p11.evaluate(() => ({ t: document.querySelector('.meas-txt').textContent, lab: (document.querySelector('.meas-labs span') || {}).style, lm: [...document.querySelectorAll('.lm-tag')].some(e => e.offsetParent) }));
+  const l1 = await p11.evaluate(() => { const s = document.querySelector('.meas-labs span'); return s ? [parseFloat(s.style.left), parseFloat(s.style.top)] : null; });
+  await p11.evaluate(() => { const m = NX.map3d.map(); m.jumpTo({ bearing: 60, zoom: 16.3 }); }); await p11.waitForTimeout(800);
+  const l2 = await p11.evaluate(() => { const s = document.querySelector('.meas-labs span'); return s ? [parseFloat(s.style.left), parseFloat(s.style.top)] : null; });
+  ok('3D oʻlchash: masofa va balandlik farqi; kamera burilsa yorliq joyiga qarab siljiydi; obidalar yozuvi yashirin', /\d+(\.\d+)? m/.test(m1.t) && /balandlik farqi/.test(m1.t) && l1 && l2 && Math.hypot(l1[0] - l2[0], l1[1] - l2[1]) > 5 && !m1.lm, m1.t + ' ' + JSON.stringify([l1, l2]));
+  await p11.evaluate(() => NX.map3d.measure());
+  ok('Oʻlchash yopilganda chiziq va yorliqlar olib tashlanadi', await p11.evaluate(() => !document.querySelector('.meas-labs') && !document.querySelector('.meas-bar')));
   if (process.env.SHOT11) { await p11.click('[data-act=twin-base][data-base=twin]'); await p11.waitForTimeout(9000); await p11.evaluate(() => NX.map3d.map().jumpTo({ zoom: 16.8, pitch: 68 })); await p11.waitForTimeout(4000); await p11.screenshot({ path: process.env.SHOT11 }); }
   ok('Konsolda xato yoʻq (butun shahar binolari)', e11.length === 0, e11.join(' || '));
   await ctx11.close();
