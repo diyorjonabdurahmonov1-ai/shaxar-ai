@@ -2,7 +2,7 @@
    1) Suv yigʻish havzasi: yer sathi relyefida (40 m) D8 oqim yoʻnalishi — muammo nuqtasiga qaysi kataklardan suv keladi.
    2) Eng yuqori oqim: ratsional formula Q = C·i·A (C = 0.75 shahar sirti); mavjud kanalizatsiya/ariq sigʻimi ayiriladi.
    3) Toʻplanadigan hajm: 2D fizik model (shu koʻcha boʻlaklari: chuqurlik × uzunlik × kenglik).
-   4) Chiqish joyi: eng yaqin ariq/kanal/daryo (OSM) yoki relyef boʻyicha 3 m+ pastdagi joy; quvur yoʻli — mavjud koʻchalar ostidan (Dijkstra).
+   4) Chiqish joyi: faqat ariq/kanal/daryo (OSM) — relyefdagi past joy (hovli, mahalla ichi) chiqish emas; quvur yoʻli — mavjud koʻchalar ostidan (Dijkstra).
    5) Quvur diametri: Manning (toʻla quvur, n = 0.013), qiyalik = balandlik farqi / yoʻl uzunligi.
    6) Variantlar: A — yomgʻir suvi kollektori; B — yer osti saqlash rezervuari; C — panjarali quduqlar + ariq tozalash; D — nasos stansiyasi.
    Bosh reja va UNESCO zonalari hisobga olinadi (Afrosiyob — qazish taqiqlangan; Temuriylar qismi — faqat mavjud koʻcha ostidan, arxeologik nazorat bilan). */
@@ -103,7 +103,7 @@
     // Doimiy inshoot (quvur, ariq, nasos) MEʼYORIY yomgʻirga hisoblanadi (shahar koʻchalari, ~2 yilda bir marta: ~25 mm/soat, taxminiy);
     // undan kuchli favqulodda jalada qolgan suv — koʻchma nasoslar va yer usti oqizish bilan (har koʻchaga ulkan quvur tortilmaydi)
     const iD = Math.min(i, DESIGN_MM), Qd = Math.max(0.02, Math.min(Qneed, C_RUN * (Math.max(0, iD - (o.drainMm || 10)) / 3.6e6) * A));
-    // 4) Chiqish joyi: ariq/kanal (pastroq) yoki relyef boʻyicha 3 m pastdagi joy; quvur — koʻchalar ostidan
+    // 4) Chiqish joyi: faqat ariq/kanal/daryo; quvur — koʻchalar ostidan
     const ww = await waterways();
     // Mavjud ariq/kanallar: shu koʻcha boʻyida (25 m) va atrofda (800 m)
     const dPt = (a, b) => { const [ax, ay] = G.xy(a[0], a[1]), [bx, by] = G.xy(b[0], b[1]); return Math.hypot(ax - bx, ay - by); };
@@ -118,7 +118,7 @@
     // Har ariq/kanaldan bitta — eng yaqin nuqta (1.5 km ichida, balandligidan qatʼi nazar: past boʻlsa — oʻz oqimi, baland boʻlsa — kichik nasos)
     ww.forEach(w => { let bestP = null; w.pts.forEach(p => { if (NX.masterplan && NX.masterplan.zoneAt(p[0], p[1]) === 'afrosiyob') return; const z = zAt(p[0], p[1]), [x, y] = G.xy(p[0], p[1]), dd = Math.hypot(x - sx0, y - sy0); if (dd < 1500 && isFinite(z) && (!bestP || dd < bestP.dd)) bestP = { c: p, z, dd, name: w.name, kind: WW_UZ[w.kind] || 'ariq', big: /river|canal/.test(w.kind), w }; }); if (bestP) cands.push(bestP); });
     cands.sort((a, b) => a.dd - b.dd);
-    { let k = k0, g = 0; while (k >= 0 && g++ < 200) { if (D.z[k] < zPit - 3) { const c = cellLL(k), [x, y] = G.xy(c[0], c[1]); cands.push({ c, z: D.z[k], dd: Math.hypot(x - sx0, y - sy0) + 500, name: '', kind: 'past joy (relyef boʻyicha)' }); break; } k = H.down[k]; } }
+    // Relyef boʻyicha “past joy” chiqish sifatida OLINMAYDI: u birovning hovlisi yoki mahalla ichi boʻlishi mumkin — koʻcha suvi faqat ariq/kanal/daryoga (yoki rezervuar, filtratsion quduq, nasos)
     // Koʻcha tarmogʻi boʻylab eng qisqa yoʻl (birinchi 6 nomzoddan eng yaqini)
     const route = (a, b) => {
       if (!a || !b) return null;
