@@ -273,12 +273,14 @@
       if (!sg.name) return;
       let best = 0, bt = 0; frames.forEach(f => { if (f.d[i] > best) { best = f.d[i]; bt = f.t; } });
       if (best < 0.1) return;
-      const v = byName.get(sg.name) || { name: sg.name, max: 0, at: null, t: 0, len: 0 };
-      v.len += sg.len; if (best > v.max) { v.max = best; v.at = sg.mid; v.t = bt; }
+      const v = byName.get(sg.name) || { name: sg.name, max: 0, at: null, t: 0, len: 0, ds: [] };
+      v.len += sg.len; v.ds.push([best, sg.len]); if (best > v.max) { v.max = best; v.at = sg.mid; v.t = bt; }
       byName.set(sg.name, v);
     });
-    // SRTM — sirt modeli (binolar, daraxtlar ham bor): 1.2 m dan chuqur qiymatlar ishonchsiz — “1.2 m+” deb cheklanadi
-    const streets = [...byName.values()].map(v => Object.assign(v, { max: +Math.min(1.2, v.max).toFixed(2), len: Math.round(v.len) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
+    // Koʻcha chuqurligi — bitta eng chuqur katak emas (relyefdagi chuqurcha yoki SRTM xatosi boʻlishi mumkin), suv bosgan qismining 90-persentili (uzunlik boʻyicha).
+    // SRTM — sirt modeli (binolar, daraxtlar ham bor): 1.2 m dan chuqur qiymatlar ishonchsiz — “1.2 m+” (deep: eng chuqur nuqta)
+    const p90 = ds => { const a = ds.slice().sort((x, y) => x[0] - y[0]), L = a.reduce((t, x) => t + x[1], 0); let c = 0; for (const x of a) { c += x[1]; if (c >= 0.9 * L) return x[0]; } return a.length ? a[a.length - 1][0] : 0; };
+    const streets = [...byName.values()].map(v => { const typ = p90(v.ds); delete v.ds; return Object.assign(v, { deep: +Math.min(1.2, v.max).toFixed(2), max: +Math.min(1.2, typ).toFixed(2), len: Math.round(v.len) }); }).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
     const peak = frames.reduce((b, f) => (f.km > b.km ? f : b), frames[0] || { km: 0, t: 0 });
     // Eng yuqori nuqtada suv yetadigan binolar
     const hmax = res.hmax, wetB = (NX.buildings.get() || []).filter(b => { const k = cellOf(b.c[0], b.c[1]); return k >= 0 && hmax[k] >= 0.2; });
@@ -421,9 +423,11 @@
       if (h < 0.05) return;
       const fromA = sg.a.z >= sg.b.z;                                         // chiziq oqim yoʻnalishida
       segs.push({ c: fromA ? [[sg.a.lon, sg.a.lat], [sg.b.lon, sg.b.lat]] : [[sg.b.lon, sg.b.lat], [sg.a.lon, sg.a.lat]], d: +h.toFixed(2), w: sg.w });
-      if (h >= 0.1 && sg.name) { const v = byName.get(sg.name) || { name: sg.name, len: 0, max: 0, at: null }; v.len += sg.len; if (h > v.max) { v.max = h; v.at = [(sg.a.lat + sg.b.lat) / 2, (sg.a.lon + sg.b.lon) / 2]; } byName.set(sg.name, v); }
+      if (h >= 0.1 && sg.name) { const v = byName.get(sg.name) || { name: sg.name, len: 0, max: 0, at: null, ds: [] }; v.len += sg.len; v.ds.push([h, sg.len]); if (h > v.max) { v.max = h; v.at = [(sg.a.lat + sg.b.lat) / 2, (sg.a.lon + sg.b.lon) / 2]; } byName.set(sg.name, v); }
     });
-    const streets = [...byName.values()].map(v => Object.assign(v, { len: Math.round(v.len), max: +v.max.toFixed(2) })).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
+    // Koʻcha chuqurligi — suvli qismining 90-persentili (uzunlik boʻyicha); eng chuqur boʻlak — “deep” (1.2 m — modelning yuqori chegarasi)
+    const p90 = ds => { const a = ds.slice().sort((x, y) => x[0] - y[0]), L = a.reduce((t, x) => t + x[1], 0); let c = 0; for (const x of a) { c += x[1]; if (c >= 0.9 * L) return x[0]; } return a.length ? a[a.length - 1][0] : 0; };
+    const streets = [...byName.values()].map(v => { const typ = p90(v.ds); delete v.ds; return Object.assign(v, { len: Math.round(v.len), deep: +v.max.toFixed(2), max: +typ.toFixed(2) }); }).sort((a, b) => b.max * Math.sqrt(b.len) - a.max * Math.sqrt(a.len));
     // Suv yetadigan binolar: 20 sm+ suvli koʻchadan 20 m gacha
     const wetGrid = new Map(), k20 = (x, y) => Math.floor(x / 40) + ':' + Math.floor(y / 40);
     depth.forEach((h, sg) => { if (h < 0.2) return; const steps = Math.max(1, Math.round(sg.len / 15)); for (let t = 0; t <= steps; t++) { const x = sg.a.x + (sg.b.x - sg.a.x) * t / steps, y = sg.a.y + (sg.b.y - sg.a.y) * t / steps; const k = k20(x, y); (wetGrid.get(k) || wetGrid.set(k, []).get(k)).push([x, y]); } });

@@ -515,7 +515,7 @@
     model: '2D fizik model (LISFLOOD-FP, 40 m katak, vaqt boʻyicha)', yomgir: R.label, kanalizatsiya_mm_soat: R.drain,
     eng_yuqori_payt: { vaqt: fmtT(R, R.peak.t), suvli_koʻchalar_km: R.peak.km },
     vaqt_boʻyicha_km: R.frames.filter((f, i) => i % 3 === 0).map(f => ({ vaqt: fmtT(R, f.t), km: f.km })),
-    koʻchalar: R.streets.slice(0, 12).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), qachon: fmtT(R, x.t), suvli_qismi_m: x.len })),
+    koʻchalar: R.streets.slice(0, 12).map(x => ({ koʻcha: x.name, suv_chuqurligi_sm: Math.round(x.max * 100), eng_chuqur_joyi_sm: (x.deep || x.max) >= 1.2 ? '120+ (taxminiy, relyef aniqligi chegarasi)' : Math.round((x.deep || x.max) * 100), qachon: fmtT(R, x.t), suvli_qismi_m: x.len })),
     suv_yetadigan_binolar: R.buildings, maktab_shifoxona: R.critical,
   });
   const fmtT = (R, t) => (R.t0ms ? new Date(R.t0ms + t * 1000 + 5 * 3600e3).toISOString().slice(11, 16) : `+${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`);
@@ -941,7 +941,7 @@
       if (areaQ && R && R.streets) {
         const poly = S.area.st.poly, near = p => p && (NX.area.inside(poly, p[0], p[1]) || (() => { const [x, y] = NX.geo.xy(p[0], p[1]); return poly.some(q2 => { const [a, b] = NX.geo.xy(q2[0], q2[1]); return Math.hypot(a - x, b - y) < 150; }); })());
         const inA = R.streets.filter(x => near(x.at));
-        extra.belgilangan_hudud_suv = inA.length ? inA.slice(0, 10).map(x => ({ koʻcha: x.name, eng_chuqur_sm: Math.round(x.max * 100), suvli_qismi_m: x.len })) : 'belgilangan hududda 10 sm dan chuqur suv toʻplanmaydi (model)';
+        extra.belgilangan_hudud_suv = inA.length ? inA.slice(0, 10).map(x => ({ koʻcha: x.name, suv_chuqurligi_sm: Math.round(x.max * 100), eng_chuqur_joyi_sm: (x.deep || x.max) >= 1.2 ? '120+' : Math.round((x.deep || x.max) * 100), suvli_qismi_m: x.len })) : 'belgilangan hududda 10 sm dan chuqur suv toʻplanmaydi (model)';
         local = inA.length ? `**${mm} mm yomgʻirda belgilangan hududda:** ${inA.slice(0, 8).map(x => `${x.name || 'nomsiz koʻcha'} (${Math.round(x.max * 100)} sm, ${NX.fmt.int(x.len)} m)`).join(', ')}.` : `**${mm} mm yomgʻirda belgilangan hududda koʻchalarda 10 sm dan chuqur suv toʻplanmaydi** (2D model). Shahar boʻyicha eng xavfli: ${R.streets.slice(0, 3).map(x => x.name).join(', ')}.`;
       } else
       local = `**${mm} mm yomgʻirda** ${sc.mode === 'street' ? `${sc.km} km koʻchada 10 sm dan chuqur suv` : `~${sc.areaHa} ga suv ostida`}, ${sc.buildings} ta binoga suv yetadi.${sc.streets.length ? `\n\n**Xavfli koʻchalar:** ${sc.streets.slice(0, 6).map(x => `${x.name} (${Math.round(x.max * 100)} sm)`).join(', ')}.` : ''}${sc.critical.length ? `\n\n**Maktab/shifoxona:** ${sc.critical.join(', ')}.` : ''}`;
