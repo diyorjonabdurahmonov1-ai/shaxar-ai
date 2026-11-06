@@ -154,11 +154,22 @@
   }
   // 🎙 Ovozli yordamchi (butun sayt): “3D egizakka kir”, “hozir qaysi yoʻllarda probka”, “Registon koʻchasini koʻrsat”, “natijani yop”…
   const VTAB = [['twin', /3\s*d|uch\s*d|egizak|tvin/], ['map', /xarita|karta(?!sh)/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /ai\s*yordamchi|yordamchi|chat/]];
-  async function voiceCommand(raw) {
+  // Matnli buyruq (chatda yozilgan): faqat aniq boshqaruv buyruqlari — bajarilsa qisqa javob, aks holda oddiy savol
+  async function chatCommand(q) {
+    const t = String(q || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(city\s*jam|siti\s*jam)[,.!\s]*/i, '').trim();
+    if (t.split(/\s+/).length > 6 || /\?|nima|qanday|qaysi|qayer|nega|necha|qancha|boladi|bolsa|kerak/.test(t)) return false;
+    const nav = VTAB.find(([, re]) => re.test(t)) && /(kir|och|ot\b|bor|qayt|kochir)/.test(t);
+    const act = /natija(ni)?\s*(yop|tozala)|^tozala|fotoreal(ga|ni)?\s*(och|ot|kir|yoq)?$|maket(ga|ni)?\s*(och|ot|qayt)?$|olcha(sh)?ni?\s*(boshla|och|yoq)|sayohat(ni)?\s*(boshla|och)?$|hudud\s*(belgila|chiz)/.test(t);
+    if (!nav && !act) return false;
+    S.chat.msgs.push({ role: 'user', text: q }, { role: 'ai', src: 'ai', text: '✅ Bajarildi.' }); renderChat();
+    await voiceCommand(q, true);
+    return true;
+  }
+  async function voiceCommand(raw, quiet) {
     const t0 = String(raw || '').trim();
     const t = t0.toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam)[,.!\s]*/i, '').trim();
     if (!t) return;
-    toast('🎙 «' + t0 + '»', 'ok');
+    if (!quiet) toast('🎙 «' + t0 + '»', 'ok');
     const go = /(kir|och|ot|o\'?t|bor|kochir|korsat|qayt)\b|ga\b/.test(t);
     // 1) Boʻlimlar
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat / och / top”
@@ -2209,6 +2220,7 @@
   async function chatSend(q) {
     q = (q || '').trim();
     if (!q || S.chat.busy || !S.model) return;
+    if (await chatCommand(q)) return;
     const shown = q;
     if (NX.intent(q).main === 'general') { S.chat.busy = 'Tahlil qilinmoqda…'; renderChat(); try { q = await smartQ(q, lastUser(S.chat.msgs)); } finally { S.chat.busy = null; } }
     const it = NX.intent(q);

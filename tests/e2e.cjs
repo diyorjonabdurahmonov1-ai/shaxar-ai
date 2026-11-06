@@ -616,6 +616,8 @@ async function roadBlock(browser) {
   const vc = [];
   for (const [q, tab] of [['City Jam, 3D egizakka kir', 'twin'], ['xaritaga oʻt', 'map'], ['hisobotni och', 'report'], ['siti jam muammolar boʻlimi', 'problems']]) { await p3b.evaluate(q => NX.voiceCommand(q), q); await p3b.waitForTimeout(400); vc.push((await p3b.evaluate(() => NX.state.tab)) === tab); }
   ok('Ovozli yordamchi: “3D egizakka kir”, “xaritaga oʻt”, “hisobotni och” — boʻlimlar ochiladi; 🎙 tugma bor', vc.every(Boolean) && !!(await p3b.$('#btnVoice')), JSON.stringify(vc));
+  await p3b.click('.tabs [data-tab=ai]'); await p3b.fill('#chat textarea[name=q]', 'hisobotni och'); await p3b.click('#chat form button.primary'); await p3b.waitForTimeout(600);
+  ok('Chatda yozilgan buyruq ham bajariladi (“hisobotni och” → Hisobot)', (await p3b.evaluate(() => NX.state.tab)) === 'report');
   await p3b.click('.tabs [data-tab=map]');
   await p3b.click('#btnSettings'); await p3b.click('#btnDiag');
   await p3b.waitForFunction(() => document.querySelectorAll('#diagList li').length >= 10, null, { timeout: 40000 });
