@@ -44,6 +44,8 @@ async function setupRoutes(ctx, opts = {}) {
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)
   if (!opts.realBuildings) await ctx.route(/data\/(buildings|roads|places|mly)-samarqand\.json/, route => route.abort('failed'));
+  // Zaxira xarita nusxasi (data/osm-fallback.json): oddiy testlarda oʻchiq (mock Overpass ishlatiladi); alohida test yoqadi
+  if (!opts.fallbackOn) await ctx.route(/data\/osm-fallback\.json/, route => route.abort('failed'));
   // Piyoda yoʻlaklari (faqat test): Registon koʻchasi boʻylab trotuar, bitta zebra va zinapoya
   if (!opts.realBuildings) await ctx.route(/data\/walk-samarqand\.json/, route => { const S = 1e5, b = [66.86, 39.58], X = lon => Math.round((lon - b[0]) * S), Y = lat => Math.round((lat - b[1]) * S);
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ v: 1, base: b, scale: S, fw: [['sidewalk', 2, X(66.9530), Y(39.65508), X(66.9750) - X(66.9530), 0], ['crosswalk', 0, X(66.9850), Y(39.65495), 0, Y(39.65505) - Y(39.65495)], ['steps', 0, X(66.9900), Y(39.65506), X(66.9902) - X(66.9900), 0]] }) }); });
@@ -590,6 +592,22 @@ async function roadBlock(browser) {
   const btn = await p3.textContent('.state.error button');
   ok('Xato holati va “Qayta urinish” tugmasi', /Qayta urinish/.test(btn));
 
+  // ---------- 3b. Kesh yoʻq + Overpass ishlamaydi + zaxira nusxa bor → sayt baribir ochiladi ----------
+  const ctx3b = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await setupRoutes(ctx3b, { overpassDown: true, fallbackOn: true });
+  const p3b = await ctx3b.newPage();
+  const e3b = watchErrors(p3b);
+  await p3b.goto(BASE);
+  await p3b.waitForSelector('#panel .live', { timeout: 30000 });
+  const f3b = await p3b.evaluate(() => ({ st: document.getElementById('dataStatus').textContent, streets: NX.state.model.namedStreets.length, stops: NX.state.model.stops ? NX.state.model.stops.length : null }));
+  ok('Yangi kompyuter + Overpass yoʻq: zaxira nusxa bilan darhol ochiladi', /Zaxira/.test(f3b.st) && f3b.streets > 30, JSON.stringify(f3b));
+  ok('Konsolda xato yoʻq (zaxira nusxa)', e3b.length === 0, e3b.join(' || '));
+  await p3b.click('#btnSettings'); await p3b.click('#btnDiag');
+  await p3b.waitForFunction(() => document.querySelectorAll('#diagList li').length >= 10, null, { timeout: 40000 });
+  const dg = await p3b.evaluate(() => [...document.querySelectorAll('#diagList li')].map(x => x.textContent.slice(0, 40)));
+  ok('Aloqa tekshiruvi: har tashqi xizmat holati va kompyuter maʼlumoti koʻrsatiladi', dg.length >= 10 && dg.some(x => /Yandex/.test(x)) && dg.some(x => /yadro/.test(x)), dg.length + ' qator');
+  await ctx3b.close();
+
   // ---------- 4. Telefon (390 px) ----------
   const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await setupRoutes(ctx4, { routesDown: true });
@@ -797,6 +815,7 @@ async function roadBlock(browser) {
   await ctx8.route(/cityjam-ai\.example\.workers\.dev/, route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === '/version') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ v: 4 }) });
+    if (path === '/osm') return route.fulfill({ status: 404, contentType: 'application/json', headers: H, body: '{}' });
     if (path === '/feedback' || path === '/traffic') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify(path === '/feedback' ? { items: [{ ok: false, q: 'Sinov savol', note: 'sinov izohi' }] } : { latest: null, rows: [], prof: {}, n: 0, since: null }) });
     if (path === '/webcams' && /mode=fi/.test(req.url())) return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ total: 1, source: 'Fintraffic Digitraffic (CC BY 4.0)', items: [{ id: 'C0150200', title: 'Tie 1 Helsinki', city: 'Finlyandiya (test)', lat: 60.2, lon: 24.9, preview: 'https://weathercam.digitraffic.fi/C0150200.jpg', detail: 'https://www.liikennetilanne.fi/en', test: true }] }) });
     if (path === '/webcams') return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ total: 2, source: 'Windy.com', items: [{ id: 101, title: 'Samarkand - Registan', city: 'Samarkand', lat: 39.6547, lon: 66.9757, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/101.jpg', detail: 'https://www.windy.com/webcams/101' }, { id: 102, title: 'Samarkand - Siab', city: 'Samarkand', lat: 39.6620, lon: 66.9810, updated: Date.now(), preview: 'https://imgproxy.windy.com/cam/102.jpg', detail: 'https://www.windy.com/webcams/102' }] }) });

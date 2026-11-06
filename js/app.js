@@ -52,6 +52,7 @@
       NX.view.drawFixes(shownFixes());
       setStatus(res.source, res.data.ts);
       render();
+      if (res.refresh) res.refresh.then(r => { if (r && r.data && res.degraded) toast('Jonli maʼlumot tayyor (avtobus yoʻnalishlari bilan) — “Yangilash” tugmasini bosing.', 'ok'); });
       if (res.warning) toast(res.warning, 'warn');
       else if (res.source === 'network') toast('Maʼlumot yangilandi: ' + M.namedStreets.length + ' ta koʻcha, ' + M.routes.length + ' ta yoʻnalish.', 'ok');
       NX.sim.init(M).then(info => { S.simInfo = info; }).catch(e => console.error(e));
@@ -83,8 +84,8 @@
 
   function setStatus(src, ts) {
     const el = $('#dataStatus');
-    const txt = { loading: 'Yuklanmoqda…', error: 'Maʼlumot yoʻq', network: 'Yangi', cache: 'Kesh', stale: 'Eski kesh' }[src] || src;
-    const cls = { loading: 'busy', error: 'bad', network: 'ok', cache: 'ok', stale: 'warn' }[src] || '';
+    const txt = { loading: 'Yuklanmoqda…', error: 'Maʼlumot yoʻq', network: 'Yangi', cache: 'Kesh', stale: 'Eski kesh', snapshot: 'Zaxira nusxa' }[src] || src;
+    const cls = { loading: 'busy', error: 'bad', network: 'ok', cache: 'ok', stale: 'warn', snapshot: 'warn' }[src] || '';
     el.className = 'status ' + cls;
     el.innerHTML = `<i></i><span>${txt}${ts ? ' · ' + F.time(ts) : ''}</span>`;
     el.title = ts ? 'OpenStreetMap maʼlumoti vaqti: ' + F.time(ts) + (src === 'cache' || src === 'stale' ? ' (brauzer keshidan)' : '') : '';
@@ -2280,6 +2281,30 @@
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
     $('#fixPin').focus();
   }
+  // 🩺 Aloqa tekshiruvi: har tashqi xizmat shu kompyuterdan ochiladimi (tarmoq/xavfsizlik devori bloklasa, qaysi boʻlim ishlamasligi aytiladi)
+  async function runDiag() {
+    const list = $('#diagList'), btn = $('#btnDiag');
+    if (!list) return;
+    btn.disabled = true; list.innerHTML = '<li>Tekshirilmoqda…</li>';
+    const px = (window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy || '').trim().replace(/\/+$/, '');
+    const reach = (url, ms, opt) => { const t0 = Date.now(); return Promise.race([fetch(url, Object.assign({ mode: 'no-cors', cache: 'no-store' }, opt)).then(() => ({ ok: true, ms: Date.now() - t0 })), new Promise(r => setTimeout(() => r({ ok: false, ms }), ms))]).catch(() => ({ ok: false, ms: Date.now() - t0 })); };
+    const T = [
+      ['AI xizmati (Worker)', 'AI yordamchi, tahlillar, tirbandlik tarixi', () => px ? reach(px + '/version', 8000, { mode: 'cors' }) : Promise.resolve({ ok: false })],
+      ['Xarita maʼlumotlari (Overpass)', 'jonli koʻcha/avtobus maʼlumoti (zaxira nusxa bor)', async () => { for (const u of NX.config.overpassMirrors) { const r = await reach(u + '?data=' + encodeURIComponent('[out:json][timeout:5];node(1);out;'), 9000); if (r.ok) return r; } return { ok: false }; }],
+      ['Yandex xaritasi', 'asosiy xarita, real tirbandlik', () => reach('https://api-maps.yandex.ru/2.1/?lang=ru_RU', 8000)],
+      ['Ob-havo (Open-Meteo)', 'ob-havo, yomgʻir prognozi, iqlim', () => reach('https://api.open-meteo.com/v1/forecast?latitude=39.65&longitude=66.97&current=temperature_2m', 8000, { mode: 'cors' })],
+      ['Relyef (AWS)', 'suv toshqini, qiyalik', () => reach('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/10/703/390.png', 8000)],
+      ['Sunʼiy yoʻldosh xaritasi (Esri)', '3D egizak fon xaritasi', () => reach('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/10/390/703', 8000)],
+      ['Vektor xarita (OpenFreeMap)', '3D egizakda koʻcha nomlari', () => reach('https://tiles.openfreemap.org/planet', 8000)],
+      ['Mapillary suratlari', 'koʻcha suratlari, svetofor/zebra tekshiruvi', () => reach('https://graph.mapillary.com/', 8000)],
+      ['Cesium (fotoreal 3D)', 'Fotoreal 3D egizak', () => reach('https://api.cesium.com/', 8000)],
+    ];
+    const rows = [];
+    await Promise.all(T.map(async ([name, what, fn], i) => { let r; try { r = await fn(); } catch (e) { r = { ok: false }; } rows[i] = `<li>${r.ok ? '✅' : '❌'} <b>${name}</b>${r.ok ? ` <span class="muted">${r.ms} ms</span>` : ` — <span class="bad-text">ochilmadi</span>: ${what} ishlamasligi mumkin`}</li>`; list.innerHTML = rows.filter(Boolean).join(''); }));
+    const mem = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : '—';
+    list.innerHTML += `<li class="muted">Kompyuter: ${navigator.hardwareConcurrency || '—'} yadro, xotira ${mem}, ${document.documentElement.classList.contains('lite') ? 'yengil rejim yoqilgan' : 'toʻliq rejim'}; brauzer: ${NX.esc(navigator.userAgent.slice(0, 90))}</li>`;
+    btn.disabled = false;
+  }
   function closeSettings() { if (dlg.open) dlg.close ? dlg.close() : dlg.removeAttribute('open'); }
 
   // ---------- Hodisalar ----------
@@ -2289,6 +2314,7 @@
     $('#btnDraw').addEventListener('click', drawArea);
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
+    $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));
     liteSync();

@@ -143,31 +143,65 @@ out body geom(${a});`;
     return out;
   }
 
-  // Asosiy yuklovchi: avval kesh, eskirgan boʻlsa — tarmoq; tarmoq ishlamasa — eski kesh
-  async function load({ force = false, onStep } = {}) {
-    const cache = NX.store.get(CACHE_KEY, null);
-    const valid = cache && cache.v === 1 && Array.isArray(cache.ways) && cache.ways.length;
-    if (valid && !force && Date.now() - cache.ts < cfg.osmCacheMaxAgeMs) return { data: cache, source: 'cache' };
-
+  const proxy = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
+  const okData = d => d && d.v === 1 && Array.isArray(d.ways) && d.ways.length > 100 && Array.isArray(d.pts);
+  // Yangi kompyuter (kesh yoʻq) yoki Overpass ishlamasa: 1) Worker’dagi toʻliq nusxa (avtobus yoʻnalishlari bilan; xodim kodi bilan yuklangan),
+  // 2) saytdagi zaxira fayl data/osm-fallback.json (koʻchalar, bekat, svetofor, maktab — avtobus yoʻnalishlarisiz)
+  async function snapshot() {
+    if (proxy()) { try { const r = await NX.fetchJSON(proxy() + '/osm', {}, 6000); if (r.ok && okData(r.data)) return { data: r.data, full: true }; } catch (e) { /* zaxira */ } }
+    try { const r = await NX.fetchJSON('data/osm-fallback.json', {}, 15000); if (r.ok && okData(r.data)) return { data: r.data, full: false }; } catch (e) { /* */ }
+    return null;
+  }
+  // Jonli maʼlumot muvaffaqiyatli olinsa va xodim kodi kiritilgan boʻlsa — Worker’dagi umumiy nusxa yangilanadi (3 kundan eski boʻlsa)
+  async function shareSnapshot(data) {
+    try {
+      const pin = NX.fixes && NX.fixes.pin && NX.fixes.pin();
+      if (!proxy() || !pin || !data.routes || !data.routes.length) return;
+      const m = await NX.fetchJSON(proxy() + '/osm?meta=1', {}, 6000);
+      if (m.ok && m.data && m.data.ts && Date.now() - m.data.ts < 3 * 86400e3) return;
+      await NX.fetchJSON(proxy() + '/osm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin }, body: JSON.stringify(data) }, 30000);
+    } catch (e) { /* */ }
+  }
+  // Jonli Overpass: koʻchalar + bekatlar + avtobus yoʻnalishlari
+  async function fetchLive(cache, valid, onStep) {
     onStep && onStep('Koʻchalar, bekatlar va avtobus yoʻnalishlari Overpass serverlaridan soʻralmoqda…');
     const [sr, rr] = await Promise.allSettled([
       query(qStreets(), d => d.elements.some(e => e.type === 'way')),
       query(qRoutes()),
     ]);
-    if (sr.status === 'rejected') {
-      if (valid) return { data: cache, source: 'stale', warning: 'Overpass javob bermadi — keshdagi maʼlumot (' + NX.fmt.time(cache.ts) + ') koʻrsatilmoqda.' };
-      throw sr.reason;
-    }
+    if (sr.status === 'rejected') throw sr.reason;
     onStep && onStep('Maʼlumot qayta ishlanmoqda…');
     const s = compactStreets(sr.value.json);
     let routes, warning = null, routesTs = Date.now();
     if (rr.status === 'fulfilled') routes = compactRoutes(rr.value.json);
     else if (valid) { routes = cache.routes; routesTs = cache.routesTs; warning = 'Avtobus yoʻnalishlari yangilanmadi — keshdagisi ishlatildi.'; }
     else { routes = []; warning = 'Avtobus yoʻnalishlari yuklanmadi. “Yangilash” tugmasi bilan qayta urinib koʻring.'; }
-
     const data = { v: 1, ts: Date.now(), mirror: host(sr.value.mirror), ways: s.ways, pts: s.pts, routes, routesTs };
     if (!NX.store.set(CACHE_KEY, data)) warning = (warning ? warning + ' ' : '') + 'Brauzer xotirasi yetmadi — oflayn kesh saqlanmadi.';
+    shareSnapshot(data);
     return { data, source: 'network', warning };
+  }
+
+  // Asosiy yuklovchi: kesh → (yangi kompyuter) zaxira nusxa darhol + jonli Overpass fonda → jonli → eski kesh/zaxira
+  async function load({ force = false, onStep } = {}) {
+    const cache = NX.store.get(CACHE_KEY, null);
+    const valid = okData(cache) || (cache && cache.v === 1 && Array.isArray(cache.ways) && cache.ways.length);
+    if (valid && !force && Date.now() - cache.ts < cfg.osmCacheMaxAgeMs) return { data: cache, source: 'cache' };
+    // Brauzerda kesh yoʻq (masalan, hamkasbning kompyuteri): sayt kutib qolmasin — zaxira nusxa darhol, jonli maʼlumot fonda keshga yoziladi
+    if (!valid && !force) {
+      onStep && onStep('Xarita maʼlumoti yuklanmoqda…');
+      const snap = await snapshot();
+      if (snap) {
+        const refresh = fetchLive(null, false, null).then(r => r, () => null);
+        return { data: snap.data, source: 'snapshot', refresh, degraded: !snap.full, warning: snap.full ? null : 'Avtobus yoʻnalishlari hozircha yoʻq — jonli maʼlumot fonda yuklanmoqda; tayyor boʻlgach “Yangilash” tugmasini bosing.' };
+      }
+    }
+    try { return await fetchLive(cache, valid, onStep); } catch (e) {
+      if (valid) return { data: cache, source: 'stale', warning: 'Overpass javob bermadi — keshdagi maʼlumot (' + NX.fmt.time(cache.ts) + ') koʻrsatilmoqda.' };
+      const snap = await snapshot();
+      if (snap) return { data: snap.data, source: 'snapshot', degraded: !snap.full, warning: 'Overpass javob bermadi — saytdagi zaxira maʼlumot ishlatilmoqda' + (snap.full ? '.' : ' (avtobus yoʻnalishlarisiz).') };
+      throw e;
+    }
   }
 
   NX.osm = { load, qStreets, qRoutes, clearCache: () => NX.store.del(CACHE_KEY), _compactStreets: compactStreets, _compactRoutes: compactRoutes };

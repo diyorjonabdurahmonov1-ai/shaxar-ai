@@ -25,8 +25,8 @@ const MODELS = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-m
   // Ixtiyoriy: Claude (maxfiy ANTHROPIC_API_KEY) va Gemini (maxfiy GEMINI_API_KEY). Kalit qoʻyilmasa — 503, sayt OpenAI’ga qaytadi.
   'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const LIGHT = ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'];
-const PER_IP_PER_HOUR = 120;   // hokimiyat xodimlari bitta umumiy IP (NAT) orqali chiqadi — 20 kam edi
-const ALL_PER_HOUR = 400;      // butun sayt boʻyicha soatlik chegara (Worker nusxasi ichida, eng yaxshi harakat) — kutilmagan xarajatdan himoya
+let PER_IP_PER_HOUR = 300;   // hokimiyat xodimlari bitta umumiy IP (NAT) orqali chiqadi; bir savol 2–3 AI soʻrovi (javob + tekshiruv); env PER_IP_PER_HOUR bilan oʻzgartiriladi
+let ALL_PER_HOUR = 900;      // butun sayt boʻyicha soatlik chegara (Worker nusxasi ichida, eng yaxshi harakat) — kutilmagan xarajatdan himoya; env ALL_PER_HOUR
 const MAX_BODY_CHARS = 60000;
 const SEARCH_PER_IP_HOUR = 8, IMAGES_PER_IP_HOUR = 4, IMAGES_PER_DAY = 40;
 const IMAGE_MODELS = ['gpt-image-1.5', 'gpt-image-1', 'gpt-image-1-mini'];
@@ -51,6 +51,8 @@ const json = (obj, status, headers) => new Response(JSON.stringify(obj), { statu
 export default {
   async scheduled(event, env, ctx) { ctx.waitUntil(trafficCron(env)); },
   async fetch(req, env) {
+    if (env.PER_IP_PER_HOUR) PER_IP_PER_HOUR = +env.PER_IP_PER_HOUR || PER_IP_PER_HOUR;
+    if (env.ALL_PER_HOUR) ALL_PER_HOUR = +env.ALL_PER_HOUR || ALL_PER_HOUR;
     const origin = req.headers.get('Origin') || '';
     const okOrigin = ALLOWED_ORIGINS.includes(origin);
     const cors = {
@@ -63,13 +65,14 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 11, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort'] }, 200, cors);
+    if (path === '/version') return json({ v: 12, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
     if (path === '/reports') return reports(req, env, cors, okOrigin);
     if (path === '/traffic') return traffic(req, env, cors, okOrigin);
     if (path === '/feedback') return feedback(req, env, cors, okOrigin);
+    if (path === '/osm') return osmSnapshot(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
@@ -193,6 +196,28 @@ async function reports(req, env, cors, okOrigin) {
   const out = list.concat([item]).slice(-20000);
   await env.CORRECTIONS.put('reports', JSON.stringify(out));
   return json({ item }, 200, cors);
+}
+
+// ---------- Xarita maʼlumotining umumiy nusxasi (koʻchalar, bekatlar, avtobus yoʻnalishlari) ----------
+// Overpass ishlamasa yoki hamkasbning kompyuterida kesh boʻlmasa, sayt shu nusxani oladi. Yuklash — xodim kodi bilan
+// (sayt jonli maʼlumotni olganda, xodim kodi kiritilgan brauzer oʻzi yuboradi, 3 kunda bir marta).
+async function osmSnapshot(req, env, cors, okOrigin) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  if (req.method === 'GET') {
+    const raw = await env.CORRECTIONS.get('osm:snapshot');
+    if (!raw) return json({ error: { code: 'none', message: 'Nusxa yoʻq' } }, 404, cors);
+    if (new URL(req.url).searchParams.get('meta') === '1') { const d = JSON.parse(raw); return json({ ts: d.ts, routes: (d.routes || []).length }, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors)); }
+    return new Response(raw, { status: 200, headers: Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' }, cors) });
+  }
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+  const raw = await req.text();
+  if (raw.length > 6000000) return json({ error: { code: 'too_large', message: 'Nusxa juda katta' } }, 413, cors);
+  let d; try { d = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri nusxa' } }, 400, cors); }
+  if (!d || d.v !== 1 || !Array.isArray(d.ways) || d.ways.length < 500 || !Array.isArray(d.pts) || !Array.isArray(d.routes) || d.routes.length < 3) return json({ error: { code: 'bad_item', message: 'Nusxa toʻliq emas' } }, 400, cors);
+  await env.CORRECTIONS.put('osm:snapshot', JSON.stringify({ v: 1, ts: d.ts || Date.now(), mirror: 'umumiy nusxa', ways: d.ways, pts: d.pts, routes: d.routes, routesTs: d.routesTs || d.ts }));
+  return json({ ok: true }, 200, cors);
 }
 
 // ---------- AI javoblariga xodimlar bahosi (👍/👎 + izoh) — AI keyingi javoblarda oldingi xatolarni hisobga oladi ----------
