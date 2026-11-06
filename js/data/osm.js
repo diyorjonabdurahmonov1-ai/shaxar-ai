@@ -156,7 +156,7 @@ out body geom(${a});`;
   async function shareSnapshot(data) {
     try {
       const pin = NX.fixes && NX.fixes.pin && NX.fixes.pin();
-      if (!proxy() || !pin || !data.routes || !data.routes.length) return;
+      if (!proxy() || !data.routes || !data.routes.length) return;
       const m = await NX.fetchJSON(proxy() + '/osm?meta=1', {}, 6000);
       if (m.ok && m.data && m.data.ts && Date.now() - m.data.ts < 3 * 86400e3) return;
       await NX.fetchJSON(proxy() + '/osm', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin }, body: JSON.stringify(data) }, 30000);

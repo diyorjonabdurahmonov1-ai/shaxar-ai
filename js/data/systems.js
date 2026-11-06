@@ -166,7 +166,7 @@
   async function save(sys, name, gj) {
     const item = { name, gj, ts: Date.now() };
     const pin = NX.fixes.pin();
-    if (base() && pin) {
+    if (base()) {
       const r = await NX.fetchJSON(base() + '/layers/' + sys, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin }, body: JSON.stringify({ name, geojson: gj }) }, 120000);
       if (r.ok) { data[sys] = Object.assign(item, { stats: stats(gj), shared: true }); try { await idbDo('readwrite', st => st.delete(sys)); } catch (e) { /* */ } return { shared: true }; }
       if (r.status !== 404 && r.status !== 405) {
@@ -176,7 +176,7 @@
     }
     try { await idbDo('readwrite', st => st.put(item, sys)); } catch (e) { /* xotira yopiq */ }
     data[sys] = Object.assign(item, { stats: stats(gj), shared: false });
-    return { shared: false, reason: !pin ? 'xodim kodi kiritilmagan' : 'server bu funksiyani hali qoʻllamaydi (Worker’ni yangilang)' };
+    return { shared: false, reason: 'server bu funksiyani hali qoʻllamaydi (Worker’ni yangilang)' };
   }
   async function remove(sys) {
     const d = data[sys];

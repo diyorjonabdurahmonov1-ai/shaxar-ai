@@ -61,10 +61,10 @@
   }
   // Oʻlchab, umumiy tarixga qoʻshish (Worker, boʻlmasa shu brauzer)
   // Server oʻlchovi (Worker cron funksiyasi, Yandex “Матрица расстояний”) — xodim kodi bilan
-  async function serverRun() {
-    const pin = NX.fixes && NX.fixes.pin && NX.fixes.pin();
-    if (!base() || !pin) return null;
-    const r = await NX.fetchJSON(base() + '/traffic?run=1', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin }, body: '{}' }, 60000);
+  async function serverRun(ask) {
+    let pin = NX.fixes && NX.fixes.pin && NX.fixes.pin();
+    if (!base()) return null;
+    const r = await NX.fetchJSON(base() + '/traffic?run=1', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Staff-Code': pin || '' }, body: '{}' }, 60000);
     if (!r.ok) throw new Error(r.data && r.data.error ? r.data.error.message : 'Server oʻlchovi: HTTP ' + r.status);
     if (r.data && r.data.err && !r.data.n) throw new Error('Yandex (server): ' + r.data.err);
     remote = true; await state(true); window.dispatchEvent(new CustomEvent('nx:traffic'));
@@ -73,7 +73,7 @@
   async function sampleNow(onStep) {
     if (busy) return null;
     // Brauzerda Yandex marshrutga ruxsat yoʻq boʻlsa — server (Worker) oʻlchaydi
-    if (denied || !canMeasure()) { busy = true; try { const d = await serverRun(); if (d) { lastErr = null; return d; } } catch (e) { lastErr = e.message; throw e; } finally { busy = false; } }
+    if (denied || !canMeasure() || (St && St.src)) { busy = true; try { const d = await serverRun(true); if (d) { lastErr = null; return d; } } catch (e) { lastErr = e.message; throw e; } finally { busy = false; } }
     busy = true;
     try {
       const v = await measure(onStep), ts = Date.now();
@@ -197,7 +197,7 @@
     L.push('', `Xaritada: chorrahalar raqam bilan, sekin kirish yoʻllari rangli chiziq (sariq — sekin, qizil — tirband). Kuzatuv: ${R.total} ta yirik chorraha, tarix doimiy saqlanadi${R.remote ? '' : ' (hozircha faqat shu brauzerda)'}.`);
     return L.join('\n');
   }
-  function status() { return { n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
+  function status() { const ce = St && St.cronErr; return { cronErr: ce ? { ts: ce.ts, err: /rejected|401|403/i.test(ce.err || '') ? 'Yandex kalitni rad etdi (Apikey rejected) — Cloudflare’dagi YANDEX_MATRIX_KEY qiymatini tekshiring' : String(ce.err || '').slice(0, 120) } : null, server: !!(St && St.src),  n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
 
   NX.trafficWatch = { corridors, state, measure, sampleNow, serverRun, start, query, items, facts, summary, parseTime, status, slotLabel, _addSample: addSample };
 })();

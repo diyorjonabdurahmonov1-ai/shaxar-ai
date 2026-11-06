@@ -2349,7 +2349,6 @@
     const fl = NX.fixes.list();
     $('#fixInfo').textContent = `Xaritaga ${fl.length} ta tuzatish kiritilgan (${fl.filter(x => x.shared).length} tasi hamma uchun).` + (NX.fixes.status() === false ? ' Server ombori hali ulanmagan.' : '');
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
-    $('#fixPin').focus();
   }
   // 🩺 Aloqa tekshiruvi: har tashqi xizmat shu kompyuterdan ochiladimi (tarmoq/xavfsizlik devori bloklasa, qaysi boʻlim ishlamasligi aytiladi)
   async function runDiag() {

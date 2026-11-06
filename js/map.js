@@ -306,7 +306,7 @@
   }
   function fixPopup(x) {
     const k = NX.fixes.KIND[x.kind];
-    return `<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu kompyuterda (xodim kodi kiritilmagan).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`;
+    return `<div class="ppop"><b>${k.icon} ${NX.esc(k.uz)}</b><div class="muted">Foydalanuvchi belgilagan · ${NX.fmt.time(x.ts)}</div><p>${x.shared ? 'Hamma uchun saqlangan.' : 'Faqat shu kompyuterda (server bilan aloqa yoʻq).'}</p><div class="fix-row"><button type="button" class="btn sm" data-fix-remove="${NX.esc(x.id)}">🗑 Oʻchirish</button></div></div>`;
   }
 
   function drawProblems() {

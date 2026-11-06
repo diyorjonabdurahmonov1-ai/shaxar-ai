@@ -46,6 +46,8 @@ function cleanContent(c) {
 }
 const hits = new Map(); // Worker nusxasi ichidagi oddiy hisoblagich (eng yaxshi harakat)
 
+// Xodim kodi: hozircha OCHIQ (foydalanuvchi talabi — hamma bemalol ishlatsin). Yoqish: Cloudflare’da oʻzgaruvchi REQUIRE_PIN=1 (+ ADMIN_PIN)
+const pinOk = (env, code) => env.REQUIRE_PIN !== '1' || (!!env.ADMIN_PIN && String(code || '') === String(env.ADMIN_PIN));
 const json = (obj, status, headers) => new Response(JSON.stringify(obj), { status, headers: Object.assign({ 'Content-Type': 'application/json' }, headers) });
 
 export default {
@@ -160,7 +162,7 @@ async function corrections(req, env, cors, okOrigin) {
   if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
   let body;
   try { body = JSON.parse(await req.text()); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri soʻrov' } }, 400, cors); }
-  if (!env.ADMIN_PIN || String(body.pin || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'PIN-kod notoʻgʻri' } }, 403, cors);
+  if (!pinOk(env, body.pin)) return json({ error: { code: 'bad_pin', message: 'PIN-kod notoʻgʻri' } }, 403, cors);
   let out = list;
   if (body.action === 'remove') out = list.filter(x => x.id !== body.id);
   else if (body.action === 'add') {
@@ -211,7 +213,7 @@ async function osmSnapshot(req, env, cors, okOrigin) {
   }
   if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
   if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
-  if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+  if (!pinOk(env, req.headers.get('X-Staff-Code'))) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
   const raw = await req.text();
   if (raw.length > 6000000) return json({ error: { code: 'too_large', message: 'Nusxa juda katta' } }, 413, cors);
   let d; try { d = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'Notoʻgʻri nusxa' } }, 400, cors); }
@@ -312,7 +314,7 @@ async function traffic(req, env, cors, okOrigin) {
   if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
   // Hozir oʻlchash (server, Yandex Матрица расстояний) — xodim kodi bilan
   if (new URL(req.url).searchParams.get('run') === '1') {
-    if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+    if (!pinOk(env, req.headers.get('X-Staff-Code'))) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
     const res = await trafficCron(env, true);
     return json(res || {}, 200, cors);
   }
@@ -462,7 +464,7 @@ async function layers(req, env, cors, okOrigin, path) {
     return new Response((await env.CORRECTIONS.get('layer:' + sys)) || '{"type":"FeatureCollection","features":[]}', { status: 200, headers: Object.assign({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, cors) });
   }
   if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
-  if (!env.ADMIN_PIN || String(req.headers.get('X-Staff-Code') || '') !== String(env.ADMIN_PIN)) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
+  if (!pinOk(env, req.headers.get('X-Staff-Code'))) return json({ error: { code: 'bad_pin', message: 'Xodim kodi notoʻgʻri' } }, 403, cors);
   if (!SYSTEMS.includes(sys)) return json({ error: { code: 'bad_item', message: 'Nomaʼlum tizim' } }, 400, cors);
   if (req.method === 'DELETE') {
     delete meta[sys];
