@@ -446,8 +446,8 @@
     // Brauzer matni bilan tushunilmadi — server (aniqroq) matni bilan qayta urinish
     if (st === 'unclear' && opts && opts.later && !opts.retried) {
       const l = await opts.later;
-      if (l && l !== raw) { if (!quiet) hud('busy', 'Aniqlashtirilmoqda…', '«' + l + '»'); return voiceCommand0(l, quiet, [raw], { retried: true }); }
-      if (!quiet) hud('warn', 'Aniq eshitilmadi — qayta ayting', '«' + raw + '»');
+      if (l && l !== raw) { if (!quiet && !opts.ambient) hud('busy', 'Aniqlashtirilmoqda…', '«' + l + '»'); return voiceCommand0(l, quiet, [raw], { retried: true, ambient: opts.ambient }); }
+      if (!quiet && !(opts && opts.ambient)) hud('warn', 'Aniq eshitilmadi — qayta ayting', '«' + raw + '»');
     }
   }
   async function voiceCommand0(raw, quiet, cands, opts) {
@@ -463,13 +463,16 @@
     if (plan && VIEWK.includes(plan) && PLX) { const pp = await placePlan(list); if (pp) plan = pp; }   // indeks tayyor boʻlmasa kamera buyrugʻi kechikmasin
     if (!plan) { plan = await placePlan(list); }
     let qText = null;
+    const amb = !!(opts && opts.ambient), QW0 = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
+    // Uygʻoq rejim: atrofdagi suhbat/shovqin matni — buyruqqa oʻxshamasa jimgina eʼtiborsiz qoldiriladi (hech narsa koʻrsatilmaydi)
+    if (amb && !plan && !(vscore(list[0]) >= 0.25 || QW0.test(list[0]) || list.some(x => voicePlan(x)))) return 'warn';
     // Erkin gap (uzun/qoʻshma: “…koʻrsat, endi yaqinlashtir”) — AI tushunadi; AI ishlamasa mahalliy qoida
     const localPlan = plan;
     if (plan && NX.ai.available() && (list[0].split(/\s+/).length > 4 || /\b(endi|keyin|yana|bitta|hazil)\b/i.test(NX.translit(list[0])))) plan = null;
     const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
-      if (!quiet) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
+      if (!quiet && !amb) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
       try {
         const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
@@ -487,8 +490,10 @@
     if (!plan && localPlan) plan = localPlan;
     if (!plan && !qText) { plan = await voiceAI(list); }
     // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
+    if (!plan && !qText && amb && !(nw0 >= 3 && (QW.test(list[0]) || vscore(list[0]) >= 0.5))) return 'warn';
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     if (plan && plan.warn && opts && opts.later && !opts.retried) return 'unclear';
+    if (plan && plan.warn && amb) return 'warn';
     if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
     if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
@@ -519,7 +524,7 @@
         onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); if (!loop) hudLevel(lv); },
         onPart: t => { if (loop && t) hud('rec', 'Tinglayapman…', '«' + t + '»'); const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
-      if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later }); return t; }
+      if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, ambient: loop }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
     } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); if (loop) throw e; return false; }
