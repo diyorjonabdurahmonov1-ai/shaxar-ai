@@ -766,6 +766,16 @@ traffic — tirbandlik, svetofor, avtobus, bekat, marshrut, avariya, chorraha; n
 build — aniq bino qurish (qavat, xonadon); plan — bosh reja, UNESCO, qurilish ruxsati, muhofaza zonasi; road — yangi koʻcha/yoʻl, koʻprik loyihasi;
 climate — iqlim, issiqlik, daraxt, havo, ekologiya; solar — quyosh paneli, energiya; general — boshqa.
 Oldingi savol berilgan boʻlsa va yangi savol uning davomi boʻlsa (“u-chi?”, “endi…”) — oldingi savol turini hisobga ol.`;
+  // Ovozli buyruq: oʻzbekcha gap notoʻgʻri eshitilgan boʻlishi mumkin — AI qaysi buyruq ekanini aniqlaydi (bitta kalit soʻz)
+  const VOICE_KEYS = ['map', 'problems', 'systems', 'twin', 'ai', 'report', 'clear', 'measure', 'tour', 'fotoreal', 'maket', 'area', 'refresh', 'traffic', 'question'];
+  const VOICE_SYS = `Sen ovozli buyruq yoʻnaltiruvchisisan. Foydalanuvchi Samarqand shahri raqamli egizagi saytiga oʻzbekcha (baʼzan ruscha aralash) gapirgan; nutq tanish xato qilgan boʻlishi mumkin (soʻzlar buzilgan) — bir nechta variant beriladi, maʼnosiga qarab aniqla.
+Faqat BITTA kalit soʻz yoz:
+map — xaritaga oʻtish; problems — muammolar boʻlimi; systems — shahar tizimlari; twin — 3D egizak boʻlimi; ai — AI yordamchi/suhbat; report — hisobot/brifing boʻlimi; clear — natijani yopish/tozalash; measure — oʻlchash; tour — obidalar boʻylab sayohat; fotoreal — fotoreal 3D; maket — sxema/maket 3D; area — hudud belgilash; refresh — maʼlumotni yangilash; traffic — jonli probka xaritasi; question — buyruq emas, shahar haqida savol yoki tushunarsiz.`;
+  async function voiceIntent(list) {
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VOICE_SYS }, { role: 'user', content: 'Variantlar:\n' + list.slice(0, 3).map((x, i) => (i + 1) + ') ' + x).join('\n') }], NX.config.openaiLight, 'router');
+    const w = (r.text || '').toLowerCase().match(/[a-z]+/);
+    return w && VOICE_KEYS.includes(w[0]) && w[0] !== 'question' ? w[0] : null;
+  }
   async function route(q, prevQ) {
     if (!aiAvailable()) return null;
     const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: ROUTER }, { role: 'user', content: (prevQ ? `Oldingi savol: ${prevQ}\n` : '') + `Savol: ${q}` }], NX.config.openaiLight, 'router');
@@ -875,5 +885,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, factsAsk, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

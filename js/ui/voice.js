@@ -59,6 +59,24 @@
     if (!t) throw new Error('Gap tanilmadi — biroz balandroq va aniqroq qayta ayting.');
     return t;
   }
+  // Brauzer tanishi yozib olish bilan BIR VAQTDA ishlaydi — ikki tanishdan ikki variant (server + brauzer), keyin buyruq ikkalasidan taxminiy moslanadi
+  function webCapture() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const out = { text: '', done: Promise.resolve(''), stop() {} };
+    if (!SR) return out;
+    let finish; out.done = new Promise(r => { finish = r; });
+    const tryLang = lang => {
+      let r; try { r = new SR(); } catch (e) { finish(''); return; }
+      r.lang = lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 3;
+      r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + ' '; out.text = toLatin(t).trim(); };
+      r.onerror = e => { if (e.error === 'language-not-supported' && lang === 'uz-UZ') tryLang('ru-RU'); else finish(out.text); };
+      r.onend = () => finish(out.text);
+      out.stop = () => { try { r.stop(); } catch (e) { /* */ } };
+      try { r.start(); } catch (e) { finish(''); }
+    };
+    tryLang('uz-UZ');
+    return out;
+  }
   // Brauzerning oʻz tanishi (zaxira)
   function webSpeech(onPart) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -75,14 +93,18 @@
   async function listen(ui) {
     ui = ui || {};
     if (cur) { cur.stop(); return null; }
+    NX.voice.cands = [];
     // Doim tinglash yoqilgan boʻlsa — buyruq yozilayotganda chaqiruv tinglovchisi toʻxtab turadi
     const wkWas = typeof wk !== 'undefined' && wk && !wk.paused; if (wkWas) { wk.paused = true; try { wk.r && wk.r.abort(); } catch (e) { /* */ } }
     try {
       if (await serverOk() && !sttOff) {
         ui.onState && ui.onState('rec');
-        const blob = await record(ui.onLevel);
+        const wc = webCapture();
+        let blob;
+        try { blob = await record(ui.onLevel); } finally { wc.stop(); }
         ui.onState && ui.onState('busy');
-        try { return await transcribe(blob); }
+        const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 1500))]);
+        try { const srv = await transcribe(blob).catch(e => { if (webT) return ''; throw e; }); NX.voice.cands = [srv, webT].filter((x, i, a) => x && a.indexOf(x) === i); return srv || webT; }
         catch (e) {
           // Server ovoz modeliga kira olmasa (OpenAI loyihasida ruxsat yoʻq) — bu sessiyada brauzerning oʻz tanishi ishlatiladi
           if (!/tanib boʻlmadi|modeli|HTTP 4\d\d/.test(e.message) || !(window.SpeechRecognition || window.webkitSpeechRecognition)) throw e;
@@ -111,7 +133,8 @@
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
           if (onState) onState('heard', t);
-          if (WAKE.test(t)) { wk.paused = true; try { r.abort(); } catch (x) { /* */ } beep(880, 140); setTimeout(() => beep(1320, 120), 170); onWake().finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
+          const wm = t.match(WAKE);
+          if (wm) { const rest = toLatin(t.slice(wm.index + wm[0].length)).replace(/^[\s,.!:-]+/, '').trim(); wk.paused = true; try { r.abort(); } catch (x) { /* */ } beep(880, 140); setTimeout(() => beep(1320, 120), 170); onWake(rest).finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
         }
       };
       r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };
@@ -123,5 +146,5 @@
     start();
   }
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeStop, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeStop, waking: () => !!(wk && wk.on), beep };
 })();

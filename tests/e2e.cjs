@@ -613,6 +613,8 @@ async function roadBlock(browser) {
   await p3b.click('.tabs [data-tab=ai]'); await p3b.waitForTimeout(300);
   const co = await p3b.evaluate(() => { const hid = [...document.querySelectorAll('#panel .chat-hide')].length, chat = document.querySelector('#chat'); return { hid, chatVis: !!(chat && chat.offsetParent), bar: !!document.querySelector('#panel .chat-only-bar button') }; });
   ok('Suhbat boshlangach panelda faqat suhbat (boshqa kartochkalar yashirin, “☰” bilan qaytadi)', co.chatVis && co.bar && co.hid >= 1, JSON.stringify(co));
+  const vf = await p3b.evaluate(() => [['xisobot bolimini och', 'Hisobot'], ['исобот бўлимини оч', 'Hisobot'], ['hisobod ochish', 'Hisobot'], ['uch d egizakga kir', '3D egizak'], ['муаммолар', 'Muammolar'], ['харитага ўт', 'Xarita']].map(([q, w]) => { const pl = NX.voicePlan(q); return !!pl && pl.label.indexOf(w) === 0; }).concat([['Rudakiy ko‘chasida tirbandlikni qanday kamaytiramiz', '50 mm yomg‘ir yog‘sa qaysi ko‘chalarni suv bosadi'].every(q => !NX.voicePlan(q))]));
+  ok('Ovoz: notoʻgʻri eshitilgan buyruq ham taniladi (“xisobot”, “исобот”, “hisobod”, “uch d egizakga”), savollar buyruq deb olinmaydi', vf.every(Boolean), JSON.stringify(vf));
   const vc = [];
   for (const [q, tab] of [['City Jam, 3D egizakka kir', 'twin'], ['xaritaga oʻt', 'map'], ['hisobotni och', 'report'], ['siti jam muammolar boʻlimi', 'problems']]) { await p3b.evaluate(q => NX.voiceCommand(q), q); await p3b.waitForTimeout(400); vc.push((await p3b.evaluate(() => NX.state.tab)) === tab); }
   ok('Ovozli yordamchi: “3D egizakka kir”, “xaritaga oʻt”, “hisobotni och” — boʻlimlar ochiladi; 🎙 tugma bor', vc.every(Boolean) && !!(await p3b.$('#btnVoice')), JSON.stringify(vc));

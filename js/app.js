@@ -159,40 +159,101 @@
   async function chatCommand(q) {
     const t = String(q || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(city\s*jam|siti\s*jam)[,.!\s]*/i, '').trim();
     if (t.split(/\s+/).length > 6 || /\?|nima|qanday|qaysi|qayer|nega|necha|qancha|boladi|bolsa|kerak/.test(t)) return false;
-    const nav = VTAB.find(([, re]) => re.test(t)) && /(kir|och|ot\b|bor|qayt|kochir)/.test(t);
-    const act = /natija(ni)?\s*(yop|tozala)|^tozala|fotoreal(ga|ni)?\s*(och|ot|kir|yoq)?$|maket(ga|ni)?\s*(och|ot|qayt)?$|olcha(sh)?ni?\s*(boshla|och|yoq)|sayohat(ni)?\s*(boshla|och)?$|hudud\s*(belgila|chiz)/.test(t);
-    if (!nav && !act) return false;
+    if (!voicePlan(q)) return false;
     S.chat.msgs.push({ role: 'user', text: q }, { role: 'ai', src: 'ai', text: '✅ Bajarildi.' }); renderChat();
     await voiceCommand(q, true);
     return true;
   }
-  async function voiceCommand(raw, quiet) {
-    const t0 = String(raw || '').trim();
-    const t = t0.toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam)[,.!\s]*/i, '').trim();
-    if (!t) return;
-    if (!quiet) toast('🎙 «' + t0 + '»', 'ok');
-    const go = /(kir|och|ot|o\'?t|bor|kochir|korsat|qayt)\b|ga\b/.test(t);
-    // 1) Boʻlimlar
-    // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat / och / top”
-    const st0 = S.model && /korsat|och\b|top\b|qayerda/.test(t) && !/probka|tirband|suv|zilzila|evaku/.test(t) ? NX.ai.detectStreets(t0, S.model)[0] : null;
-    if (st0) { openStreet(st0.s.id); return; }
-    const tab = VTAB.find(([, re]) => re.test(t));
-    const rest = tab ? t.replace(tab[1], ' ').replace(/\b(ga|ka|qa|ni|kir|och|ot|bor|kochir|korsat|qayt|bolim|boʻlim|bolimiga|sahifa)\w*/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
-    if (tab && rest.split(/\s+/).filter(w => w.length > 2).length >= 2 && !go) { setTab(tab[0] === 'map' ? 'ai' : tab[0]); if (tab[0] === 'twin') twinAsk(t0); else chatSend(t0); return; }
-    if (tab && (go || t.split(/\s+/).length <= 3)) { setTab(tab[0]); if (tab[0] === 'twin' && /fotoreal|real/.test(t) && NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); return; }
-    // 2) Oddiy buyruqlar
-    if (/natija(ni)?\s*(yop|tozala|olib\s*tashla)|tozala|hammasini\s*yop/.test(t)) { hazardClear(); NX.view.showActions(null); toast('Natija yopildi.', 'ok'); return; }
-    if (/fotoreal/.test(t)) { setTab('twin'); if (NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); return; }
-    if (/maket|sxema/.test(t)) { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); return; }
-    if (/olcha(sh|b)?\b|olchov/.test(t) && !/tirband|probka/.test(t)) { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); setTimeout(() => NX.map3d.measure(), 600); return; }
-    if (/sayohat|tur\b/.test(t)) { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); return; }
-    if (/hudud\s*(belgila|chiz)/.test(t)) { if (S.tab === 'twin') drawArea3d(); else drawArea(); return; }
-    if (/doim\s*tingla|tinglab\s*tur/.test(t)) { wakeSet(true); toast('Doim tinglash yoqildi — “City Jam” deb chaqiring.', 'ok'); return; }
-    if (/tinglash(ni)?\s*(ochir|toxtat)|tinglama/.test(t)) { wakeSet(false); toast('Doim tinglash oʻchirildi.', 'ok'); return; }
-    if (/(yangila|refresh)/.test(t) && t.split(/\s+/).length <= 3) { loadData(true); return; }
-    if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(t)) { $('#btnTheme') && $('#btnTheme').click(); return; }
-    if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(t)) { setTab('map'); NX.yandex.setTraffic(true); NX.map.updateLegend(); return; }
-    // 3) Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
+  // ---------- Taxminiy moslash: notoʻgʻri eshitilgan soʻz ham tanilsin (“xisobot”, “hisobod”, “исобот” → hisobot) ----------
+  const PK = w => NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/x/g, 'h').replace(/q/g, 'k').replace(/w/g, 'v').replace(/(.)\1+/g, '$1');
+  const SKEL = w => { const p = PK(w); return p.charAt(0) + p.slice(1).replace(/[aeiouy]/g, ''); };   // talaffuz “skeleti”: unlilar tushib qolsa ham mos
+  function lev(a, b) {
+    const m = a.length, n = b.length; if (!m || !n) return Math.max(m, n);
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return prev[n];
+  }
+  const wsim = (a, b) => {
+    const p = PK(a), q = PK(b); if (!p || !q) return 0;
+    let best = 1 - lev(p, q) / Math.max(p.length, q.length);
+    const sp = SKEL(a), sq = SKEL(b); if (sp.length >= 3 && sq.length >= 3) best = Math.max(best, 0.94 * (1 - lev(sp, sq) / Math.max(sp.length, sq.length)));
+    return best;
+  };
+  // Buyruqlarda ishlatiladigan soʻzlar (kodning regexlari shularga tayanadi)
+  const VVOC = ['kir', 'kiring', 'och', 'ochish', 'ot', 'otish', 'bor', 'korsat', 'qayt', 'hisobot', 'brifing', 'xarita', 'muammolar', 'muammo', 'tizimlar', 'tizim', 'egizak', 'yordamchi', 'natija', 'natijani', 'yop', 'tozala', 'fotoreal', 'maket', 'sxema', 'olchash', 'sayohat', 'hudud', 'belgila', 'yangila', 'tingla', 'probka', 'tirbandlik'];
+  const VBASE = new Set(['ga', 'ka', 'qa', 'ni', 'ham', 'va', 'bu', 'shu', 'uch', 'dee', 'bolim', 'bolimi', 'bolimiga', 'sahifa', 'hozir', 'qaysi', 'qayerda']);
+  function canon(t) {
+    return t.split(/\s+/).map(w => {
+      const wn = NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '');
+      if (wn.length < 3 || /\d/.test(wn) || VBASE.has(wn)) return wn;
+      // “hisobotni”, “muammolarni” kabi qoʻshimchali shakllarni ham tanish: soʻz boshi oʻxshashmi
+      let best = null, bs = 0;
+      for (const v of VVOC) { const s2 = Math.max(wsim(wn, v), wn.length > v.length + 1 ? wsim(wn.slice(0, v.length + 1), v) : 0, wn.length > v.length + 2 ? wsim(wn.slice(0, v.length + 2), v) : 0); if (s2 > bs) { bs = s2; best = v; } }
+      return bs >= 0.74 ? best : wn;
+    }).join(' ');
+  }
+  const VTABS = { map: 'Xarita', problems: 'Muammolar', systems: 'Tizimlar', twin: '3D egizak', ai: 'AI yordamchi', report: 'Hisobot' };
+  const gotab = (k, extra) => ({ label: VTABS[k] + ' boʻlimi', run: () => { setTab(k); if (extra) extra(); } });
+  const VCMD = {
+    map: gotab('map'), problems: gotab('problems'), systems: gotab('systems'), twin: gotab('twin'), ai: gotab('ai'), report: gotab('report'),
+    clear: { label: 'natija yopildi', run: () => { hazardClear(); NX.view.showActions(null); } },
+    fotoreal: { label: '🌐 Fotoreal 3D', run: () => { setTab('twin'); if (NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); } },
+    maket: { label: '🧊 Maket', run: () => { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); } },
+    measure: { label: '📏 oʻlchash', run: () => { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); setTimeout(() => NX.map3d.measure(), 600); } },
+    tour: { label: '🎬 sayohat', run: () => { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); } },
+    area: { label: '✏️ hudud belgilash', run: () => { if (S.tab === 'twin') drawArea3d(); else drawArea(); } },
+    refresh: { label: '🔄 yangilash', run: () => loadData(true) },
+    theme: { label: 'rejim almashtirildi', run: () => { $('#btnTheme') && $('#btnTheme').click(); } },
+    traffic: { label: 'jonli probka xaritasi', run: () => { setTab('map'); NX.yandex.setTraffic(true); NX.map.updateLegend(); } },
+    wakeon: { label: 'doim tinglash yoqildi', run: () => wakeSet(true) },
+    wakeoff: { label: 'doim tinglash oʻchirildi', run: () => wakeSet(false) },
+  };
+  // Matn → bajariladigan buyruq (yoki null = savol). Yon taʼsirsiz.
+  function voicePlan(t0) {
+    const t = String(t0 || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam|сити\s*(джем|жам|жем))[,.!\s]*/i, '').trim();
+    if (!t) return null;
+    const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
+    const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
+    // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
+    const st0 = S.model && /\b(korsat|och|top|qayerda)\b/.test(ct) && !/probka|tirband|suv|zilzila|evaku/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
+    if (st0) return { label: st0.s.name + ' koʻchasi', run: () => openStreet(st0.s.id) };
+    const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
+    const tab = TABS.find(([, re]) => re.test(ct));
+    const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
+    if (tab && rest.split(/\s+/).filter(w => w.length > 2).length >= 2 && !go) return null;   // boʻlim nomi bor, lekin bu — savol
+    if (tab && (go || nw <= 3)) {
+      const k = tab[0]; if (k === 'twin' && /fotoreal|real/.test(ct)) return VCMD.fotoreal;
+      return VCMD[k];
+    }
+    if (/natija|tozala|hammasini yop|\byop\b/.test(ct) && !/\?|nima|qanday/.test(ct)) return VCMD.clear;
+    if (/fotoreal/.test(ct)) return VCMD.fotoreal;
+    if (/maket|sxema/.test(ct)) return VCMD.maket;
+    if (/olchash|olchov|\bolcha/.test(ct) && !/tirband|probka/.test(ct)) return VCMD.measure;
+    if (/sayohat|\btur\b/.test(ct)) return VCMD.tour;
+    if (/hudud\s*(belgila|chiz)|belgila\s*hudud/.test(ct)) return VCMD.area;
+    if (/doim\s*tingla|tinglab\s*tur/.test(ct)) return VCMD.wakeon;
+    if (/tingla\w*\s*(ochir|toxtat)|\btinglama\b/.test(ct)) return VCMD.wakeoff;
+    if (/yangila|refresh/.test(ct) && nw <= 3) return VCMD.refresh;
+    if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(ct)) return VCMD.theme;
+    if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(ct)) return VCMD.traffic;
+    return null;
+  }
+  // Matn tilda qisqa va savol emas boʻlsa, lekin local moslash topmadi — AI maʼnosini aniqlaydi
+  async function voiceAI(list) {
+    if (!NX.ai.available() || !NX.ai.voiceIntent) return null;
+    const first = list[0] || ''; if (first.split(/\s+/).length > 7 || /[?]|nima|qanday|qaysi|necha|qancha|qayer|nega/i.test(first)) return null;
+    try { const k = await NX.ai.voiceIntent(list); return k && VCMD[k] ? VCMD[k] : null; } catch (e) { return null; }
+  }
+  async function voiceCommand(raw, quiet, cands) {
+    const list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
+    if (!list.length) return;
+    let plan = null, used = list[0];
+    for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
+    if (!plan) { plan = await voiceAI(list); }
+    if (plan) { if (!quiet) toast('🎙 «' + used + '» → ' + plan.label, 'ok'); plan.run(); return; }
+    // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
+    const t0 = list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
+    if (!quiet) toast('🎙 «' + t0 + '» — savol sifatida', 'ok');
     if (S.tab === 'twin') { twinAsk(t0); return; }
     if (S.tab !== 'ai') setTab('ai');
     await chatSend(t0);
@@ -205,17 +266,21 @@
     if (NX.voice.active()) { NX.voice.stop(); return; }
     try {
       const t = await NX.voice.listen({ onState: st => { b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy'); b.title = st === 'rec' ? 'Tinglayapman… (gapirib boʻlgach oʻzi toʻxtaydi)' : st === 'busy' ? 'Matnga oʻgirilmoqda…' : 'Ovozli yordamchi'; if (st === 'rec') toast('🎙 Tinglayapman… gapiring (masalan: “3D egizakka kir”, “hozir qaysi yoʻllarda probka?”)', 'ok'); }, onLevel: lv => b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)) });
-      if (t) await voiceCommand(t);
+      if (t) await voiceCommand(t, false, NX.voice.cands);
     } catch (e) { toast(e.message, 'warn'); }
   }
-  NX.voiceCommand = voiceCommand;
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan;
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   function wakeSet(on) {
     const b = $('#btnVoice');
     NX.store.set('voice:wake', !!on);
     if (!on) { NX.voice.wakeStop(); b && b.classList.remove('wake'); return; }
     try {
-      NX.voice.wake(async () => { toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent(); }, function (st) {
+      NX.voice.wake(async rest => {
+        // “City Jam, hisobotni och” bir nafasda aytilgan boʻlsa — chaqiruvdan keyingi qismi buyruq boʻlsa, darrov bajariladi
+        if (rest && rest.length > 3 && voicePlan(rest)) { await voiceCommand(rest); return; }
+        toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent();
+      }, function (st) {
         if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
         if (st === 'heard') { S.wakeHeard = arguments[1]; if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
         if (st === 'error') toast('Doim tinglash xatosi: ' + arguments[1] + ' (internet yoki mikrofon)', 'warn');

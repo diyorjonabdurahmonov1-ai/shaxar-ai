@@ -216,7 +216,7 @@ async function stt(req, env, cors, okOrigin) {
   const prompt = 'Samarqand. Oʻzbekcha gap, lotin yozuvida.';
   let lastErr = '';
   // Har model: avval oʻzbekcha (language=uz + kontekst), rad etsa — tilsiz (model oʻzi aniqlaydi)
-  for (const [model, lang] of [['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-mini-transcribe', ''], ['whisper-1', '']]) {
+  for (const [model, lang] of [['gpt-4o-transcribe', 'uz'], ['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-transcribe', ''], ['whisper-1', '']]) {
     const f = new FormData();
     f.append('file', new File([buf], 'ovoz.' + ext, { type })); f.append('model', model); if (lang) f.append('language', lang); f.append('prompt', prompt);
     const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
