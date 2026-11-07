@@ -463,7 +463,8 @@
     try {
       while (awake && Date.now() < awake.until && NX.store.get('voice:wake', true)) {
         try {
-          const t = await voiceAgent({ loop: true });
+          const t0i = Date.now(), t = await voiceAgent({ loop: true });
+          if (Date.now() - t0i < 900) await new Promise(r => setTimeout(r, 900));   // tez qaytsa (xato/soxta) — band aylanib qolmasin
           if (t) { awake.until = Date.now() + AWAKE_MS; awake.errs = 0; if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(NX.translit(String(t)).replace(/[ʻʼ'‘’`]/g, ''))) break; }
         } catch (e) { if (++awake.errs >= 3 || /ruxsat/i.test(e.message)) break; await new Promise(r => setTimeout(r, 1200)); }
       }
