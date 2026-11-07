@@ -358,6 +358,22 @@
     for (const c of list) { const p = await placeFind(c); if (p) return { label: p.name + (p.kind ? ' (' + p.kind + ')' : '') + ' — xaritada', run: () => placeShow(p) }; }
     return null;
   }
+  // Ovoz tushunuvchi uchun nomzodlar: eshitilgan soʻzlarga fonetik oʻxshash joy, koʻcha va katalog savollari
+  let VSTR = null, VQS = null;
+  async function vlex(list) {
+    const ws = [...new Set(list.join(' ').split(/\s+/).map(w => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(w => w.length >= 3))];
+    const tk = n => NX.translit(n).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2);
+    const score = toks => { let sc = 0; ws.forEach(w => { let b = 0; toks.forEach(n => { const x = wsim(w, n); if (x > b) b = x; }); if (b >= 0.72) sc += b; }); return sc; };
+    const top = (arr, k, f) => arr.map(a => [a, score(f(a))]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, k).map(x => x[0]);
+    const idx = await placeIndex();
+    if (!VSTR) VSTR = (S.model ? S.model.namedStreets : []).map(st => ({ name: st.name, tk: tk(st.name) }));
+    if (!VQS) { VQS = []; try { (NX.QUESTIONS || []).forEach(g => g.q.forEach(([q]) => VQS.push({ q, tk: tk(q) }))); } catch (e) { /* */ } }
+    return {
+      places: top(idx, 8, p => p.tk).map(p => p.name),
+      streets: top(VSTR, 6, p => p.tk).map(p => p.name),
+      questions: top(VQS, 6, p => p.tk).map(p => p.q),
+    };
+  }
   // Savol uchun ikki tanishdan qaysi biri tushunarliroq: oʻzbekcha savollar katalogi va koʻcha nomlaridagi soʻzlarga qancha mos kelishi
   let VOC = null;
   const vocab = () => {
@@ -378,11 +394,30 @@
     const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
     if (plan && VIEWK.includes(plan)) { const pp = await placePlan(list); if (pp) plan = pp; }
     if (!plan) { plan = await placePlan(list); }
-    if (!plan) { plan = await voiceAI(list); }
+    let qText = null;
+    const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
+    // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
+    if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
+      if (!quiet) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
+      try {
+        const x = await vlex(list), res = await NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions });
+        if (res) {
+          if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
+          else if (res.t === 'place') { const pl = (await placeIndex()).find(z => z.name === res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
+          else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => z.name === res.n); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; }
+          else if (res.t === 'q' && res.text) qText = String(res.text).trim();
+          else if (res.t === 'unclear') plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
+          if (plan) used = list[0];
+        }
+      } catch (e) { /* AI ishlamasa — mahalliy qoidalar */ }
+    }
+    if (!plan && !qText) { plan = await voiceAI(list); }
+    // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
+    if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
-    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } plan.run(); return; }
+    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
-    const t0 = list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
+    const t0 = qText || list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
     if (!quiet) hud('ok', 'Savol sifatida yuborildi', '«' + t0 + '»');
     if (S.tab === 'twin') { twinAsk(t0); return; }
     if (S.tab !== 'ai') setTab('ai');

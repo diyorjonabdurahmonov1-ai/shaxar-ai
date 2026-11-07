@@ -776,6 +776,26 @@ map — xaritaga oʻtish; problems — muammolar boʻlimi; systems — shahar ti
     const w = (r.text || '').toLowerCase().match(/[a-z]+/);
     return w && VOICE_KEYS.includes(w[0]) && w[0] !== 'question' ? w[0] : null;
   }
+  // Ovoz tushunuvchi: nutq tanish xatolarini domen lugʻati (buyruqlar, joy/koʻcha nomlari, katalog savollari) bilan tuzatadi
+  const VRES_CMDS = { map: 'Xarita boʻlimiga oʻtish', problems: 'Muammolar boʻlimi', systems: 'Shahar tizimlari boʻlimi', twin: '3D egizak boʻlimi', ai: 'AI yordamchi boʻlimi', report: 'Hisobot boʻlimi', clear: 'natijani yopish/tozalash', measure: 'oʻlchash rejimi', tour: 'obidalar boʻylab sayohat', fotoreal: 'fotoreal 3D', maket: 'maket/sxema koʻrinishi', area: 'hudud belgilash', refresh: 'maʼlumotni yangilash', traffic: 'jonli probka qatlami', zoomin: 'xaritani yaqinlashtirish (kattalashtir)', zoomout: 'xaritani uzoqlashtirish (kichraytir)', top: 'tepadan koʻrinish', side: 'yon tomondan koʻrinish', rotate: 'aylantirish/burish', labelsoff: 'obidalar yozuvlarini oʻchirish', labelson: 'yozuvlarni yoqish', lite: 'yengil rejim', settings: 'sozlamalar', stop: 'toʻxtatish', theme: 'qorongʻi/yorugʻ rejim', wakeon: 'doim tinglashni yoqish', wakeoff: 'doim tinglashni oʻchirish' };
+  const VRES_SYS = `Sen Samarqand shahri raqamli egizagi saytining ovozli yordamchisini tushunuvchi modulsan. Foydalanuvchi oʻzbekcha (baʼzan ruscha aralash) gapirgan; nutq tanish bir nechta variantda xato qilgan: soʻzlar buzilgan, qoʻshilgan yoki tushib qolgan. Maʼnosiga va fonetik oʻxshashlikka qarab aslida nima deyilganini aniqla.
+Faqat bitta JSON qaytar (boshqa matn yoʻq):
+{"t":"cmd","k":"<buyruq kaliti>"} | {"t":"place","n":"<joy nomi>"} | {"t":"street","n":"<koʻcha nomi>"} | {"t":"q","text":"<toʻgʻrilangan savol>"} | {"t":"unclear"}
+Qoidalar:
+1) Buyruq kalitlari faqat berilgan roʻyxatdan. Qisqa gap (1–3 soʻz) koʻpincha buyruq; “yaqin/uzoq” aniq boʻlmasa — unclear.
+2) Joy va koʻcha nomi FAQAT berilgan nomzodlar roʻyxatidan (nusxa koʻchir); roʻyxatda mos nom yoʻq boʻlsa uydirma.
+3) Savol — shahar haqida (suv toshqini, zilzila, tirbandlik, qurilish, xizmatlar…): imlo/eshitish xatolarini tuzat, maʼnoni OʻZGARTIRMA. Katalogdagi oʻxshash savol berilgan boʻlsa va gap shuni nazarda tutsa — oʻsha savol matnini ol.
+4) Maʼnosiz yoki tushunarsiz gap (“men namazaman”, tasodifiy soʻzlar) — unclear. Taxmin qilib savol uydirma.
+5) Hozirgi boʻlim va oldingi buyruq berilgan: kontekstga qara.`;
+  async function voiceResolve(list, extra) {
+    const x = extra || {};
+    const msg = 'Variantlar:\n' + list.slice(0, 3).map((q, i) => (i + 1) + ') ' + q).join('\n') + '\n\nHozirgi boʻlim: ' + (x.tab || '?') + (x.prev ? '\nOldingi buyruq: ' + x.prev : '') +
+      '\n\nBuyruqlar:\n' + Object.keys(VRES_CMDS).map(k => k + ' — ' + VRES_CMDS[k]).join('\n') +
+      '\n\nJoy nomzodlari: ' + JSON.stringify(x.places || []) + '\nKoʻcha nomzodlari: ' + JSON.stringify(x.streets || []) + '\nKatalog savollari (oʻxshash): ' + JSON.stringify(x.questions || []);
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VRES_SYS }, { role: 'user', content: msg }], NX.config.openaiLight, 'router');
+    const m = String(r.text || '').match(/\{[\s\S]*\}/); if (!m) return null;
+    try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; return j; } catch (e) { return null; }
+  }
   async function route(q, prevQ) {
     if (!aiAvailable()) return null;
     const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: ROUTER }, { role: 'user', content: (prevQ ? `Oldingi savol: ${prevQ}\n` : '') + `Savol: ${q}` }], NX.config.openaiLight, 'router');
@@ -885,5 +905,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, voiceResolve, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();
