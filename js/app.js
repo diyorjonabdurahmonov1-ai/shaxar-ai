@@ -236,6 +236,14 @@
     if (!t) return null;
     const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
     const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
+    // Yaqinlashtir / uzoqlashtir: imlo va talaffuz xatolariga chidamli (“узоклаш”, “uzaqlashtir”, “yakinlastir”)
+    if (nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
+      const ZV = { zoomin: ['yaqinlashtir', 'kattalashtir', 'yaqinlash', 'kattalash'], zoomout: ['uzoqlashtir', 'kichraytir', 'kichiklashtir', 'uzoqlash', 'kichray'] };
+      let sc = { zoomin: 0, zoomout: 0 };
+      NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length >= 4).forEach(w => Object.keys(ZV).forEach(k => ZV[k].forEach(v => { const x = Math.max(wsim(w, v), w.length > v.length ? wsim(w.slice(0, v.length), v) : 0); if (x > sc[k]) sc[k] = x; })));
+      if (sc.zoomin >= 0.78 && sc.zoomin > sc.zoomout + 0.08) return VCMD.zoomin;
+      if (sc.zoomout >= 0.78 && sc.zoomout > sc.zoomin + 0.08) return VCMD.zoomout;
+    }
     // “-lashtir” fe’li: yaqin/uzoq aniq eshitilmasa taxmin qilinmaydi (“saqlashtir” → yaqinlashtirildi xatosi)
     const lz = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).find(w => /lasht?ir|lastir|lashtr/.test(w));
     if (lz && nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
@@ -264,6 +272,9 @@
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
     const tab = TABS.find(([, re]) => re.test(ct));
     const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
+    // “xaritani <tushunarsiz soʻz>”: boʻlimga oʻtib ketmaymiz, taxmin ham qilmaymiz
+    const rest2 = rest.split(/\s+/).filter(w => w.length > 2 && !/^(lar\w*|dagi|dan|ning|bolimi|d)$/.test(w) && !TABS.some(([, re]) => re.test(w)));
+    if (tab && !go && nw <= 4 && rest2.length === 1) return { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     if (tab && rest.split(/\s+/).filter(w => w.length > 2).length >= 2 && !go) return null;   // boʻlim nomi bor, lekin bu — savol
     if (tab && (go || nw <= 3)) {
       const k = tab[0]; if (k === 'twin' && /fotoreal|real/.test(ct)) return VCMD.fotoreal;
