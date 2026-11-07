@@ -1059,3 +1059,7 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 .place-pin small { display: block; font-weight: 500; font-size: .7rem; color: #fda4af; }
 .place-pin i { width: 14px; height: 14px; margin-top: 4px; border-radius: 50%; background: #f43f5e; box-shadow: 0 0 0 6px rgba(244, 63, 94, .3); animation: vwake 1.4s ease-in-out infinite; }
 #wakePill.awake { color: #5eead4; border-color: rgba(94, 234, 212, .7); box-shadow: 0 0 16px rgba(45, 212, 191, .35); font-weight: 600; }
+
+.ag-ptr { position: fixed; left: 0; top: 0; z-index: 3000; width: 0; height: 0; pointer-events: none; opacity: 0; transition: transform .5s cubic-bezier(.3, .7, .2, 1), opacity .25s; }
+.ag-ptr i { position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%; background: rgba(244, 63, 94, .35); border: 2px solid #f43f5e; box-shadow: 0 0 18px #f43f5e; transition: transform .15s; }
+.ag-ptr.tap i { transform: scale(1.9); background: rgba(244, 63, 94, .7); }

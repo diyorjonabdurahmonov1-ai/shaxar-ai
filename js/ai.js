@@ -780,13 +780,15 @@ map — xaritaga oʻtish; problems — muammolar boʻlimi; systems — shahar ti
   const VRES_CMDS = { map: 'Xarita boʻlimiga oʻtish', problems: 'Muammolar boʻlimi', systems: 'Shahar tizimlari boʻlimi', twin: '3D egizak boʻlimi', ai: 'AI yordamchi boʻlimi', report: 'Hisobot boʻlimi', clear: 'natijani yopish/tozalash', measure: 'oʻlchash rejimi', tour: 'obidalar boʻylab sayohat', fotoreal: 'fotoreal 3D', maket: 'maket/sxema koʻrinishi', area: 'hudud belgilash', refresh: 'maʼlumotni yangilash', traffic: 'jonli probka qatlami', zoomin: 'xaritani yaqinlashtirish (kattalashtir)', zoomout: 'xaritani uzoqlashtirish (kichraytir)', top: 'tepadan koʻrinish', side: 'yon tomondan koʻrinish', rotate: 'aylantirish/burish', labelsoff: 'obidalar yozuvlarini oʻchirish', labelson: 'yozuvlarni yoqish', lite: 'yengil rejim', settings: 'sozlamalar', stop: 'toʻxtatish', theme: 'qorongʻi/yorugʻ rejim', wakeon: 'doim tinglashni yoqish', wakeoff: 'doim tinglashni oʻchirish' };
   const VRES_SYS = `Sen Samarqand shahri raqamli egizagi saytining ovozli yordamchisini tushunuvchi modulsan. Foydalanuvchi oʻzbekcha (baʼzan ruscha aralash) gapirgan; nutq tanish bir nechta variantda xato qilgan: soʻzlar buzilgan, qoʻshilgan yoki tushib qolgan. Maʼnosiga va fonetik oʻxshashlikka qarab aslida nima deyilganini aniqla.
 Faqat bitta JSON qaytar (boshqa matn yoʻq):
-{"t":"cmd","k":"<buyruq kaliti>"} | {"t":"place","n":"<joy nomi>"} | {"t":"street","n":"<koʻcha nomi>"} | {"t":"q","text":"<toʻgʻrilangan savol>"} | {"t":"unclear"}
+{"t":"cmd","k":"<buyruq kaliti>"} | {"t":"place","n":"<joy nomi>"} | {"t":"street","n":"<koʻcha nomi>"} | {"t":"q","text":"<toʻgʻrilangan savol>"} | {"t":"act","say":"<qisqa oʻzbekcha tasdiq>","steps":[...],"more":false} | {"t":"unclear"}
 Qoidalar:
 1) Buyruq kalitlari faqat berilgan roʻyxatdan. Qisqa gap (1–3 soʻz) koʻpincha buyruq; “yaqin/uzoq” aniq boʻlmasa — unclear.
 2) Joy va koʻcha nomi FAQAT berilgan nomzodlar roʻyxatidan (nusxa koʻchir); roʻyxatda mos nom yoʻq boʻlsa uydirma.
 3) Savol — shahar haqida (suv toshqini, zilzila, tirbandlik, qurilish, xizmatlar…): imlo/eshitish xatolarini tuzat, maʼnoni OʻZGARTIRMA. Katalogdagi oʻxshash savol berilgan boʻlsa va gap shuni nazarda tutsa — oʻsha savol matnini ol.
 4) Maʼnosiz yoki tushunarsiz gap (“men namazaman”, tasodifiy soʻzlar) — unclear. Taxmin qilib savol uydirma.
-5) Hozirgi boʻlim va oldingi buyruq berilgan: kontekstga qara.`;
+5) Hozirgi boʻlim va oldingi buyruq berilgan: kontekstga qara.
+6) Agar foydalanuvchi ekrandagi biror tugma/maydon/roʻyxat bandini bosish, ochish, yoqish/oʻchirish, tanlash, matn yozish yoki bir necha qadamli ish soʻrasa — "act": steps ichida qadamlar: {"a":"click","id":N} (N — «Ekrandagi elementlar» roʻyxatidagi raqam), {"a":"type","id":N,"text":"...","enter":true}, {"a":"select","id":N,"v":"..."}, {"a":"scroll","dir":"down|up"}, {"a":"cmd","k":"<buyruq kaliti>"}, {"a":"place","n":"<joy>"}, {"a":"street","n":"<koʻcha>"}, {"a":"ask","text":"<savol>"}, {"a":"wait","ms":600}. Faqat roʻyxatdagi elementlarni ishlat, raqamni uydirma. Oddiy buyruq (cmd) yoki savol (q) yetarli boʻlsa act ishlatma. Qadamlar 1–6 ta. Bosgandan keyin yangi element chiqishi kerak boʻlsa (menyu/dialog ochiladi) va davomi kerak boʻlsa "more":true qoʻy — yangi ekran suratini berib davom ettiramiz.
+7) Tozalash/oʻchirish/reset tugmalarini bosma.`;
   async function voiceResolve(list, extra) {
     const x = extra || {};
     const msg = 'Variantlar:\n' + list.slice(0, 3).map((q, i) => (i + 1) + ') ' + q).join('\n') + '\n\nHozirgi boʻlim: ' + (x.tab || '?') + (x.prev ? '\nOldingi buyruq: ' + x.prev : '') +
@@ -794,7 +796,7 @@ Qoidalar:
       '\n\nJoy nomzodlari: ' + JSON.stringify(x.places || []) + '\nKoʻcha nomzodlari: ' + JSON.stringify(x.streets || []) + '\nKatalog savollari (oʻxshash): ' + JSON.stringify(x.questions || []);
     const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VRES_SYS }, { role: 'user', content: msg }], NX.config.openaiLight, 'router');
     const m = String(r.text || '').match(/\{[\s\S]*\}/); if (!m) return null;
-    try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; return j; } catch (e) { return null; }
+    try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; if (j.t === 'act' && !Array.isArray(j.steps)) return null; return j; } catch (e) { return null; }
   }
   async function route(q, prevQ) {
     if (!aiAvailable()) return null;

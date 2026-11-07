@@ -99,7 +99,7 @@
   async function listen(ui) {
     ui = ui || {};
     if (cur) { cur.stop(); return null; }
-    NX.voice.cands = [];
+    NX.voice.cands = []; NX.voice.later = null;
     // Doim tinglash yoqilgan boʻlsa — buyruq yozilayotganda chaqiruv tinglovchisi toʻxtab turadi
     const wkWas = typeof wk !== 'undefined' && wk && !wk.paused; if (wkWas) { wk.paused = true; try { wk.r && wk.r.abort(); } catch (e) { /* */ } }
     try {
@@ -116,6 +116,9 @@
         if (w0 && ui.quick && ui.quick(w0)) { NX.voice.cands = [w0]; return w0; }
         const srvP = transcribe(blob);   // server bilan brauzer tanishi parallel (oldin ketma-ket 1.5 s kutilardi)
         srvP.catch(() => {});
+        NX.voice.later = srvP.then(x => x, () => '');
+        // Eng tez yoʻl: brauzer matni bor — darrov tahlilga beriladi; tushunilmasa server matni bilan qayta uriniladi
+        if (ui.early && w0 && w0.length > 1) { NX.voice.cands = [w0]; return w0; }
         const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 250))]);
         try { const srv = await srvP.catch(e => { const w = wc.text || webT; if (w) return ''; throw e; }); const wt = wc.text || webT; NX.voice.cands = [srv, wt].filter((x, i, a) => x && a.indexOf(x) === i); return srv || wt; }
         catch (e) {

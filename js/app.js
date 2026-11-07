@@ -387,7 +387,33 @@
     return VOC;
   };
   const vscore = t => { const V = vocab(), ws = String(t || '').split(/\s+/).filter(w => w.length > 2); if (!ws.length) return 0; return ws.filter(w => V.has(PK(w.replace(/[^\p{L}\p{N}ʻ'‘’`ʼ]/gu, '')))).length / ws.length; };
-  async function voiceCommand(raw, quiet, cands) {
+  // Veb-agent: AI bergan qadamlar (tugma bosish, yozish, joy/buyruq) ketma-ket bajariladi; davomi kerak boʻlsa ekran qayta suratga olinadi
+  async function agentRun(res, list, depth) {
+    const H = {
+      cmd: k => { const c = VCMD[k]; if (c) c.run(); },
+      place: async n => { const pl = (await placeIndex()).find(z => z.name === n); if (pl) placeShow(pl); },
+      street: n => { const sd = (S.model ? S.model.namedStreets : []).find(z => z.name === n); if (sd) openStreet(sd.id); },
+      ask: q => { if (S.tab === 'twin') twinAsk(q); else { if (S.tab !== 'ai') setTab('ai'); chatSend(q); } },
+    };
+    await NX.agent.run(res.steps, H);
+    if (res.more && (depth || 0) < 3 && NX.ai.available()) {
+      await new Promise(r => setTimeout(r, 600));
+      try {
+        const r2 = await NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, ui: NX.agent.compact(NX.agent.snapshot()), done: res.say || 'oldingi qadamlar' });
+        if (r2 && r2.t === 'act') { hud('ok', '✓ ' + (r2.say || 'Davom etyapman'), ''); return agentRun(r2, list, (depth || 0) + 1); }
+      } catch (e) { /* */ }
+    }
+  }
+  async function voiceCommand(raw, quiet, cands, opts) {
+    const st = await voiceCommand0(raw, quiet, cands, opts);
+    // Brauzer matni bilan tushunilmadi — server (aniqroq) matni bilan qayta urinish
+    if (st === 'unclear' && opts && opts.later && !opts.retried) {
+      const l = await opts.later;
+      if (l && l !== raw) { if (!quiet) hud('busy', 'Aniqlashtirilmoqda…', '«' + l + '»'); return voiceCommand0(l, quiet, [raw], { retried: true }); }
+      if (!quiet) hud('warn', 'Aniq eshitilmadi — qayta ayting', '«' + raw + '»');
+    }
+  }
+  async function voiceCommand0(raw, quiet, cands, opts) {
     let list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
     if (!list.length) return;
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
@@ -404,12 +430,13 @@
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
       if (!quiet) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
       try {
-        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions })]);
+        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
           else if (res.t === 'place') { const pl = (await placeIndex()).find(z => z.name === res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
           else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => z.name === res.n); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; }
           else if (res.t === 'q' && res.text) qText = String(res.text).trim();
+          else if (res.t === 'act' && NX.agent) plan = { label: res.say || 'Bajarilmoqda', run: () => { agentRun(res, list, 0); } };
           else if (res.t === 'unclear') plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
           if (plan) used = list[0];
         }
@@ -418,6 +445,7 @@
     if (!plan && !qText) { plan = await voiceAI(list); }
     // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
+    if (plan && plan.warn && opts && opts.later && !opts.retried) return 'unclear';
     if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
     if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
@@ -435,7 +463,7 @@
     if (NX.voice.active()) { NX.voice.stop(); return false; }
     try {
       const t = await NX.voice.listen({
-        silentOk: loop,
+        silentOk: loop, early: true,
         quick: x => { try { const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
@@ -448,7 +476,7 @@
         onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); if (!loop) hudLevel(lv); },
         onPart: t => { if (loop && t) hud('rec', 'Tinglayapman…', '«' + t + '»'); const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
-      if (t) { await voiceCommand(t, false, NX.voice.cands); return t; }
+      if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
     } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); if (loop) throw e; return false; }
