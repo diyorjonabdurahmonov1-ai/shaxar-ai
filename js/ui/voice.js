@@ -5,7 +5,7 @@
   'use strict';
   const NX = window.NX;
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
-  let ver = null, cur = null, sttOff = false;
+  let ver = null, cur = null, sttOff = false, held = null;
   async function serverOk() {
     if (ver != null) return ver >= 13;
     if (!base()) return false;
@@ -16,29 +16,41 @@
   const CY = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'x', ц: 's', ч: 'ch', ш: 'sh', щ: 'sh', ъ: 'ʼ', ы: 'i', ь: '', э: 'e', ю: 'yu', я: 'ya', ў: 'oʻ', қ: 'q', ғ: 'gʻ', ҳ: 'h' };
   const toLatin = s => String(s || '').replace(/[А-Яа-яЁёЎўҚқҒғҲҳ]/g, c => { const l = c.toLowerCase(), t = CY[l] != null ? CY[l] : c; return c === l ? t : t.charAt(0).toUpperCase() + t.slice(1); });
 
+  // Uygʻoq rejimda mikrofon bir marta ochiladi (har gapda qayta ochish ogʻir va ruxsat soʻrashi mumkin)
+  async function hold(on) {
+    if (!on) { if (held) { try { held.stream.getTracks().forEach(t => t.stop()); held.ac && held.ac.close().catch(() => {}); } catch (e) { /* */ } held = null; } return; }
+    if (held && held.stream.active) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
+    if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; }
+    held = { stream, ac, an };
+  }
   // Yozib olish: Promise<Blob>; onLevel(0..1) — tugma animatsiyasi uchun
   async function record(onLevel, ui) {
     if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('Bu brauzer ovoz yozishni qoʻllamaydi (Chrome yoki Edge’ning yangi versiyasi kerak).');
-    let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-    catch (e) { throw new Error(e && e.name === 'NotAllowedError' ? 'Mikrofonga ruxsat berilmagan — manzil satridagi 🔒 belgisidan mikrofonga ruxsat bering.' : 'Mikrofon topilmadi yoki band.'); }
+    let stream, ac, an, own = true;
+    if (held && held.stream.active) { stream = held.stream; ac = held.ac; an = held.an; own = false; if (ac && ac.state === 'suspended') ac.resume().catch(() => {}); }
+    else {
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+      catch (e) { throw new Error(e && e.name === 'NotAllowedError' ? 'Mikrofonga ruxsat berilmagan — manzil satridagi 🔒 belgisidan mikrofonga ruxsat bering.' : 'Mikrofon topilmadi yoki band.'); }
+      const AC = window.AudioContext || window.webkitAudioContext; ac = AC ? new AC() : null; an = ac ? ac.createAnalyser() : null;
+      if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }
+    }
     const micLabel = (stream.getAudioTracks()[0] || {}).label || ''; ui && ui.onMic && ui.onMic(micLabel);
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
-    if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }   // tugmasiz (chaqiruv soʻzi) ochilganda AudioContext uxlab qoladi — uygʻotiladi
     const buf = an ? new Uint8Array(an.fftSize) : null;
     let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0, floor = 0, nF = 0, peak = 0, quietWarned = false;
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); });
     let acOk = false;
-    const stop = () => { acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); };
-    let voicedMs = 0, lastT = 0;
+    const stop = () => { acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); clearTimeout(raf); if (own) { stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); } };
+    let voicedMs = 0, lastT = 0, lvT = 0;
     const tick = () => {
       const now = Date.now();
       if (an) {
         an.getByteTimeDomainData(buf); let m = 0; for (let i = 0; i < buf.length; i++) m = Math.max(m, Math.abs(buf[i] - 128));
-        const lv = m / 128; if (onLevel) onLevel(lv);
+        const lv = m / 128; if (onLevel && now - lvT > 100) { lvT = now; onLevel(lv); }
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
         if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
@@ -47,7 +59,7 @@
       lastT = now;
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
       if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
-      raf = requestAnimationFrame(tick);
+      raf = setTimeout(tick, 50);
     };
     rec.start(250); tick();
     cur = { stop };
@@ -58,7 +70,7 @@
     return blob;
   }
   async function transcribe(blob) {
-    const r = await NX.fetchJSON(base() + '/stt', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 60000);
+    const r = await NX.fetchJSON(base() + '/stt', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 15000);
     if (!r.ok || !r.data || r.data.error) throw new Error((r.data && r.data.error && r.data.error.message) || 'Ovozni matnga oʻgirib boʻlmadi (HTTP ' + r.status + ')');
     let t = toLatin(r.data.text || '').trim();
     // Model eshitmay qolsa kontekst matnini qaytaradi — bunday “javob” buyruq emas (eski Worker’ning uzun promptini ham taniydi)
@@ -137,7 +149,7 @@
   }
   // ---------- “Alisa” kabi: doim tinglash — chaqiruv soʻzi (“City Jam”) eshitilsa, buyruq yoziladi ----------
   // Brauzerning nutq tanishi (Chrome/Edge) uzluksiz ishlaydi va faqat chaqiruv soʻzini qidiradi; buyruqning oʻzi — listen() (oʻzbekcha STT).
-  const WAKE = /(сити|сіті|ситі|сіти|ситти|сыти|сэти|сеть|цити|city|citi|siti|sity|сити-)[\s-]*(д?ж[еэаёи]м|jam|djem|jem|j[ae]m|гем|ж[еэ]м|джей?м|gem)?|(^|\s)(джем|джэм|жем|джам|jam|djam)(\s|$)|ситиджем|ситижам|citijam|sitijam|city\s*gym/i;
+  const WAKE = /(сити|сіті|ситі|сіти|ситти|сыти|цити|city|citi|siti|sity)[\s-]*(д?ж[еэаёи]м|jam|djem|jem|j[ae]m|гем|джей?м|gem)|ситиджем|ситижам|citijam|sitijam|city\s*gym/i;
   let wk = null;
   function beep(f, d) { try { const A = window.AudioContext || window.webkitAudioContext, ac = new A(); if (ac.state === 'suspended') ac.resume(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); setTimeout(() => { o.stop(); ac.close(); }, d || 160); } catch (e) { /* */ } }
   function wake(onWake, onState) {
@@ -168,5 +180,5 @@
   }
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, wakeStop, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, waking: () => !!(wk && wk.on), beep };
 })();

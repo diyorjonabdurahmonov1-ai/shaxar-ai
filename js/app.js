@@ -177,8 +177,9 @@
   }
   const hudLevel = lv => { const h = $('#voiceHud'); if (h) h.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); };
   // ---------- Taxminiy moslash: notoʻgʻri eshitilgan soʻz ham tanilsin (“xisobot”, “hisobod”, “исобот” → hisobot) ----------
-  const PK = w => NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/x/g, 'h').replace(/q/g, 'k').replace(/w/g, 'v').replace(/(.)\1+/g, '$1');
-  const SKEL = w => { const p = PK(w); return p.charAt(0) + p.slice(1).replace(/[aeiouy]/g, ''); };   // talaffuz “skeleti”: unlilar tushib qolsa ham mos
+  const PKc = new Map(), SKc = new Map();
+  const PK = w => { let r = PKc.get(w); if (r === undefined) { r = NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/x/g, 'h').replace(/q/g, 'k').replace(/w/g, 'v').replace(/(.)\1+/g, '$1'); if (PKc.size > 20000) PKc.clear(); PKc.set(w, r); } return r; };
+  const SKEL = w => { let r = SKc.get(w); if (r === undefined) { const p = PK(w); r = p.charAt(0) + p.slice(1).replace(/[aeiouy]/g, ''); if (SKc.size > 20000) SKc.clear(); SKc.set(w, r); } return r; };
   function lev(a, b) {
     const m = a.length, n = b.length; if (!m || !n) return Math.max(m, n);
     let prev = Array.from({ length: n + 1 }, (_, j) => j);
@@ -187,8 +188,12 @@
   }
   const wsim = (a, b) => {
     const p = PK(a), q = PK(b); if (!p || !q) return 0;
-    let best = 1 - lev(p, q) / Math.max(p.length, q.length);
-    const sp = SKEL(a), sq = SKEL(b); if (sp.length >= 3 && sq.length >= 3) best = Math.max(best, 0.94 * (1 - lev(sp, sq) / Math.max(sp.length, sq.length)));
+    const sp = SKEL(a), sq = SKEL(b);
+    // tez rad: uzunliklar juda farq qilsa (edit-distance pastki chegarasi) hisoblanmaydi
+    const lr = Math.min(p.length, q.length) / Math.max(p.length, q.length), sr = Math.min(sp.length, sq.length) / Math.max(sp.length, sq.length);
+    if (lr < 0.55 && sr < 0.55) return 0;
+    let best = lr < 0.55 ? 0 : 1 - lev(p, q) / Math.max(p.length, q.length);
+    if (sp.length >= 3 && sq.length >= 3 && sr >= 0.55) best = Math.max(best, 0.94 * (1 - lev(sp, sq) / Math.max(sp.length, sq.length)));
     return best;
   };
   // Buyruqlarda ishlatiladigan soʻzlar (kodning regexlari shularga tayanadi)
@@ -494,8 +499,8 @@
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     if (plan && plan.warn && opts && opts.later && !opts.retried) return 'unclear';
     if (plan && plan.warn && amb) return 'warn';
-    if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
-    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
+    if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); } return; }
+    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
     const t0 = qText || list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
     if (!quiet) hud('ok', 'Savol sifatida yuborildi', '«' + t0 + '»');
@@ -527,7 +532,7 @@
       if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, ambient: loop }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
-    } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); if (loop) throw e; return false; }
+    } catch (e) { hud('warn', e.message, ''); if (loop) throw e; return false; }
   }
   // “Alisa” kabi: chaqiruvdan keyin 1 daqiqa uygʻoq — chaqiruv soʻzisiz ketma-ket buyruqlar; har buyruqdan keyin muddat yangilanadi
   const AWAKE_MS = 60000;
@@ -536,9 +541,11 @@
     if (awake) { awake.until = Date.now() + AWAKE_MS; return; }
     awake = { until: Date.now() + AWAKE_MS, errs: 0 };
     NX.voice.wakeHold(true);
+    try { await NX.voice.hold(true); } catch (e) { /* ruxsat boʻlmasa — har gapda alohida */ }
     const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true); }, 1000);
     try {
       while (awake && Date.now() < awake.until && NX.store.get('voice:wake', true)) {
+        if (document.hidden) { await new Promise(r => setTimeout(r, 1500)); awake.until += 1500; continue; }   // yashirin tabda ishlamaydi
         try {
           const t0i = Date.now(), t = await voiceAgent({ loop: true });
           if (Date.now() - t0i < 900) await new Promise(r => setTimeout(r, 900));   // tez qaytsa (xato/soxta) — band aylanib qolmasin
@@ -546,7 +553,7 @@
         } catch (e) { if (++awake.errs >= 3 || /ruxsat/i.test(e.message)) break; await new Promise(r => setTimeout(r, 1200)); }
       }
     } finally {
-      clearInterval(tick); const was = awake; awake = null; wakePill(null);
+      clearInterval(tick); const was = awake; awake = null; wakePill(null); NX.voice.hold(false);
       NX.voice.wakeHold(false);
       if (was && Date.now() >= was.until) toast('🎙 Uygʻoq rejim tugadi — qayta uygʻotish uchun “City Jam” deng.', 'ok');
     }
@@ -2833,7 +2840,7 @@
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
-    setTimeout(() => { placeIndex().catch(() => {}); }, 4000);   // joy/koʻcha nomlari indeksi oldindan
+    (window.requestIdleCallback || (f => setTimeout(f, 6000)))(() => { placeIndex().catch(() => {}); }, { timeout: 12000 });   // joy/koʻcha nomlari indeksi oldindan
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
     document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
     if (NX.store.get('voice:wake', true) && !navigator.webdriver) {

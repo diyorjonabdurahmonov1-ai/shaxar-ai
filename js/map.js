@@ -240,7 +240,8 @@
 
   function setModel(model) {
     M = model;
-    Object.values(L_).forEach(g => g.clearLayers());
+    // Model qayta qurilganda (maʼlumot yangilanishi) topilgan joy/koʻcha/loyiha belgisi yoʻqolmasin
+    Object.entries(L_).forEach(([k, g]) => { if (k !== 'road') g.clearLayers(); });
     wayLines = M.ways.map(w => {
       const pl = L.polyline(w.ll, Object.assign({ renderer, bubblingMouseEvents: false }, styleFor(w)));
       pl.on('click', e => h.onStreet && h.onStreet(w.street, e.latlng));
