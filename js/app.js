@@ -236,6 +236,16 @@
     if (!t) return null;
     const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
     const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
+    // “-lashtir” fe’li: yaqin/uzoq aniq eshitilmasa taxmin qilinmaydi (“saqlashtir” → yaqinlashtirildi xatosi)
+    const lz = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).find(w => /lasht?ir|lastir|lashtr/.test(w));
+    if (lz && nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
+      const stem = lz.replace(/(lasht?ir|lastir|lashtr)\w*$/, ''), a = wsim(stem, 'yaqin'), b = wsim(stem, 'uzoq');
+      if (stem.length >= 2 && !/kattal|kichra|kichik/.test(lz)) {
+        if (a >= 0.7 && a > b + 0.15) return VCMD.zoomin;
+        if (b >= 0.7 && b > a + 0.15) return VCMD.zoomout;
+        return { warn: true, label: 'Aniq eshitilmadi — “yaqinlashtir” yoki “uzoqlashtir” deng', run: () => { } };
+      }
+    }
     if (nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
       if (/yaqinlash|kattalash|zoom\s*in/.test(ct)) return VCMD.zoomin;
       if (/uzoqlash|kichray|zoom\s*out/.test(ct)) return VCMD.zoomout;
@@ -358,6 +368,7 @@
     if (plan && VIEWK.includes(plan)) { const pp = await placePlan(list); if (pp) plan = pp; }
     if (!plan) { plan = await placePlan(list); }
     if (!plan) { plan = await voiceAI(list); }
+    if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
     if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
     const t0 = list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
