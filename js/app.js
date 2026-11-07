@@ -215,11 +215,11 @@
     tour: { label: '🎬 sayohat', run: () => { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); } },
     area: { label: '✏️ hudud belgilash', run: () => { if (S.tab === 'twin') drawArea3d(); else drawArea(); } },
     refresh: { label: '🔄 yangilash', run: () => loadData(true) },
-    zoomin: { label: 'yaqinlashtirildi', run: () => { const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomIn({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomIn(); } } },
-    zoomout: { label: 'uzoqlashtirildi', run: () => { const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomOut({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomOut(); } } },
-    top: { label: 'tepadan koʻrinish', run: () => { setTab('twin'); setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 0, bearing: 0, duration: 900 }); }, 400); } },
-    side: { label: 'yon tomondan koʻrinish', run: () => { setTab('twin'); setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 68, duration: 900 }); }, 400); } },
-    rotate: { label: 'burildi', run: () => { setTab('twin'); setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ bearing: m.getBearing() + 60, duration: 1200 }); }, 400); } },
+    zoomin: { label: 'yaqinlashtirildi', run: () => { if (S.tab === 'twin' && NX.g3d.active() && NX.g3d.cam({ zoom: 2 })) return; const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomIn({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomIn(); } } },
+    zoomout: { label: 'uzoqlashtirildi', run: () => { if (S.tab === 'twin' && NX.g3d.active() && NX.g3d.cam({ zoom: 0.5 })) return; const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomOut({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomOut(); } } },
+    top: { label: 'tepadan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -89 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 0, bearing: 0, duration: 900 }); }, 400); } },
+    side: { label: 'yon tomondan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -25 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 68, duration: 900 }); }, 400); } },
+    rotate: { label: 'burildi', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ turn: 60 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ bearing: m.getBearing() + 60, duration: 1200 }); }, 400); } },
     labelsoff: { label: 'obidalar yozuvlari oʻchdi', run: () => NX.map3d.labels(false) },
     labelson: { label: 'obidalar yozuvlari yoqildi', run: () => NX.map3d.labels(true) },
     lite: { label: 'yengil rejim almashtirildi', run: () => { $('#btnLite') && $('#btnLite').click(); } },
@@ -236,6 +236,18 @@
     if (!t) return null;
     const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
     const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
+    if (nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
+      if (/yaqinlash|kattalash|zoom\s*in/.test(ct)) return VCMD.zoomin;
+      if (/uzoqlash|kichray|zoom\s*out/.test(ct)) return VCMD.zoomout;
+      if (/tepadan|yuqoridan/.test(ct)) return VCMD.top;
+      if (/yon\s*tomon|yondan|nishab/.test(ct)) return VCMD.side;
+      if (/aylant|burish|bur\b|buring/.test(ct)) return VCMD.rotate;
+      if (/yozuv\w*\s*(ochir|yashir|kerakmas)|(ochir|yashir)\w*\s*yozuv/.test(ct)) return VCMD.labelsoff;
+      if (/yozuv\w*\s*(yoq|korsat|och)/.test(ct)) return VCMD.labelson;
+      if (/yengil\s*rejim|kuchsiz\s*rejim/.test(ct)) return VCMD.lite;
+      if (/sozlama/.test(ct)) return VCMD.settings;
+      if (/^(stop|toxta\w*|bas|yetar)$/.test(ct)) return VCMD.stop;
+    }
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
     const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
     if (st0) return { label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
@@ -255,18 +267,6 @@
     if (/hudud\s*(belgila|chiz)|belgila\s*hudud/.test(ct)) return VCMD.area;
     if (/doim\s*tingla|tinglab\s*tur/.test(ct)) return VCMD.wakeon;
     if (/tingla\w*\s*(ochir|toxtat)|\btinglama\b/.test(ct)) return VCMD.wakeoff;
-    if (nw <= 4 && !/\?|nima|qanday|qaysi/.test(ct)) {
-      if (/yaqinlash|kattalash|zoom\s*in/.test(ct)) return VCMD.zoomin;
-      if (/uzoqlash|kichray|zoom\s*out/.test(ct)) return VCMD.zoomout;
-      if (/tepadan|yuqoridan/.test(ct)) return VCMD.top;
-      if (/yon\s*tomon|yondan|nishab/.test(ct)) return VCMD.side;
-      if (/aylant|burish|bur\b|buring/.test(ct)) return VCMD.rotate;
-      if (/yozuv\w*\s*(ochir|yashir|kerakmas)|(ochir|yashir)\w*\s*yozuv/.test(ct)) return VCMD.labelsoff;
-      if (/yozuv\w*\s*(yoq|korsat|och)/.test(ct)) return VCMD.labelson;
-      if (/yengil\s*rejim|kuchsiz\s*rejim/.test(ct)) return VCMD.lite;
-      if (/sozlama/.test(ct)) return VCMD.settings;
-      if (/^(stop|toxta\w*|bas|yetar)$/.test(ct)) return VCMD.stop;
-    }
     if (/yangila|refresh/.test(ct) && nw <= 3) return VCMD.refresh;
     if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(ct)) return VCMD.theme;
     if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(ct)) return VCMD.traffic;

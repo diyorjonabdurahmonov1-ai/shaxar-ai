@@ -414,5 +414,16 @@
   }
   function hidePop() { const el = box && box.querySelector('.g3d-pop'); if (el && !el.hidden) el.hidden = true; }
 
-  NX.g3d = { _dbg: () => ({ viewer, tiles, osm }), available, active, autoEmbed, embed, hide, toggle, setHazard, set, setMode, showArea, setOverlay, fitTo, flyTo, drawPoly };
+  // Ovoz buyruqlari: kamera (zoom k>1 — yaqinlash, pitch — daraja, turn — burish)
+  function cam(o) {
+    if (!viewer || !window.Cesium) return false;
+    const C = window.Cesium, c = viewer.camera;
+    if (o.zoom) { const d = o.zoom > 1 ? c.positionCartographic.height * (1 - 1 / o.zoom) : -c.positionCartographic.height * (1 / o.zoom - 1); d > 0 ? c.moveForward(d) : c.moveBackward(-d); }
+    if (o.pitch != null || o.turn) {
+      const r = viewer.camera.pickEllipsoid(new C.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2));
+      if (r) { const g = C.Cartographic.fromCartesian(r); look(C.Math.toDegrees(g.latitude), C.Math.toDegrees(g.longitude), C.Cartesian3.distance(c.position, r), C.Math.toDegrees(c.heading) + (o.turn || 0), o.pitch != null ? o.pitch : C.Math.toDegrees(c.pitch)); }
+    }
+    viewer.scene.requestRender(); return true;
+  }
+  NX.g3d = { _dbg: () => ({ viewer, tiles, osm }), cam, available, active, autoEmbed, embed, hide, toggle, setHazard, set, setMode, showArea, setOverlay, fitTo, flyTo, drawPoly };
 })();
