@@ -129,13 +129,12 @@
         // Tezlik: brauzer matni allaqachon tayyor va oddiy buyruqqa aniq mos kelsa — serverni kutmaymiz
         const w0 = wc.text;
         if (w0 && ui.quick && ui.quick(w0)) { NX.voice.cands = [w0]; return w0; }
-        const srvP = transcribe(blob);   // server bilan brauzer tanishi parallel (oldin ketma-ket 1.5 s kutilardi)
-        srvP.catch(() => {});
-        NX.voice.later = srvP.then(x => x, () => '');
+        let srvP = null; const srv$ = () => (srvP = srvP || transcribe(blob));   // server faqat kerak boʻlganda chaqiriladi (tushunilmasa)
+        NX.voice.later = () => srv$().then(x => x, () => '');
         // Eng tez yoʻl: brauzer matni bor — darrov tahlilga beriladi; tushunilmasa server matni bilan qayta uriniladi
         if (ui.early && w0 && w0.length > 1) { NX.voice.cands = [w0]; return w0; }
         const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 250))]);
-        try { const srv = await srvP.catch(e => { const w = wc.text || webT; if (w) return ''; throw e; }); const wt = wc.text || webT; NX.voice.cands = [srv, wt].filter((x, i, a) => x && a.indexOf(x) === i); return srv || wt; }
+        try { const srv = await srv$().catch(e => { const w = wc.text || webT; if (w) return ''; throw e; }); const wt = wc.text || webT; NX.voice.cands = [srv, wt].filter((x, i, a) => x && a.indexOf(x) === i); return srv || wt; }
         catch (e) {
           // Server ovoz modeliga kira olmasa (OpenAI loyihasida ruxsat yoʻq) — bu sessiyada brauzerning oʻz tanishi ishlatiladi
           if (!/tanib boʻlmadi|modeli|HTTP 4\d\d/.test(e.message) || !(window.SpeechRecognition || window.webkitSpeechRecognition)) throw e;
@@ -167,7 +166,7 @@
           const t = e.results[i][0].transcript;
           if (onState) onState('heard', t);
           const wm = t.match(WAKE);
-          if (wm) { const rest = toLatin(t.slice(wm.index + wm[0].length)).replace(/^[\s,.!:-]+/, '').trim(); wk.paused = true; try { r.abort(); } catch (x) { /* */ } beep(880, 140); setTimeout(() => beep(1320, 120), 170); onWake(rest).finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
+          if (wm) { const rest = toLatin(t.slice(wm.index + wm[0].length)).replace(/^[\s,.!:-]+/, '').trim(); wk.paused = true; try { r.abort(); } catch (x) { /* */ } onWake(rest).finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
         }
       };
       r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };

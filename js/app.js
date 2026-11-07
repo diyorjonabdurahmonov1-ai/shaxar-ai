@@ -450,8 +450,8 @@
     const st = await voiceCommand0(raw, quiet, cands, opts);
     // Brauzer matni bilan tushunilmadi — server (aniqroq) matni bilan qayta urinish
     if (st === 'unclear' && opts && opts.later && !opts.retried) {
-      const l = await opts.later;
-      if (l && l !== raw) { if (!quiet && !opts.ambient) hud('busy', 'Aniqlashtirilmoqda…', '«' + l + '»'); return voiceCommand0(l, quiet, [raw], { retried: true, ambient: opts.ambient }); }
+      const l = await (typeof opts.later === 'function' ? opts.later() : opts.later);
+      if (l && l !== raw) { return voiceCommand0(l, quiet, [raw], { retried: true, ambient: opts.ambient }); }
       if (!quiet && !(opts && opts.ambient)) hud('warn', 'Aniq eshitilmadi — qayta ayting', '«' + raw + '»');
     }
   }
@@ -477,9 +477,9 @@
     const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
-      if (!quiet && !amb) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
+      
       try {
-        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
+        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 4000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
           else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl && placeHeard(list, pl)) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
@@ -520,14 +520,13 @@
         quick: x => { try { if (x.split(/\s+/).length > 4) return false; const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
-          if (loop) { if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', ''); return; }
+          if (loop) return;
           if (st === 'rec') hud('rec', 'Tinglayapman…', 'masalan: “hisobot boʻlimini och”, “hozir qaysi yoʻllarda probka?”');
-          else if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', '');
         },
         onMic: lab => { voiceAgent.mic = lab || ''; const h = $('#voiceHud'); if (!loop && h && h.classList.contains('rec')) h.querySelector('small').textContent = '🎤 ' + (lab || 'mikrofon') ; },
         onQuiet: lab => { if (!loop) hud('rec', 'Ovoz kelmayapti — mikrofon: ' + (lab || 'nomaʼlum'), 'Windows → Ovoz → Kirish: toʻgʻri mikrofonni tanlang va ovozini oshiring'); },
         onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); if (!loop) hudLevel(lv); },
-        onPart: t => { if (loop && t) hud('rec', 'Tinglayapman…', '«' + t + '»'); const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
+        onPart: t => { if (loop) return; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
       if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, ambient: loop }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
