@@ -2599,13 +2599,13 @@
     $('#btnVoice').addEventListener('click', voiceAgent);
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
     document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape' && NX.voice.active()) NX.voice.stop(); });
-    if (NX.store.get('voice:wake', false) && !navigator.webdriver) {
+    if (NX.store.get('voice:wake', true) && !navigator.webdriver) {
       setTimeout(() => wakeSet(true), 2500);
       // Baʼzi brauzerlar sahifa ochilganda (foydalanuvchi bosmasdan) tinglashni boshlatmaydi — birinchi bosishda qayta yoqiladi
-      const kick = () => { if (NX.store.get('voice:wake', false) && !NX.voice.waking()) wakeSet(true); };
+      const kick = () => { if (NX.store.get('voice:wake', true) && !NX.voice.waking()) wakeSet(true); };
       document.addEventListener('pointerdown', kick, { once: true, capture: true }); document.addEventListener('keydown', kick, { once: true, capture: true });
     }
-    const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', false); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
+    const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', true); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));

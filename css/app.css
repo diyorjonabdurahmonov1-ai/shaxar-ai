@@ -1028,7 +1028,9 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 .voice-btn { position: relative; }
 .voice-btn.wake::after { content: ''; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; animation: vwake 2s ease-in-out infinite; }
 @keyframes vwake { 50% { opacity: .35; } }
-.field.check { display: flex; gap: 8px; align-items: flex-start; }
+.field.check { display: flex; flex-direction: row; gap: 8px; align-items: flex-start; }
+.field[hidden] { display: none !important; }
+.field.check input { margin-top: 3px; flex: none; }
 /* 🎙 Ovoz paneli */
 #voiceHud { position: fixed; left: 50%; top: 84px; transform: translate(-50%, -12px); z-index: 2500; display: flex; align-items: center; gap: 12px; max-width: min(92vw, 560px); padding: 10px 16px; border-radius: 16px; background: rgba(3, 7, 16, .9); border: 1px solid rgba(94, 234, 212, .45); box-shadow: 0 10px 40px rgba(0, 0, 0, .55), 0 0 28px rgba(45, 212, 191, .25); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; color: #e2e8f0; }
 #voiceHud.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
