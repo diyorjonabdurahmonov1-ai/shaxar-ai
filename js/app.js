@@ -316,7 +316,19 @@
   }
   function placeShow(p) {
     const lat = p.c[0], lon = p.c[1];
-    if (S.tab === 'twin') { try { NX.map3d.flyTo(lat, lon, 17.5); } catch (e) { /* */ } return; }
+    if (S.tab === 'twin') {
+      try {
+        const m = NX.map3d.map();
+        if (m && window.maplibregl) {
+          if (placeShow.pin) placeShow.pin.remove(); clearTimeout(placeShow.t);
+          const el = document.createElement('div'); el.className = 'place-pin'; el.innerHTML = '<span>' + NX.esc(p.name) + (p.kind ? '<small>' + NX.esc(p.kind) + '</small>' : '') + '</span><i></i>';
+          placeShow.pin = new window.maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lon, lat]).addTo(m);
+          placeShow.t = setTimeout(() => { placeShow.pin && placeShow.pin.remove(); placeShow.pin = null; }, 60000);
+        }
+        NX.map3d.flyTo(lat, lon, 17.5);
+      } catch (e) { /* */ }
+      return;
+    }
     if (S.tab !== 'map') setTab('map');
     ensureLeaflet();
     setTimeout(() => NX.view.showPlace({ labels: [{ lat, lon, cls: 'rd-mumkin', title: '📍 ' + p.name, note: p.kind || '' }], ring: [lat, lon], fit: [[lat - 0.0025, lon - 0.0035], [lat + 0.0025, lon + 0.0035]] }), 350);
