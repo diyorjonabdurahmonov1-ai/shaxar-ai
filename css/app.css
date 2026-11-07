@@ -1050,3 +1050,6 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 #voiceHud.ok { border-color: #22c55e; } #voiceHud.ok .vh-bars i { background: #22c55e; height: 14px; }
 #voiceHud.warn { border-color: #f59e0b; } #voiceHud.warn .vh-bars i { background: #f59e0b; height: 10px; }
 @media (min-width: 821px) { #voiceHud { left: calc((100% - var(--panel-w)) / 2); top: 150px; } }
+
+#wakePill { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 2400; padding: 5px 12px; border-radius: 999px; background: rgba(3, 7, 16, .85); border: 1px solid rgba(94, 234, 212, .3); color: #94a3b8; font-size: .78rem; opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 80vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wakePill.show { opacity: 1; }

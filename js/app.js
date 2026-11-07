@@ -278,6 +278,53 @@
     const first = list[0] || ''; if (first.split(/\s+/).length > 7 || /[?]|nima|qanday|qaysi|necha|qancha|qayer|nega/i.test(first)) return null;
     try { const k = await NX.ai.voiceIntent(list); return k && VCMD[k] ? VCMD[k] : null; } catch (e) { return null; }
   }
+  // ---------- “Dinamo stadionini koʻrsat”: nomi boʻyicha joy (stadion, maktab, kasalxona, bekat, universitet, obida…) ----------
+  let PLX = null;
+  async function placeIndex() {
+    if (PLX) return PLX;
+    const out = [], add = (name, c, kind) => { const n = String(name || '').trim(); if (n.length < 3 || !c || c.length < 2) return; out.push({ name: n, c, kind: kind || '', tk: NX.translit(n).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 1) }); };
+    try {
+      const pl = await (placesP = placesP || fetch('data/places-samarqand.json').then(r => (r.ok ? r.json() : null)).catch(() => null));
+      if (pl) { (pl.spaces || []).forEach(x => add(x.name, x.c, x.kind)); (pl.places || []).forEach(x => add(x.name, x.c, 'joy')); (pl.svc || []).forEach(x => add(x.name, x.c, 'xizmat')); }
+    } catch (e) { /* */ }
+    try {
+      const r = await fetch('data/pois-samarqand.json'); if (r.ok) { const d = await r.json(); const K = { clinic: 'poliklinika', hospital: 'kasalxona', kindergarten: 'bogʻcha', stop: 'bekat', school: 'maktab', university: 'universitet', college: 'kollej' }; Object.keys(K).forEach(k => (d[k] || []).forEach(x => add(x[2], [x[0], x[1]], K[k]))); }
+    } catch (e) { /* */ }
+    try { ((NX.map3d && NX.map3d.landmarks && NX.map3d.landmarks()) || []).forEach(l => add(l.n, l.c, 'obida')); } catch (e) { /* */ }
+    return (PLX = out);
+  }
+  const PSTOP = ['korsat', 'korsating', 'kursat', 'top', 'toping', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
+  const PGEN = ['stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo'];
+  const pgen = w => PGEN.some(g => w === g || (w.length > g.length && w.startsWith(g)) || wsim(w, g) >= 0.85);
+  async function placeFind(text) {
+    const t = NX.translit(String(text || '').toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = t.split(' ').filter(Boolean);
+    if (!words.length || words.length > 7 || /\?|nima|qanday|qaysi|necha|qancha|nega|probka|tirband|suv|zilzila|evaku|yongin|bosh reja/.test(t)) return null;
+    const q = words.filter(w => !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3) || wsim(w, x) >= 0.86));
+    const strong = q.filter(w => w.length > 2 && !pgen(w));
+    if (!strong.length) return null;
+    const idx = await placeIndex(); let best = null, bs = 0;
+    const tsim = (w, tk) => { let b = 0; tk.forEach(n => { let s2 = wsim(w, n); if (n.length >= 4 && w.length > n.length && w.startsWith(n.slice(0, Math.max(4, n.length - 1)))) s2 = Math.max(s2, 0.9); if (s2 > b) b = s2; }); return b; };
+    for (const p of idx) {
+      if (!p.tk.length) continue;
+      const ss = strong.map(w => tsim(w, p.tk)); if (Math.min.apply(null, ss) < 0.8) continue;
+      const gs = q.filter(w => pgen(w)).map(w => tsim(w, p.tk.concat(NX.translit(p.kind).split(/\s+/))));
+      const sc = ss.reduce((a, b) => a + b, 0) / ss.length + (gs.length ? 0.05 * Math.max.apply(null, gs) : 0) - 0.02 * Math.max(0, p.tk.length - strong.length);
+      if (sc > bs) { bs = sc; best = p; }
+    }
+    return best;
+  }
+  function placeShow(p) {
+    const lat = p.c[0], lon = p.c[1];
+    if (S.tab === 'twin') { try { NX.map3d.flyTo(lat, lon, 17.5); } catch (e) { /* */ } return; }
+    if (S.tab !== 'map') setTab('map');
+    ensureLeaflet();
+    setTimeout(() => NX.view.showPlace({ labels: [{ lat, lon, cls: 'rd-mumkin', title: '📍 ' + p.name, note: p.kind || '' }], ring: [lat, lon], fit: [[lat - 0.0025, lon - 0.0035], [lat + 0.0025, lon + 0.0035]] }), 350);
+  }
+  async function placePlan(list) {
+    for (const c of list) { const p = await placeFind(c); if (p) return { label: p.name + (p.kind ? ' (' + p.kind + ')' : '') + ' — xaritada', run: () => placeShow(p) }; }
+    return null;
+  }
   // Savol uchun ikki tanishdan qaysi biri tushunarliroq: oʻzbekcha savollar katalogi va koʻcha nomlaridagi soʻzlarga qancha mos kelishi
   let VOC = null;
   const vocab = () => {
@@ -294,6 +341,7 @@
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
+    if (!plan) { plan = await placePlan(list); }
     if (!plan) { plan = await voiceAI(list); }
     if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
@@ -325,8 +373,13 @@
       else hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
     } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); }
   }
-  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan;
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
+  let wpT = 0;
+  function wakePill(t) {
+    let e = $('#wakePill'); if (!e) { e = document.createElement('div'); e.id = 'wakePill'; document.body.appendChild(e); }
+    e.textContent = '🎙 «' + String(t || '').trim().slice(0, 60) + '»'; e.classList.add('show'); clearTimeout(wpT); wpT = setTimeout(() => e.classList.remove('show'), 2500);
+  }
   function wakeSet(on) {
     const b = $('#btnVoice');
     NX.store.set('voice:wake', !!on);
@@ -334,11 +387,11 @@
     try {
       NX.voice.wake(async rest => {
         // “City Jam, hisobotni och” bir nafasda aytilgan boʻlsa — chaqiruvdan keyingi qismi buyruq boʻlsa, darrov bajariladi
-        if (rest && rest.length > 3 && voicePlan(rest)) { await voiceCommand(rest); return; }
+        if (rest && rest.length > 3 && (voicePlan(rest) || await placeFind(rest))) { await voiceCommand(rest); return; }
         toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent();
       }, function (st) {
         if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
-        if (st === 'heard') { S.wakeHeard = arguments[1]; if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
+        if (st === 'heard') { S.wakeHeard = arguments[1]; wakePill(arguments[1]); if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
         if (st === 'error') toast('Doim tinglash xatosi: ' + arguments[1] + ' (internet yoki mikrofon)', 'warn');
         if (st === 'denied') { b && b.classList.remove('wake'); NX.store.set('voice:wake', false); toast('Mikrofonga ruxsat berilmagan — doim tinglash oʻchirildi.', 'warn'); }
       });

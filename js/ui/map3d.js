@@ -676,7 +676,7 @@
     meas = null;
     if (landmarks.vis) landmarks.vis();
   }
-  NX.map3d = { labels: on => { NX.store.set('lm:labels', !!on); if (landmarks.vis) landmarks.vis(); }, labelsOn: () => NX.store.get('lm:labels', true), measure, measuring: () => !!meas, setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
+  NX.map3d = { landmarks: () => LANDMARKS, labels: on => { NX.store.set('lm:labels', !!on); if (landmarks.vis) landmarks.vis(); }, labelsOn: () => NX.store.get('lm:labels', true), measure, measuring: () => !!meas, setOverlay, drawPoly, drawStop, showArea, tour, touring: () => tourOn, sun: () => sunNow, show, snapshot, setMode, setHazard, shake, fitTo, base: () => base, raining: () => rainOn, setBase, flyTo, mode: () => mode, map: () => map, refresh, set: d => { Object.assign(data, d); refresh(); } };
 
   // ---------- Fotoreal 3D (Cesium, js/ui/google3d.js) — 3D egizakning asosiy koʻrinishi (token boʻlsa) ----------
   // Barcha natijalar ikkala koʻrinishga beriladi: fotoreal ochiq boʻlsa — u yerda, “🧊 Sxema” da — MapLibre’da.

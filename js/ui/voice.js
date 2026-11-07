@@ -124,7 +124,7 @@
   }
   // ---------- “Alisa” kabi: doim tinglash — chaqiruv soʻzi (“City Jam”) eshitilsa, buyruq yoziladi ----------
   // Brauzerning nutq tanishi (Chrome/Edge) uzluksiz ishlaydi va faqat chaqiruv soʻzini qidiradi; buyruqning oʻzi — listen() (oʻzbekcha STT).
-  const WAKE = /(сити|сіті|ситі|сіти|city|siti|sity|сити-)[\s-]*(д?ж[еэаё]м|jam|djem|jem|j[ae]m|гем|ж[еэ]м)|сити\s*жем|ситиджем|ситижам|citijam|sitijam|city\s*gym/i;
+  const WAKE = /(сити|сіті|ситі|сіти|ситти|сыти|сэти|сеть|цити|city|citi|siti|sity|сити-)[\s-]*(д?ж[еэаёи]м|jam|djem|jem|j[ae]m|гем|ж[еэ]м|джей?м|gem)?|(^|\s)(джем|джэм|жем|джам|jam|djam)(\s|$)|ситиджем|ситижам|citijam|sitijam|city\s*gym/i;
   let wk = null;
   function beep(f, d) { try { const A = window.AudioContext || window.webkitAudioContext, ac = new A(); if (ac.state === 'suspended') ac.resume(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); setTimeout(() => { o.stop(); ac.close(); }, d || 160); } catch (e) { /* */ } }
   function wake(onWake, onState) {
