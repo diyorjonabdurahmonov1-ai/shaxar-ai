@@ -268,7 +268,10 @@
     }
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
     const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
-    if (st0) return { label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
+    if (st0) {
+      const ntk = NX.translit(st0.s.name).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2), wk = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2);
+      return { weak: !wk.some(w => ntk.some(n => wsim(w, n) >= 0.85)), label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
+    }
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
     const tab = TABS.find(([, re]) => re.test(ct));
     const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
@@ -392,6 +395,7 @@
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
     // “Dinamo stadionidan yaqinlashdir” — kamera buyrugi emas, joyni topib koʻrsatish
     const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
+    if (plan && plan.weak) { const pp = await placePlan(list); if (pp) plan = pp; else if (NX.ai.available()) plan = null; }   // eshitilgan soʻz koʻcha nomiga aniq oʻxshamasa — joy yoki AI
     if (plan && VIEWK.includes(plan)) { const pp = await placePlan(list); if (pp) plan = pp; }
     if (!plan) { plan = await placePlan(list); }
     let qText = null;
