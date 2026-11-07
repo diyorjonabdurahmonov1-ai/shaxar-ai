@@ -203,8 +203,9 @@
       drop('place'); if (!P || !(P.labels && P.labels.length) && !P.ring) return;
       const c = coll('place');
       (P.labels || []).forEach(l => c.add(new window.ymaps.Placemark([l.lat, l.lon], { iconCaption: String(l.title || '').replace(/^📍\s*/, ''), hintContent: l.title, balloonContent: '<b>' + NX.esc(l.title || '') + '</b>' + (l.note ? '<br>' + NX.esc(l.note) : '') }, { preset: 'islands#redDotIconWithCaption', iconCaptionMaxWidth: 220 })));
+      (P.lines || []).forEach(l => c.add(new window.ymaps.Polyline(l, {}, { strokeColor: '#f43f5e', strokeWidth: 7, strokeOpacity: 0.9, interactivityModel: 'default#silent' })));
       if (P.ring) c.add(new window.ymaps.Circle([[P.ring[0], P.ring[1]], 70], {}, { interactivityModel: 'default#silent', fillColor: '#f43f5e22', strokeColor: '#f43f5e', strokeWidth: 3 }));
-      if (P.fit) { const f = P.fit; fitTo(f.length === 2 && f[0].length === 2 ? f : [], 17); if (P.ring && f.length === 2) map.setCenter([P.ring[0], P.ring[1]], 17, { duration: 400 }); }
+      if (P.fit) { const f = P.fit; fitTo(f.length === 2 && f[0].length === 2 ? f : [], 17); if (P.ring && !P.noCenter && f.length === 2) map.setCenter([P.ring[0], P.ring[1]], 17, { duration: 400 }); }
     },
     flyTo(lat, lon, z) { const map = Y(); if (map) map.setCenter([lat, lon], z || 17, { duration: 300 }); },
     pickPoint(kind, cb) {

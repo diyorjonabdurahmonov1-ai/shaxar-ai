@@ -200,12 +200,22 @@
       if (wn.length < 3 || /\d/.test(wn) || VBASE.has(wn)) return wn;
       // “hisobotni”, “muammolarni” kabi qoʻshimchali shakllarni ham tanish: soʻz boshi oʻxshashmi
       let best = null, bs = 0;
-      for (const v of VVOC) { const s2 = Math.max(wsim(wn, v), wn.length > v.length + 1 ? wsim(wn.slice(0, v.length + 1), v) : 0, wn.length > v.length + 2 ? wsim(wn.slice(0, v.length + 2), v) : 0); if (s2 > bs) { bs = s2; best = v; } }
+      for (const v of VVOC) { const s2 = v.length < 5 ? wsim(wn, v) : Math.max(wsim(wn, v), wn.length > v.length + 1 ? wsim(wn.slice(0, v.length + 1), v) : 0, wn.length > v.length + 2 ? wsim(wn.slice(0, v.length + 2), v) : 0);  /* qisqa feʼllar (och, bor, kir…) — faqat butun soʻz bilan */ if (s2 > bs) { bs = s2; best = v; } }
       return bs >= 0.74 ? best : wn;
     }).join(' ');
   }
   const VTABS = { map: 'Xarita', problems: 'Muammolar', systems: 'Tizimlar', twin: '3D egizak', ai: 'AI yordamchi', report: 'Hisobot' };
   const gotab = (k, extra) => ({ label: VTABS[k] + ' boʻlimi', run: () => { setTab(k); if (extra) extra(); } });
+  // Yaqinlashtirish/uzoqlashtirish: 3D (MapLibre yoki fotoreal), Yandex yoki Leaflet — qaysi biri faol boʻlsa
+  function zoomBy(d) {
+    if (S.tab === 'twin') {
+      if (NX.g3d.active() && NX.g3d.cam({ zoom: d > 0 ? 2 : 0.5 })) return;
+      const m = NX.map3d.map(); if (m) { d > 0 ? m.zoomIn({ duration: 600 }) : m.zoomOut({ duration: 600 }); return; }
+    }
+    const ym = NX.yandex.getMap && NX.yandex.getMap();
+    if (ym) { ym.setZoom(Math.max(3, Math.min(19, ym.getZoom() + d)), { duration: 300 }); return; }
+    const l = NX.map && NX.map.leaflet && NX.map.leaflet(); if (l) { d > 0 ? l.zoomIn() : l.zoomOut(); }
+  }
   const VCMD = {
     map: gotab('map'), problems: gotab('problems'), systems: gotab('systems'), twin: gotab('twin'), ai: gotab('ai'), report: gotab('report'),
     clear: { label: 'natija yopildi', run: () => { hazardClear(); NX.view.showActions(null); } },
@@ -215,8 +225,9 @@
     tour: { label: '🎬 sayohat', run: () => { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); } },
     area: { label: '✏️ hudud belgilash', run: () => { if (S.tab === 'twin') drawArea3d(); else drawArea(); } },
     refresh: { label: '🔄 yangilash', run: () => loadData(true) },
-    zoomin: { label: 'yaqinlashtirildi', run: () => { if (S.tab === 'twin' && NX.g3d.active() && NX.g3d.cam({ zoom: 2 })) return; const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomIn({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomIn(); } } },
-    zoomout: { label: 'uzoqlashtirildi', run: () => { if (S.tab === 'twin' && NX.g3d.active() && NX.g3d.cam({ zoom: 0.5 })) return; const m = S.tab === 'twin' ? NX.map3d.map() : null; if (m) m.zoomOut({ duration: 600 }); else { const l = NX.map && NX.map.leaflet && NX.map.leaflet(); l && l.zoomOut(); } } },
+    zoomin: { label: 'yaqinlashtirildi', run: () => zoomBy(1) },
+    zoomout: { label: 'uzoqlashtirildi', run: () => zoomBy(-1) },
+    scan3d: { label: '🏘 Real 3D koʻcha', run: () => { setTab('twin'); setTimeout(() => { try { if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); } catch (e) { /* */ } }, 700); } },
     top: { label: 'tepadan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -89 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 0, bearing: 0, duration: 900 }); }, 400); } },
     side: { label: 'yon tomondan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -25 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ pitch: 68, duration: 900 }); }, 400); } },
     rotate: { label: 'burildi', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ turn: 60 })) return; setTimeout(() => { const m = NX.map3d.map(); m && m.easeTo({ bearing: m.getBearing() + 60, duration: 1200 }); }, 400); } },
@@ -266,6 +277,7 @@
       if (/sozlama/.test(ct)) return VCMD.settings;
       if (/^(stop|toxta\w*|bas|yetar)$/.test(ct)) return VCMD.stop;
     }
+    if (/(real|haqiqiy|skan\w*)\s*(3\s*d\s*)?(kocha|yol)|3\s*d\s*(real\s*)?kocha|skanlangan/.test(ct) && !/\?|nima|qanday|qaysi/.test(ct)) return VCMD.scan3d;
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
     const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
     if (st0) {
@@ -314,11 +326,20 @@
     try {
       const r = await fetch('data/pois-samarqand.json'); if (r.ok) { const d = await r.json(); const K = { clinic: 'poliklinika', hospital: 'kasalxona', kindergarten: 'bogʻcha', stop: 'bekat', school: 'maktab', university: 'universitet', college: 'kollej' }; Object.keys(K).forEach(k => (d[k] || []).forEach(x => add(x[2], [x[0], x[1]], K[k]))); }
     } catch (e) { /* */ }
+    try {
+      const rd = await NX.twin.roads(); const by = new Map();
+      rd.forEach(w => { if (!w.name || w.name.length < 3) return; let g = by.get(w.name); if (!g) by.set(w.name, g = []); g.push(w.ll); });
+      by.forEach((lines, name) => {
+        let sa = 0, so = 0, n = 0, S0 = 90, N0 = -90, W0 = 180, E0 = -180; lines.forEach(l => l.forEach(q => { sa += q[0]; so += q[1]; n++; S0 = Math.min(S0, q[0]); N0 = Math.max(N0, q[0]); W0 = Math.min(W0, q[1]); E0 = Math.max(E0, q[1]); }));
+        let c = null, bd = 1e9; lines.forEach(l => l.forEach(q => { const d = (q[0] - sa / n) ** 2 + (q[1] - so / n) ** 2; if (d < bd) { bd = d; c = q; } }));
+        add(name, c, 'koʻcha'); const e = out[out.length - 1]; if (e && e.name === name.trim()) { e.lines = lines; e.bbox = [[S0, W0], [N0, E0]]; }
+      });
+    } catch (e) { /* */ }
     try { ((NX.map3d && NX.map3d.landmarks && NX.map3d.landmarks()) || []).forEach(l => add(l.n, l.c, 'obida')); } catch (e) { /* */ }
     return (PLX = out);
   }
   const PSTOP = ['yaqinlash', 'yaqinlas', 'kattalash', 'uzoqlash', 'korsat', 'korsating', 'kursat', 'top', 'toping', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
-  const PGEN = ['stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo'];
+  const PGEN = ['kocha', 'kochasi', 'kuchasi', 'kucha', 'ulitsa', 'ulica', 'prospekt', 'shosse', 'tupik', 'proezd', 'mahalla', 'mavze', 'stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo'];
   const pgen = w => PGEN.some(g => w === g || (w.length > g.length && w.startsWith(g)) || wsim(w, g) >= 0.85);
   async function placeFind(text) {
     const t = NX.translit(String(text || '').toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -349,13 +370,14 @@
           placeShow.pin = new window.maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lon, lat]).addTo(m);
           placeShow.t = setTimeout(() => { placeShow.pin && placeShow.pin.remove(); placeShow.pin = null; }, 60000);
         }
-        NX.map3d.flyTo(lat, lon, 17.5);
+        NX.map3d.flyTo(lat, lon, p.lines ? 16.5 : 17.5);
       } catch (e) { /* */ }
       return;
     }
     if (S.tab !== 'map') setTab('map');
     ensureLeaflet();
-    setTimeout(() => NX.view.showPlace({ labels: [{ lat, lon, cls: 'rd-mumkin', title: '📍 ' + p.name, note: p.kind || '' }], ring: [lat, lon], fit: [[lat - 0.0025, lon - 0.0035], [lat + 0.0025, lon + 0.0035]] }), 350);
+    const bb = p.bbox && (p.bbox[1][0] - p.bbox[0][0] < 0.04 && p.bbox[1][1] - p.bbox[0][1] < 0.05) ? p.bbox : null;
+    return new Promise(res => setTimeout(() => { NX.view.showPlace({ labels: [{ lat, lon, cls: 'rd-mumkin', title: '📍 ' + p.name, note: p.kind || '' }], ring: p.lines ? null : [lat, lon], lines: p.lines || null, noCenter: !!p.lines, fit: bb || [[lat - 0.0025, lon - 0.0035], [lat + 0.0025, lon + 0.0035]] }); setTimeout(res, 900); }, 350));
   }
   async function placePlan(list) {
     for (const c of list) { const p = await placeFind(c); if (p) return { label: p.name + (p.kind ? ' (' + p.kind + ')' : '') + ' — xaritada', run: () => placeShow(p) }; }
@@ -388,11 +410,16 @@
   };
   const vscore = t => { const V = vocab(), ws = String(t || '').split(/\s+/).filter(w => w.length > 2); if (!ws.length) return 0; return ws.filter(w => V.has(PK(w.replace(/[^\p{L}\p{N}ʻ'‘’`ʼ]/gu, '')))).length / ws.length; };
   // Veb-agent: AI bergan qadamlar (tugma bosish, yozish, joy/buyruq) ketma-ket bajariladi; davomi kerak boʻlsa ekran qayta suratga olinadi
+  const nrm = n => NX.translit(String(n || '')).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  async function placeByName(n) {
+    const idx = await placeIndex(), k = nrm(n);
+    return idx.find(z => z.name === n) || idx.find(z => nrm(z.name) === k) || await placeFind(n);
+  }
   async function agentRun(res, list, depth) {
     const H = {
       cmd: k => { const c = VCMD[k]; if (c) c.run(); },
-      place: async n => { const pl = (await placeIndex()).find(z => z.name === n); if (pl) placeShow(pl); },
-      street: n => { const sd = (S.model ? S.model.namedStreets : []).find(z => z.name === n); if (sd) openStreet(sd.id); },
+      place: async n => { const pl = await placeByName(n); if (pl) await placeShow(pl); },
+      street: async n => { const sd = (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(n)); if (sd) openStreet(sd.id); else { const pl = await placeByName(n); if (pl) await placeShow(pl); } },
       ask: q => { if (S.tab === 'twin') twinAsk(q); else { if (S.tab !== 'ai') setTab('ai'); chatSend(q); } },
     };
     await NX.agent.run(res.steps, H);
@@ -422,32 +449,37 @@
     // “Dinamo stadionidan yaqinlashdir” — kamera buyrugi emas, joyni topib koʻrsatish
     const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
     if (plan && plan.weak) { const pp = await placePlan(list); if (pp) plan = pp; else if (NX.ai.available()) plan = null; }   // eshitilgan soʻz koʻcha nomiga aniq oʻxshamasa — joy yoki AI
-    if (plan && VIEWK.includes(plan)) { const pp = await placePlan(list); if (pp) plan = pp; }
+    if (plan && VIEWK.includes(plan) && PLX) { const pp = await placePlan(list); if (pp) plan = pp; }   // indeks tayyor boʻlmasa kamera buyrugʻi kechikmasin
     if (!plan) { plan = await placePlan(list); }
     let qText = null;
+    // Erkin gap (uzun/qoʻshma: “…koʻrsat, endi yaqinlashtir”) — AI tushunadi; AI ishlamasa mahalliy qoida
+    const localPlan = plan;
+    if (plan && NX.ai.available() && (list[0].split(/\s+/).length > 4 || /\b(endi|keyin|yana|bitta|hazil)\b/i.test(NX.translit(list[0])))) plan = null;
     const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
       if (!quiet) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
       try {
-        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
+        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
-          else if (res.t === 'place') { const pl = (await placeIndex()).find(z => z.name === res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
-          else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => z.name === res.n); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; }
+          else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
+          else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(res.n)); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; else { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; } }
           else if (res.t === 'q' && res.text) qText = String(res.text).trim();
           else if (res.t === 'act' && NX.agent) plan = { label: res.say || 'Bajarilmoqda', run: () => { agentRun(res, list, 0); } };
+          else if (res.t === 'chat' && res.say) plan = { label: res.say, run: () => { } };
           else if (res.t === 'unclear') plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
           if (plan) used = list[0];
         }
       } catch (e) { /* AI ishlamasa — mahalliy qoidalar */ }
     }
+    if (!plan && localPlan) plan = localPlan;
     if (!plan && !qText) { plan = await voiceAI(list); }
     // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     if (plan && plan.warn && opts && opts.later && !opts.retried) return 'unclear';
     if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); NX.voice.beep(300, 200); } return; }
-    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; plan.run(); return; }
+    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
     const t0 = qText || list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
     if (!quiet) hud('ok', 'Savol sifatida yuborildi', '«' + t0 + '»');
@@ -464,7 +496,7 @@
     try {
       const t = await NX.voice.listen({
         silentOk: loop, early: true,
-        quick: x => { try { const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
+        quick: x => { try { if (x.split(/\s+/).length > 4) return false; const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
           if (loop) { if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', ''); return; }
@@ -505,7 +537,7 @@
   }
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
-  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   let wpT = 0;
   function wakePill(t, awakeMode) {
@@ -2785,6 +2817,7 @@
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
+    setTimeout(() => { placeIndex().catch(() => {}); }, 4000);   // joy/koʻcha nomlari indeksi oldindan
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
     document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
     if (NX.store.get('voice:wake', true) && !navigator.webdriver) {

@@ -576,6 +576,7 @@
     L_.road.clearLayers();
     if (!P) return;
     if (P.zones) L.geoJSON(P.zones, { renderer: roadR, interactive: false, style: f => ({ color: f.properties.color, weight: 2.5, fillColor: f.properties.color, fillOpacity: 0.2, dashArray: '6 6', className: 'rd-zone' }) }).addTo(L_.road);
+    (P.lines || []).forEach(l => L.polyline(l, { renderer: roadR, interactive: false, color: '#f43f5e', weight: 7, opacity: 0.9, className: 'rd-zone' }).addTo(L_.road));
     if (P.poly) L.polygon(P.poly, { renderer: roadR, interactive: false, color: '#6366f1', weight: 3, fillOpacity: 0.08, className: 'rd-zone' }).addTo(L_.road);
     bindDeclutter();
     (P.labels || []).forEach((l, i) => { const mk = L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'rd-pin', html: `<div class="rd-lab ${l.cls || ''}"><b>${NX.esc(l.title)}</b>${l.note ? `<span>${NX.esc(l.note)}</span>` : ''}</div>`, iconSize: null }), interactive: false, zIndexOffset: 800 - i }).addTo(L_.road); mk._prio = 800 - i; });
