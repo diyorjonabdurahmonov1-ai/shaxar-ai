@@ -213,14 +213,18 @@ async function stt(req, env, cors, okOrigin) {
   if (buf.byteLength > 6e6) return json({ error: { code: 'too_large', message: 'Ovoz juda uzun (≤ 60 soniya)' } }, 413, cors);
   const type = (req.headers.get('Content-Type') || 'audio/webm').split(';')[0], ext = /ogg/.test(type) ? 'ogg' : /mp4|m4a|aac/.test(type) ? 'm4a' : /wav/.test(type) ? 'wav' : 'webm';
   const prompt = 'Samarqand shahar hokimiyati. City Jam. Oʻzbek tili, lotin yozuvi. Registon, Rudakiy, Daxbet, Ibn Sino, Amir Temur koʻchasi, mahalla, tirbandlik, probka, zilzila, suv toshqini, evakuatsiya, 3D egizak, xarita, hisobot.';
-  for (const model of ['gpt-4o-mini-transcribe', 'whisper-1']) {
+  let lastErr = '';
+  // Har model: avval oʻzbekcha (language=uz + kontekst), rad etsa — tilsiz (model oʻzi aniqlaydi)
+  for (const [model, lang] of [['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-mini-transcribe', ''], ['whisper-1', '']]) {
     const f = new FormData();
-    f.append('file', new Blob([buf], { type }), 'ovoz.' + ext); f.append('model', model); f.append('language', 'uz'); f.append('prompt', prompt);
+    f.append('file', new File([buf], 'ovoz.' + ext, { type })); f.append('model', model); if (lang) f.append('language', lang); f.append('prompt', prompt);
     const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
     if (r.ok) { const d = await r.json(); return json({ text: String(d.text || '').trim(), model }, 200, cors); }
-    if (r.status !== 404 && r.status !== 400) return json({ error: { code: 'stt_error', message: 'Ovozni tanish xatosi: HTTP ' + r.status } }, 502, cors);
+    let msg = ''; try { const e = await r.json(); msg = (e.error && e.error.message) || ''; } catch (e) { /* */ }
+    lastErr = `${model}${lang ? '/' + lang : ''}: HTTP ${r.status} ${msg}`.slice(0, 300);
+    if (r.status === 401 || r.status === 429) break;
   }
-  return json({ error: { code: 'stt_error', message: 'Ovozni tanish modeli topilmadi' } }, 502, cors);
+  return json({ error: { code: 'stt_error', message: 'Ovozni tanib boʻlmadi: ' + lastErr } }, 502, cors);
 }
 
 // ---------- Xarita maʼlumotining umumiy nusxasi (koʻchalar, bekatlar, avtobus yoʻnalishlari) ----------

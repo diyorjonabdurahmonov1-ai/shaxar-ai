@@ -26,6 +26,7 @@
 
   // ---------- Toast ----------
   let toastT;
+  NX.toast = (m, k) => toast(m, k);
   function toast(msg, kind) {
     const t = $('#toast');
     t.textContent = msg; t.className = 'toast show ' + (kind || '');

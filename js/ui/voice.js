@@ -5,7 +5,7 @@
   'use strict';
   const NX = window.NX;
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
-  let ver = null, cur = null;
+  let ver = null, cur = null, sttOff = false;
   async function serverOk() {
     if (ver != null) return ver >= 13;
     if (!base()) return false;
@@ -26,30 +26,36 @@
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
-    if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 512; }
+    if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }   // tugmasiz (chaqiruv soʻzi) ochilganda AudioContext uxlab qoladi — uygʻotiladi
     const buf = an ? new Uint8Array(an.fftSize) : null;
-    let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0;
+    let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0, floor = 0, nF = 0, peak = 0;
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); });
     const stop = () => { if (rec.state !== 'inactive') rec.stop(); cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); };
     const tick = () => {
       if (an) {
         an.getByteTimeDomainData(buf); let m = 0; for (let i = 0; i < buf.length; i++) m = Math.max(m, Math.abs(buf[i] - 128));
         const lv = m / 128; if (onLevel) onLevel(lv);
-        if (lv > 0.08) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1600) return stop(); }
+        peak = Math.max(peak, lv);
+        // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
+        if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
+        else { const th = Math.max(0.02, floor * 2.5); if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1500) return stop(); } }
       }
-      if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > 9000)) return stop();
+      if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > 8000)) return stop();
       raf = requestAnimationFrame(tick);
     };
     rec.start(250); tick();
     cur = { stop };
     const blob = await done; cur = null;
-    if (!spoke && an) throw new Error('Ovoz eshitilmadi — mikrofonga yaqinroq gapiring.');
+    // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
+    if (!spoke && an && peak < 0.004 && ac && ac.state === 'running') throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
     return blob;
   }
   async function transcribe(blob) {
     const r = await NX.fetchJSON(base() + '/stt', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 60000);
     if (!r.ok || !r.data || r.data.error) throw new Error((r.data && r.data.error && r.data.error.message) || 'Ovozni matnga oʻgirib boʻlmadi (HTTP ' + r.status + ')');
-    return toLatin(r.data.text || '').trim();
+    const t = toLatin(r.data.text || '').trim();
+    if (!t) throw new Error('Gap tanilmadi — biroz balandroq va aniqroq qayta ayting.');
+    return t;
   }
   // Brauzerning oʻz tanishi (zaxira)
   function webSpeech(onPart) {
@@ -70,11 +76,17 @@
     // Doim tinglash yoqilgan boʻlsa — buyruq yozilayotganda chaqiruv tinglovchisi toʻxtab turadi
     const wkWas = typeof wk !== 'undefined' && wk && !wk.paused; if (wkWas) { wk.paused = true; try { wk.r && wk.r.abort(); } catch (e) { /* */ } }
     try {
-      if (await serverOk()) {
+      if (await serverOk() && !sttOff) {
         ui.onState && ui.onState('rec');
         const blob = await record(ui.onLevel);
         ui.onState && ui.onState('busy');
-        return await transcribe(blob);
+        try { return await transcribe(blob); }
+        catch (e) {
+          // Server ovoz modeliga kira olmasa (OpenAI loyihasida ruxsat yoʻq) — bu sessiyada brauzerning oʻz tanishi ishlatiladi
+          if (!/tanib boʻlmadi|modeli|HTTP 4\d\d/.test(e.message) || !(window.SpeechRecognition || window.webkitSpeechRecognition)) throw e;
+          sttOff = true; console.warn('STT server:', e.message);
+          if (NX.toast) NX.toast('Server ovozni tanimadi — brauzer tanishiga oʻtildi, qayta ayting…', 'warn');
+        }
       }
       ui.onState && ui.onState('rec');
       return await webSpeech(ui.onPart);
