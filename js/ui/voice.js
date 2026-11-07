@@ -60,7 +60,7 @@
     return t;
   }
   // Brauzer tanishi yozib olish bilan BIR VAQTDA ishlaydi — ikki tanishdan ikki variant (server + brauzer), keyin buyruq ikkalasidan taxminiy moslanadi
-  function webCapture() {
+  function webCapture(onPart) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const out = { text: '', done: Promise.resolve(''), stop() {} };
     if (!SR) return out;
@@ -68,7 +68,7 @@
     const tryLang = lang => {
       let r; try { r = new SR(); } catch (e) { finish(''); return; }
       r.lang = lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 3;
-      r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + ' '; out.text = toLatin(t).trim(); };
+      r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + ' '; out.text = toLatin(t).trim(); if (onPart) onPart(out.text); };
       r.onerror = e => { if (e.error === 'language-not-supported' && lang === 'uz-UZ') tryLang('ru-RU'); else finish(out.text); };
       r.onend = () => finish(out.text);
       out.stop = () => { try { r.stop(); } catch (e) { /* */ } };
@@ -99,7 +99,7 @@
     try {
       if (await serverOk() && !sttOff) {
         ui.onState && ui.onState('rec');
-        const wc = webCapture();
+        const wc = webCapture(ui.onPart);
         let blob;
         try { blob = await record(ui.onLevel); } finally { wc.stop(); }
         ui.onState && ui.onState('busy');
