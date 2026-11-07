@@ -13,7 +13,7 @@ ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '6', path.join(D, 'q.w
 ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '0.7', path.join(D, 'q0.wav'));
 ff('-i', path.join(D, 'q0.wav'), '-i', path.join(D, 'sp.wav'), '-i', path.join(D, 'q.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1', '-ar', '48000', '-ac', '1', path.join(D, 'speech.wav'));
 const results = []; const ok = (n, c, x) => { results.push([c ? 'OK  ' : 'FAIL', n, x || '']); if (!c) process.exitCode = 1; };
-async function run(file, text, until) {
+async function run(file, text, until, awake) {
   const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--use-file-for-fake-audio-capture=' + path.join(D, file)] });
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, permissions: ['microphone'] });
   const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
@@ -23,16 +23,19 @@ async function run(file, text, until) {
   await ctx.route(/overpass|maps\.mail/, r => r.abort('failed'));
   const p = await ctx.newPage();
   await p.goto(BASE); await p.waitForSelector('#panel .live', { timeout: 90000 }); await p.waitForTimeout(1500);
-  const t0 = Date.now(); await p.click('#btnVoice');
+  const t0 = Date.now(); if (awake) await p.evaluate(() => { NX.awakeLoop(); }); else await p.click('#btnVoice');
   let last = null;
   for (let i = 0; i < 80; i++) { last = await p.evaluate(() => { const e = document.getElementById('voiceHud'); return e ? { st: e.className.replace('show', '').trim(), t: e.querySelector('b').textContent, tab: NX.state.tab } : null; }); if (last && until(last)) break; await p.waitForTimeout(250); }
-  const sec = (Date.now() - t0) / 1000; await b.close(); return { last, stt, sec };
+  let aw = null; if (awake) { await p.waitForTimeout(9000); aw = await p.evaluate(() => ({ on: NX.awakeOn(), pill: (document.getElementById('wakePill') || {}).className || '' })); }
+  const sec = (Date.now() - t0) / 1000; await b.close(); return { last, stt, sec, aw };
 }
 (async () => {
   let r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report');
   ok('Ovoz zanjiri: yozish → jimlikda oʻzi toʻxtash → /stt → “xisobot” buyrugʻi Hisobotni ochadi', r.last && r.last.tab === 'report' && r.stt === 1 && r.sec < 10, JSON.stringify(r));
   r = await run('q.wav', 'Xisobot bo‘limini och', h => h.st === 'warn');
   ok('Jim mikrofon: serverga yuborilmaydi, “ovoz kelmayapti” deyiladi', r.last && r.last.st === 'warn' && r.stt === 0, JSON.stringify(r));
+  r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report', true);
+  ok('Uygʻoq rejim: buyruqdan keyin ham tinglab turadi, uygʻoq turadi (soxta mikrofon faylni takrorlaydi)', r.last && r.last.tab === 'report' && r.stt >= 1 && r.aw && r.aw.on && /awake/.test(r.aw.pill), JSON.stringify(r));
   console.log(results.map(x => x.join('  ')).join('\n'));
   fs.rmSync(D, { recursive: true, force: true });
 })();

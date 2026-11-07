@@ -49,6 +49,7 @@
     rec.start(250); tick();
     cur = { stop };
     const blob = await done; cur = null;
+    if (!spoke && ui && ui.silentOk) return null;   // uygʻoq rejim: hech kim gapirmadi — serverga yuborilmaydi
     // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
     if (!spoke && an && peak < 0.004 && acOk) throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
     return blob;
@@ -108,6 +109,7 @@
         const wc = webCapture(ui.onPart, () => setTimeout(() => cur && cur.stop && cur.stop(), 250));
         let blob;
         try { blob = await record(ui.onLevel, ui); } finally { wc.stop(); }
+        if (!blob) return null;
         ui.onState && ui.onState('busy');
         const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 1500))]);
         try { const srv = await transcribe(blob).catch(e => { if (webT) return ''; throw e; }); NX.voice.cands = [srv, webT].filter((x, i, a) => x && a.indexOf(x) === i); return srv || webT; }
@@ -120,7 +122,7 @@
       }
       ui.onState && ui.onState('rec');
       return await webSpeech(ui.onPart);
-    } finally { cur = null; ui.onState && ui.onState('idle'); if (wkWas && wk) { wk.paused = false; setTimeout(() => wk && wk.r && wk.on && wake.restart && wake.restart(), 400); } }
+    } finally { cur = null; ui.onState && ui.onState('idle'); if (wkWas && wk) { wk.paused = false; setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 400); } }
   }
   // ---------- “Alisa” kabi: doim tinglash — chaqiruv soʻzi (“City Jam”) eshitilsa, buyruq yoziladi ----------
   // Brauzerning nutq tanishi (Chrome/Edge) uzluksiz ishlaydi va faqat chaqiruv soʻzini qidiradi; buyruqning oʻzi — listen() (oʻzbekcha STT).
@@ -133,7 +135,7 @@
     if (wk && wk.on) return;
     wk = { on: true, paused: false, r: null, fails: 0 };
     const start = () => {
-      if (!wk || !wk.on || wk.paused || cur) return;
+      if (!wk || !wk.on || wk.paused || wk.hold || cur) return;
       if (wk.r) { const o = wk.r; wk.r = null; try { o.onend = o.onerror = o.onresult = null; o.abort(); } catch (x) { /* */ } }   // bitta nusxa: eskisi toʻxtatiladi
       const r = new SR(); r.lang = 'ru-RU'; r.continuous = true; r.interimResults = true; wk.r = r;
       r.onresult = e => {
@@ -147,12 +149,13 @@
       };
       r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };
       r.onstart = () => { wk.fails = 0; };
-      r.onend = () => { if (wk && wk.r === r && wk.on && !wk.paused) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
+      r.onend = () => { if (wk && wk.r === r && wk.on && !wk.paused && !wk.hold) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
       try { r.start(); onState && onState('on'); } catch (x) { setTimeout(start, 1000); }
     };
     wake.restart = start;
     start();
   }
+  function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeStop, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, wakeStop, waking: () => !!(wk && wk.on), beep };
 })();

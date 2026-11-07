@@ -1058,3 +1058,4 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 .place-pin span { background: rgba(3, 7, 16, .92); color: #fff; border: 1px solid #f43f5e; border-radius: 10px; padding: 4px 10px; font-weight: 700; font-size: .85rem; white-space: nowrap; box-shadow: 0 0 18px rgba(244, 63, 94, .55); }
 .place-pin small { display: block; font-weight: 500; font-size: .7rem; color: #fda4af; }
 .place-pin i { width: 14px; height: 14px; margin-top: 4px; border-radius: 50%; background: #f43f5e; box-shadow: 0 0 0 6px rgba(244, 63, 94, .3); animation: vwake 1.4s ease-in-out infinite; }
+#wakePill.awake { color: #5eead4; border-color: rgba(94, 234, 212, .7); box-shadow: 0 0 16px rgba(45, 212, 191, .35); font-weight: 600; }

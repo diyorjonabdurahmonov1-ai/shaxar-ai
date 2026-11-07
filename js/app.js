@@ -391,31 +391,60 @@
     const lm = S.chat.msgs[S.chat.msgs.length - 1];
     if (/probka|tirband|tiqil/.test(t) && !(lm && lm.hz && lm.hz.length)) { NX.yandex.setTraffic(true); NX.map.updateLegend(); toast('Xaritada Yandex’ning jonli probka qatlami (yashil — erkin, sariq — sekin, qizil — tirband).', 'ok'); }
   }
-  async function voiceAgent() {
-    const b = $('#btnVoice');
-    if (NX.voice.active()) { NX.voice.stop(); return; }
+  async function voiceAgent(o) {
+    const b = $('#btnVoice'), loop = !!(o && o.loop);
+    if (NX.voice.active()) { NX.voice.stop(); return false; }
     try {
       const t = await NX.voice.listen({
+        silentOk: loop,
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
+          if (loop) { if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', ''); return; }
           if (st === 'rec') hud('rec', 'Tinglayapman…', 'masalan: “hisobot boʻlimini och”, “hozir qaysi yoʻllarda probka?”');
           else if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', '');
         },
-        onMic: lab => { voiceAgent.mic = lab || ''; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '🎤 ' + (lab || 'mikrofon') ; },
-        onQuiet: lab => hud('rec', 'Ovoz kelmayapti — mikrofon: ' + (lab || 'nomaʼlum'), 'Windows → Ovoz → Kirish: toʻgʻri mikrofonni tanlang va ovozini oshiring'),
-        onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); hudLevel(lv); },
-        onPart: t => { const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
+        onMic: lab => { voiceAgent.mic = lab || ''; const h = $('#voiceHud'); if (!loop && h && h.classList.contains('rec')) h.querySelector('small').textContent = '🎤 ' + (lab || 'mikrofon') ; },
+        onQuiet: lab => { if (!loop) hud('rec', 'Ovoz kelmayapti — mikrofon: ' + (lab || 'nomaʼlum'), 'Windows → Ovoz → Kirish: toʻgʻri mikrofonni tanlang va ovozini oshiring'); },
+        onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); if (!loop) hudLevel(lv); },
+        onPart: t => { if (loop && t) hud('rec', 'Tinglayapman…', '«' + t + '»'); const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
-      if (t) await voiceCommand(t, false, NX.voice.cands);
-      else hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
-    } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); }
+      if (t) { await voiceCommand(t, false, NX.voice.cands); return t; }
+      if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
+      return false;
+    } catch (e) { hud('warn', e.message, ''); NX.voice.beep(300, 220); if (loop) throw e; return false; }
   }
+  // “Alisa” kabi: chaqiruvdan keyin 1 daqiqa uygʻoq — chaqiruv soʻzisiz ketma-ket buyruqlar; har buyruqdan keyin muddat yangilanadi
+  const AWAKE_MS = 60000;
+  let awake = null;
+  async function awakeLoop() {
+    if (awake) { awake.until = Date.now() + AWAKE_MS; return; }
+    awake = { until: Date.now() + AWAKE_MS, errs: 0 };
+    NX.voice.wakeHold(true);
+    const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true); }, 1000);
+    try {
+      while (awake && Date.now() < awake.until && NX.store.get('voice:wake', true)) {
+        try {
+          const t = await voiceAgent({ loop: true });
+          if (t) { awake.until = Date.now() + AWAKE_MS; awake.errs = 0; if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(NX.translit(String(t)).replace(/[ʻʼ'‘’`]/g, ''))) break; }
+        } catch (e) { if (++awake.errs >= 3 || /ruxsat/i.test(e.message)) break; await new Promise(r => setTimeout(r, 1200)); }
+      }
+    } finally {
+      clearInterval(tick); const was = awake; awake = null; wakePill(null);
+      NX.voice.wakeHold(false);
+      if (was && Date.now() >= was.until) toast('🎙 Uygʻoq rejim tugadi — qayta uygʻotish uchun “City Jam” deng.', 'ok');
+    }
+  }
+  const awakeStop = () => { if (awake) { awake.until = 0; } };
+  NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
   NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   let wpT = 0;
-  function wakePill(t) {
+  function wakePill(t, awakeMode) {
     let e = $('#wakePill'); if (!e) { e = document.createElement('div'); e.id = 'wakePill'; document.body.appendChild(e); }
-    e.textContent = '🎙 «' + String(t || '').trim().slice(0, 60) + '»'; e.classList.add('show'); clearTimeout(wpT); wpT = setTimeout(() => e.classList.remove('show'), 2500);
+    if (t == null) { e.classList.remove('show', 'awake'); return; }
+    if (awake && !awakeMode) return;   // uygʻoq paytida taymer koʻrinadi
+    e.classList.toggle('awake', !!awakeMode);
+    e.textContent = awakeMode ? t : '🎙 «' + String(t).trim().slice(0, 60) + '»'; e.classList.add('show'); clearTimeout(wpT); if (!awakeMode) wpT = setTimeout(() => e.classList.remove('show'), 2500);
   }
   function wakeSet(on) {
     const b = $('#btnVoice');
@@ -424,8 +453,8 @@
     try {
       NX.voice.wake(async rest => {
         // “City Jam, hisobotni och” bir nafasda aytilgan boʻlsa — chaqiruvdan keyingi qismi buyruq boʻlsa, darrov bajariladi
-        if (rest && rest.length > 3 && (voicePlan(rest) || await placeFind(rest))) { await voiceCommand(rest); return; }
-        toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent();
+        if (rest && rest.length > 3 && (voicePlan(rest) || await placeFind(rest))) await voiceCommand(rest);
+        awakeLoop();   // 1 daqiqa uygʻoq: keyingi buyruqlar chaqiruvsiz
       }, function (st) {
         if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
         if (st === 'heard') { S.wakeHeard = arguments[1]; wakePill(arguments[1]); if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
@@ -2688,7 +2717,7 @@
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
-    document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape' && NX.voice.active()) NX.voice.stop(); });
+    document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
     if (NX.store.get('voice:wake', true) && !navigator.webdriver) {
       setTimeout(() => wakeSet(true), 2500);
       // Baʼzi brauzerlar sahifa ochilganda (foydalanuvchi bosmasdan) tinglashni boshlatmaydi — birinchi bosishda qayta yoqiladi
