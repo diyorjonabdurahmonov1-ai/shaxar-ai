@@ -17,20 +17,22 @@
   const toLatin = s => String(s || '').replace(/[А-Яа-яЁёЎўҚқҒғҲҳ]/g, c => { const l = c.toLowerCase(), t = CY[l] != null ? CY[l] : c; return c === l ? t : t.charAt(0).toUpperCase() + t.slice(1); });
 
   // Yozib olish: Promise<Blob>; onLevel(0..1) — tugma animatsiyasi uchun
-  async function record(onLevel) {
+  async function record(onLevel, ui) {
     if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('Bu brauzer ovoz yozishni qoʻllamaydi (Chrome yoki Edge’ning yangi versiyasi kerak).');
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
     catch (e) { throw new Error(e && e.name === 'NotAllowedError' ? 'Mikrofonga ruxsat berilmagan — manzil satridagi 🔒 belgisidan mikrofonga ruxsat bering.' : 'Mikrofon topilmadi yoki band.'); }
+    const micLabel = (stream.getAudioTracks()[0] || {}).label || ''; ui && ui.onMic && ui.onMic(micLabel);
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const AC = window.AudioContext || window.webkitAudioContext, ac = AC ? new AC() : null, an = ac ? ac.createAnalyser() : null;
     if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }   // tugmasiz (chaqiruv soʻzi) ochilganda AudioContext uxlab qoladi — uygʻotiladi
     const buf = an ? new Uint8Array(an.fftSize) : null;
-    let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0, floor = 0, nF = 0, peak = 0;
+    let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0, floor = 0, nF = 0, peak = 0, quietWarned = false;
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); });
-    const stop = () => { if (rec.state !== 'inactive') rec.stop(); cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); };
+    let acOk = false;
+    const stop = () => { acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); };
     const tick = () => {
       if (an) {
         an.getByteTimeDomainData(buf); let m = 0; for (let i = 0; i < buf.length; i++) m = Math.max(m, Math.abs(buf[i] - 128));
@@ -38,16 +40,17 @@
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
         if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
-        else { const th = Math.max(0.02, floor * 2.5); if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1500) return stop(); } }
+        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1500) return stop(); } }
       }
-      if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > 8000)) return stop();
+      if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
+      if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
       raf = requestAnimationFrame(tick);
     };
     rec.start(250); tick();
     cur = { stop };
     const blob = await done; cur = null;
     // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
-    if (!spoke && an && peak < 0.004 && ac && ac.state === 'running') throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
+    if (!spoke && an && peak < 0.004 && acOk) throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
     return blob;
   }
   async function transcribe(blob) {
@@ -56,11 +59,13 @@
     let t = toLatin(r.data.text || '').trim();
     // Model eshitmay qolsa kontekst matnini qaytaradi — bunday “javob” buyruq emas (eski Worker’ning uzun promptini ham taniydi)
     if (/lotin yozuv|oʻzbek tili, lotin|o‘zbek tili, lotin|shahar hokimiyati, o|3d egizak, xarita, hisobot|oʻzbekcha gap/i.test(t)) t = '';
+    // Nutq modellari jim/xira ovozda oʻzidan gap oʻylab topadi — buyruq emas
+    if (/субтитр|thank you|thanks for watching|спасибо за просмотр|продолжение следует|amara\.org|dimatorzok|bu video|obuna bo/i.test(t) && t.split(/\s+/).length < 9) t = '';
     if (!t) throw new Error('Gap tanilmadi — biroz balandroq va aniqroq qayta ayting.');
     return t;
   }
   // Brauzer tanishi yozib olish bilan BIR VAQTDA ishlaydi — ikki tanishdan ikki variant (server + brauzer), keyin buyruq ikkalasidan taxminiy moslanadi
-  function webCapture(onPart) {
+  function webCapture(onPart, onSpeechEnd) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const out = { text: '', done: Promise.resolve(''), stop() {} };
     if (!SR) return out;
@@ -70,7 +75,7 @@
       r.lang = lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 3;
       r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + ' '; out.text = toLatin(t).trim(); if (onPart) onPart(out.text); };
       r.onerror = e => { if (e.error === 'language-not-supported' && lang === 'uz-UZ') tryLang('ru-RU'); else finish(out.text); };
-      r.onend = () => finish(out.text);
+      r.onend = () => { finish(out.text); if (out.text && onSpeechEnd) onSpeechEnd(); };
       out.stop = () => { try { r.stop(); } catch (e) { /* */ } };
       try { r.start(); } catch (e) { finish(''); }
     };
@@ -99,9 +104,10 @@
     try {
       if (await serverOk() && !sttOff) {
         ui.onState && ui.onState('rec');
-        const wc = webCapture(ui.onPart);
+        // Brauzer gap tugaganini sezsa (1 s jimlik) — yozuv ham darrov toʻxtaydi: javob tezroq
+        const wc = webCapture(ui.onPart, () => setTimeout(() => cur && cur.stop && cur.stop(), 250));
         let blob;
-        try { blob = await record(ui.onLevel); } finally { wc.stop(); }
+        try { blob = await record(ui.onLevel, ui); } finally { wc.stop(); }
         ui.onState && ui.onState('busy');
         const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 1500))]);
         try { const srv = await transcribe(blob).catch(e => { if (webT) return ''; throw e; }); NX.voice.cands = [srv, webT].filter((x, i, a) => x && a.indexOf(x) === i); return srv || webT; }
@@ -120,7 +126,7 @@
   // Brauzerning nutq tanishi (Chrome/Edge) uzluksiz ishlaydi va faqat chaqiruv soʻzini qidiradi; buyruqning oʻzi — listen() (oʻzbekcha STT).
   const WAKE = /(сити|сіті|ситі|сіти|city|siti|sity|сити-)[\s-]*(д?ж[еэаё]м|jam|djem|jem|j[ae]m|гем|ж[еэ]м)|сити\s*жем|ситиджем|ситижам|citijam|sitijam|city\s*gym/i;
   let wk = null;
-  function beep(f, d) { try { const A = window.AudioContext || window.webkitAudioContext, ac = new A(), o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); setTimeout(() => { o.stop(); ac.close(); }, d || 160); } catch (e) { /* */ } }
+  function beep(f, d) { try { const A = window.AudioContext || window.webkitAudioContext, ac = new A(); if (ac.state === 'suspended') ac.resume(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); setTimeout(() => { o.stop(); ac.close(); }, d || 160); } catch (e) { /* */ } }
   function wake(onWake, onState) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) throw new Error('Doim tinglash uchun Chrome yoki Edge brauzeri kerak.');
@@ -128,8 +134,10 @@
     wk = { on: true, paused: false, r: null, fails: 0 };
     const start = () => {
       if (!wk || !wk.on || wk.paused || cur) return;
+      if (wk.r) { const o = wk.r; wk.r = null; try { o.onend = o.onerror = o.onresult = null; o.abort(); } catch (x) { /* */ } }   // bitta nusxa: eskisi toʻxtatiladi
       const r = new SR(); r.lang = 'ru-RU'; r.continuous = true; r.interimResults = true; wk.r = r;
       r.onresult = e => {
+        if (!wk || wk.r !== r) return;
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
           if (onState) onState('heard', t);
@@ -139,7 +147,7 @@
       };
       r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };
       r.onstart = () => { wk.fails = 0; };
-      r.onend = () => { if (wk && wk.on && !wk.paused) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
+      r.onend = () => { if (wk && wk.r === r && wk.on && !wk.paused) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
       try { r.start(); onState && onState('on'); } catch (x) { setTimeout(start, 1000); }
     };
     wake.restart = start;

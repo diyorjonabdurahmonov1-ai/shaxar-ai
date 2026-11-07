@@ -237,8 +237,8 @@
     const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
     const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
-    const st0 = S.model && /\b(korsat|och|top|qayerda)\b/.test(ct) && !/probka|tirband|suv|zilzila|evaku/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
-    if (st0) return { label: st0.s.name + ' koʻchasi', run: () => openStreet(st0.s.id) };
+    const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
+    if (st0) return { label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
     const tab = TABS.find(([, re]) => re.test(ct));
     const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
@@ -278,9 +278,20 @@
     const first = list[0] || ''; if (first.split(/\s+/).length > 7 || /[?]|nima|qanday|qaysi|necha|qancha|qayer|nega/i.test(first)) return null;
     try { const k = await NX.ai.voiceIntent(list); return k && VCMD[k] ? VCMD[k] : null; } catch (e) { return null; }
   }
+  // Savol uchun ikki tanishdan qaysi biri tushunarliroq: oʻzbekcha savollar katalogi va koʻcha nomlaridagi soʻzlarga qancha mos kelishi
+  let VOC = null;
+  const vocab = () => {
+    if (VOC) return VOC;
+    VOC = new Set(VVOC);
+    const add = t => String(t || '').split(/\s+/).forEach(w => { const x = PK(w.replace(/[^\p{L}\p{N}ʻ'‘’`ʼ]/gu, '')); if (x.length > 2) VOC.add(x); });
+    try { (NX.QUESTIONS || []).forEach(g => g.q.forEach(([q]) => add(q))); (S.model ? S.model.namedStreets : []).forEach(st => add(st.name)); } catch (e) { /* */ }
+    return VOC;
+  };
+  const vscore = t => { const V = vocab(), ws = String(t || '').split(/\s+/).filter(w => w.length > 2); if (!ws.length) return 0; return ws.filter(w => V.has(PK(w.replace(/[^\p{L}\p{N}ʻ'‘’`ʼ]/gu, '')))).length / ws.length; };
   async function voiceCommand(raw, quiet, cands) {
-    const list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
+    let list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
     if (!list.length) return;
+    if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
     if (!plan) { plan = await voiceAI(list); }
@@ -305,6 +316,8 @@
           if (st === 'rec') hud('rec', 'Tinglayapman…', 'masalan: “hisobot boʻlimini och”, “hozir qaysi yoʻllarda probka?”');
           else if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', '');
         },
+        onMic: lab => { voiceAgent.mic = lab || ''; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '🎤 ' + (lab || 'mikrofon') ; },
+        onQuiet: lab => hud('rec', 'Ovoz kelmayapti — mikrofon: ' + (lab || 'nomaʼlum'), 'Windows → Ovoz → Kirish: toʻgʻri mikrofonni tanlang va ovozini oshiring'),
         onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); hudLevel(lv); },
         onPart: t => { const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
@@ -2584,6 +2597,8 @@
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
+    // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
+    document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape' && NX.voice.active()) NX.voice.stop(); });
     if (NX.store.get('voice:wake', false) && !navigator.webdriver) {
       setTimeout(() => wakeSet(true), 2500);
       // Baʼzi brauzerlar sahifa ochilganda (foydalanuvchi bosmasdan) tinglashni boshlatmaydi — birinchi bosishda qayta yoqiladi
