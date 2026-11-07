@@ -346,7 +346,12 @@
     const words = t.split(' ').filter(Boolean);
     if (!words.length || words.length > 7 || /\?|nima|qanday|qaysi|necha|qancha|nega|probka|tirband|suv|zilzila|evaku|yongin|bosh reja/.test(t)) return null;
     const q = words.filter(w => !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3) || wsim(w, x) >= 0.86));
-    const strong = q.filter(w => w.length > 2 && !pgen(w) && !VVOC.some(v => wsim(w, v) >= 0.8 || (w.length > v.length + 1 && w.startsWith(v))));
+    const hasVerb = words.length > q.length, gen = q.filter(w => pgen(w));
+    let strong = q.filter(w => w.length > 2 && !pgen(w) && !VVOC.some(v => wsim(w, v) >= 0.8 || (w.length > v.length + 1 && w.startsWith(v))));
+    // “Samarqand” har joyda uchraydi — yolgʻiz oʻzi joy nomi emas (shovqin matnidan tasodifiy joy ochilmasin)
+    const CITY = w => wsim(w, 'samarqand') >= 0.75 || wsim(w, 'shahar') >= 0.85;
+    const specific = strong.filter(w => !CITY(w));
+    if (!specific.length && !(strong.length && gen.length && hasVerb)) return null;
     if (!strong.length) return null;
     const idx = await placeIndex(); let best = null, bs = 0;
     const tsim = (w, tk) => { let b = 0; tk.forEach(n => { let s2 = wsim(w, n); if (n.length >= 4 && w.length > n.length && w.startsWith(n.slice(0, Math.max(4, n.length - 1)))) s2 = Math.max(s2, 0.9); if (s2 > b) b = s2; }); return b; };
@@ -411,6 +416,11 @@
   const vscore = t => { const V = vocab(), ws = String(t || '').split(/\s+/).filter(w => w.length > 2); if (!ws.length) return 0; return ws.filter(w => V.has(PK(w.replace(/[^\p{L}\p{N}ʻ'‘’`ʼ]/gu, '')))).length / ws.length; };
   // Veb-agent: AI bergan qadamlar (tugma bosish, yozish, joy/buyruq) ketma-ket bajariladi; davomi kerak boʻlsa ekran qayta suratga olinadi
   const nrm = n => NX.translit(String(n || '')).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  // AI tanlagan joy eshitilgan soʻzlarda haqiqatan bormi (shovqindan tasodifiy joy ochilmasin)
+  function placeHeard(list, pl) {
+    const ws = list.join(' ').split(/\s+/).map(w => NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9]/g, '')).filter(w => w.length > 3);
+    return pl.tk.some(n => n.length > 3 && wsim(n, 'samarqand') < 0.75 && !pgen(n) && ws.some(w => wsim(w, n) >= 0.75));
+  }
   async function placeByName(n) {
     const idx = await placeIndex(), k = nrm(n);
     return idx.find(z => z.name === n) || idx.find(z => nrm(z.name) === k) || await placeFind(n);
@@ -442,7 +452,8 @@
   }
   async function voiceCommand0(raw, quiet, cands, opts) {
     let list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
-    if (!list.length) return;
+    list = list.filter(x => !/[\u0600-\u06FF\u0750-\u077F\u4E00-\u9FFF\u0590-\u05FF]/.test(x));   // arab/xitoy/ivrit yozuvi — til noaniq, shovqin: bajarilmaydi
+    if (!list.length) { if (!quiet) hud('warn', 'Aniq eshitilmadi — qayta ayting', ''); return 'warn'; }
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
@@ -463,7 +474,7 @@
         const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
-          else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
+          else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl && placeHeard(list, pl)) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
           else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(res.n)); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; else { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; } }
           else if (res.t === 'q' && res.text) qText = String(res.text).trim();
           else if (res.t === 'act' && NX.agent) plan = { label: res.say || 'Bajarilmoqda', run: () => { agentRun(res, list, 0); } };

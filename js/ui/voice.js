@@ -33,15 +33,18 @@
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); });
     let acOk = false;
     const stop = () => { acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); cancelAnimationFrame(raf); stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); };
+    let voicedMs = 0, lastT = 0;
     const tick = () => {
+      const now = Date.now();
       if (an) {
         an.getByteTimeDomainData(buf); let m = 0; for (let i = 0; i < buf.length; i++) m = Math.max(m, Math.abs(buf[i] - 128));
         const lv = m / 128; if (onLevel) onLevel(lv);
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
         if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
-        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
+        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
       }
+      lastT = now;
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
       if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
       raf = requestAnimationFrame(tick);
@@ -49,7 +52,7 @@
     rec.start(250); tick();
     cur = { stop };
     const blob = await done; cur = null;
-    if (!spoke && ui && ui.silentOk) return null;   // uygʻoq rejim: hech kim gapirmadi — serverga yuborilmaydi
+    if ((!spoke || voicedMs < 350) && ui && ui.silentOk) return null;   // qisqa shovqin (shaqillash, ovoz) gap emas   // uygʻoq rejim: hech kim gapirmadi — serverga yuborilmaydi
     // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
     if (!spoke && an && peak < 0.004 && acOk) throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
     return blob;
