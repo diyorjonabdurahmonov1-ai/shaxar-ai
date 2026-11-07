@@ -1024,3 +1024,8 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
   .topbar .icon-btn { width: 34px; height: 34px; min-width: 34px; padding: 0; }
 }
 @media (max-width: 420px) { .topbar .icon-btn { width: 31px; height: 31px; min-width: 31px; } .topbar .actions { padding: 3px; } }
+/* Doim tinglash yoqilgan — 🎙 yonida yashil nuqta */
+.voice-btn { position: relative; }
+.voice-btn.wake::after { content: ''; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; animation: vwake 2s ease-in-out infinite; }
+@keyframes vwake { 50% { opacity: .35; } }
+.field.check { display: flex; gap: 8px; align-items: flex-start; }

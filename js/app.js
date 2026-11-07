@@ -186,6 +186,8 @@
     if (/olcha(sh|b)?\b|olchov/.test(t) && !/tirband|probka/.test(t)) { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); setTimeout(() => NX.map3d.measure(), 600); return; }
     if (/sayohat|tur\b/.test(t)) { setTab('twin'); setTimeout(() => NX.map3d.tour(), 600); return; }
     if (/hudud\s*(belgila|chiz)/.test(t)) { if (S.tab === 'twin') drawArea3d(); else drawArea(); return; }
+    if (/doim\s*tingla|tinglab\s*tur/.test(t)) { wakeSet(true); toast('Doim tinglash yoqildi — “City Jam” deb chaqiring.', 'ok'); return; }
+    if (/tinglash(ni)?\s*(ochir|toxtat)|tinglama/.test(t)) { wakeSet(false); toast('Doim tinglash oʻchirildi.', 'ok'); return; }
     if (/(yangila|refresh)/.test(t) && t.split(/\s+/).length <= 3) { loadData(true); return; }
     if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(t)) { $('#btnTheme') && $('#btnTheme').click(); return; }
     if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(t)) { setTab('map'); NX.yandex.setTraffic(true); NX.map.updateLegend(); return; }
@@ -206,6 +208,19 @@
     } catch (e) { toast(e.message, 'warn'); }
   }
   NX.voiceCommand = voiceCommand;
+  // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
+  function wakeSet(on) {
+    const b = $('#btnVoice');
+    NX.store.set('voice:wake', !!on);
+    if (!on) { NX.voice.wakeStop(); b && b.classList.remove('wake'); return; }
+    try {
+      NX.voice.wake(async () => { toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent(); }, st => {
+        if (st === 'on') b && b.classList.add('wake');
+        if (st === 'denied') { b && b.classList.remove('wake'); NX.store.set('voice:wake', false); toast('Mikrofonga ruxsat berilmagan — doim tinglash oʻchirildi.', 'warn'); }
+      });
+    } catch (e) { toast(e.message, 'warn'); NX.store.set('voice:wake', false); }
+  }
+  NX.wakeSet = wakeSet;
   function enhanceChats(root) {
     addMics(root);
     root.querySelectorAll('.chat-log').forEach(log => {
@@ -2458,6 +2473,8 @@
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
+    if (NX.store.get('voice:wake', false) && !navigator.webdriver) setTimeout(() => wakeSet(true), 2500);
+    const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', false); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));

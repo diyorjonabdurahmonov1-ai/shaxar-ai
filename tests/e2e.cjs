@@ -619,6 +619,15 @@ async function roadBlock(browser) {
   await p3b.click('.tabs [data-tab=ai]'); await p3b.fill('#chat textarea[name=q]', 'hisobotni och'); await p3b.click('#chat form button.primary'); await p3b.waitForTimeout(600);
   ok('Chatda yozilgan buyruq ham bajariladi (“hisobotni och” → Hisobot)', (await p3b.evaluate(() => NX.state.tab)) === 'report');
   await p3b.click('.tabs [data-tab=map]');
+  await p3b.evaluate(() => {
+    window.SpeechRecognition = window.webkitSpeechRecognition = class { start() { setTimeout(() => this.onresult && this.onresult({ resultIndex: 0, results: [[{ transcript: 'ну сити джем' }]] }), 200); } abort() { setTimeout(() => this.onend && this.onend(), 10); } stop() { this.abort(); } };
+    NX.voice.listen = async () => 'hisobotni och';
+    NX.wakeSet(true);
+  });
+  await p3b.waitForFunction(() => NX.state.tab === 'report', null, { timeout: 8000 }).catch(() => {});
+  ok('Doim tinglash: “City Jam” chaqiruvidan keyin buyruq bajariladi (Hisobot ochildi)', (await p3b.evaluate(() => NX.state.tab)) === 'report' && await p3b.evaluate(() => document.getElementById('btnVoice').classList.contains('wake')));
+  await p3b.evaluate(() => NX.wakeSet(false));
+  await p3b.click('.tabs [data-tab=map]');
   await p3b.click('#btnSettings'); await p3b.click('#btnDiag');
   await p3b.waitForFunction(() => document.querySelectorAll('#diagList li').length >= 10, null, { timeout: 40000 });
   const dg = await p3b.evaluate(() => [...document.querySelectorAll('#diagList li')].map(x => x.textContent.slice(0, 40)));

@@ -67,6 +67,8 @@
   async function listen(ui) {
     ui = ui || {};
     if (cur) { cur.stop(); return null; }
+    // Doim tinglash yoqilgan boʻlsa — buyruq yozilayotganda chaqiruv tinglovchisi toʻxtab turadi
+    const wkWas = typeof wk !== 'undefined' && wk && !wk.paused; if (wkWas) { wk.paused = true; try { wk.r && wk.r.abort(); } catch (e) { /* */ } }
     try {
       if (await serverOk()) {
         ui.onState && ui.onState('rec');
@@ -76,7 +78,34 @@
       }
       ui.onState && ui.onState('rec');
       return await webSpeech(ui.onPart);
-    } finally { cur = null; ui.onState && ui.onState('idle'); }
+    } finally { cur = null; ui.onState && ui.onState('idle'); if (wkWas && wk) { wk.paused = false; setTimeout(() => wk && wk.r && wk.on && wake.restart && wake.restart(), 400); } }
   }
-  NX.voice = { listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk };
+  // ---------- “Alisa” kabi: doim tinglash — chaqiruv soʻzi (“City Jam”) eshitilsa, buyruq yoziladi ----------
+  // Brauzerning nutq tanishi (Chrome/Edge) uzluksiz ishlaydi va faqat chaqiruv soʻzini qidiradi; buyruqning oʻzi — listen() (oʻzbekcha STT).
+  const WAKE = /(сити|сіті|ситі|city|siti|sity)[\s-]*(д?жем|джэм|jam|djem|jem|гем)|ситиджем|citijam|sitijam/i;
+  let wk = null;
+  function beep(f, d) { try { const A = window.AudioContext || window.webkitAudioContext, ac = new A(), o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f || 880; g.gain.value = 0.08; o.connect(g); g.connect(ac.destination); o.start(); setTimeout(() => { o.stop(); ac.close(); }, d || 160); } catch (e) { /* */ } }
+  function wake(onWake, onState) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) throw new Error('Doim tinglash uchun Chrome yoki Edge brauzeri kerak.');
+    if (wk) return;
+    wk = { on: true, paused: false, r: null, fails: 0 };
+    const start = () => {
+      if (!wk || !wk.on || wk.paused || cur) return;
+      const r = new SR(); r.lang = 'ru-RU'; r.continuous = true; r.interimResults = true; wk.r = r;
+      r.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (WAKE.test(t)) { wk.paused = true; try { r.abort(); } catch (x) { /* */ } beep(880, 140); setTimeout(() => beep(1320, 120), 170); onWake().finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
+        }
+      };
+      r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else wk.fails++; };
+      r.onend = () => { if (wk && wk.on && !wk.paused) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
+      try { r.start(); onState && onState('on'); } catch (x) { setTimeout(start, 1000); }
+    };
+    wake.restart = start;
+    start();
+  }
+  function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
+  NX.voice = { listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeStop, waking: () => !!(wk && wk.on), beep };
 })();
