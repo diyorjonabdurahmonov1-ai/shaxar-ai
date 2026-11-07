@@ -212,14 +212,15 @@ async function stt(req, env, cors, okOrigin) {
   if (buf.byteLength < 800) return json({ error: { code: 'empty', message: 'Ovoz yozilmadi' } }, 400, cors);
   if (buf.byteLength > 6e6) return json({ error: { code: 'too_large', message: 'Ovoz juda uzun (≤ 60 soniya)' } }, 413, cors);
   const type = (req.headers.get('Content-Type') || 'audio/webm').split(';')[0], ext = /ogg/.test(type) ? 'ogg' : /mp4|m4a|aac/.test(type) ? 'm4a' : /wav/.test(type) ? 'wav' : 'webm';
-  const prompt = 'Samarqand shahar hokimiyati. City Jam. Oʻzbek tili, lotin yozuvi. Registon, Rudakiy, Daxbet, Ibn Sino, Amir Temur koʻchasi, mahalla, tirbandlik, probka, zilzila, suv toshqini, evakuatsiya, 3D egizak, xarita, hisobot.';
+  // Kontekst qisqa va buyruqsiz: model ovozni tanimasa promptni qaytaradi (oldin “3D egizak, xarita…” buyruq boʻlib bajarilardi)
+  const prompt = 'Samarqand. Oʻzbekcha gap, lotin yozuvida.';
   let lastErr = '';
   // Har model: avval oʻzbekcha (language=uz + kontekst), rad etsa — tilsiz (model oʻzi aniqlaydi)
   for (const [model, lang] of [['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-mini-transcribe', ''], ['whisper-1', '']]) {
     const f = new FormData();
     f.append('file', new File([buf], 'ovoz.' + ext, { type })); f.append('model', model); if (lang) f.append('language', lang); f.append('prompt', prompt);
     const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });
-    if (r.ok) { const d = await r.json(); return json({ text: String(d.text || '').trim(), model }, 200, cors); }
+    if (r.ok) { const d = await r.json(); let t = String(d.text || '').trim(); if (/^samarqand\.?\s*oʻzbekcha gap|lotin yozuvida\.?$/i.test(t) && t.length < 60) t = ''; return json({ text: t, model }, 200, cors); }
     let msg = ''; try { const e = await r.json(); msg = (e.error && e.error.message) || ''; } catch (e) { /* */ }
     lastErr = `${model}${lang ? '/' + lang : ''}: HTTP ${r.status} ${msg}`.slice(0, 300);
     if (r.status === 401 || r.status === 429) break;

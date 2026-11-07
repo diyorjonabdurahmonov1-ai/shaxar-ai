@@ -215,8 +215,10 @@
     NX.store.set('voice:wake', !!on);
     if (!on) { NX.voice.wakeStop(); b && b.classList.remove('wake'); return; }
     try {
-      NX.voice.wake(async () => { toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent(); }, st => {
-        if (st === 'on') b && b.classList.add('wake');
+      NX.voice.wake(async () => { toast('🎙 Eshityapman — buyruqni ayting…', 'ok'); await voiceAgent(); }, function (st) {
+        if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
+        if (st === 'heard') { S.wakeHeard = arguments[1]; if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
+        if (st === 'error') toast('Doim tinglash xatosi: ' + arguments[1] + ' (internet yoki mikrofon)', 'warn');
         if (st === 'denied') { b && b.classList.remove('wake'); NX.store.set('voice:wake', false); toast('Mikrofonga ruxsat berilmagan — doim tinglash oʻchirildi.', 'warn'); }
       });
     } catch (e) { toast(e.message, 'warn'); NX.store.set('voice:wake', false); }
@@ -2474,7 +2476,12 @@
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
     $('#btnVoice').addEventListener('click', voiceAgent);
-    if (NX.store.get('voice:wake', false) && !navigator.webdriver) setTimeout(() => wakeSet(true), 2500);
+    if (NX.store.get('voice:wake', false) && !navigator.webdriver) {
+      setTimeout(() => wakeSet(true), 2500);
+      // Baʼzi brauzerlar sahifa ochilganda (foydalanuvchi bosmasdan) tinglashni boshlatmaydi — birinchi bosishda qayta yoqiladi
+      const kick = () => { if (NX.store.get('voice:wake', false) && !NX.voice.waking()) wakeSet(true); };
+      document.addEventListener('pointerdown', kick, { once: true, capture: true }); document.addEventListener('keydown', kick, { once: true, capture: true });
+    }
     const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', false); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
