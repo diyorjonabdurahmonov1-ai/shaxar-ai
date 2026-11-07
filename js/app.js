@@ -293,7 +293,7 @@
     try { ((NX.map3d && NX.map3d.landmarks && NX.map3d.landmarks()) || []).forEach(l => add(l.n, l.c, 'obida')); } catch (e) { /* */ }
     return (PLX = out);
   }
-  const PSTOP = ['korsat', 'korsating', 'kursat', 'top', 'toping', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
+  const PSTOP = ['yaqinlash', 'yaqinlas', 'kattalash', 'uzoqlash', 'korsat', 'korsating', 'kursat', 'top', 'toping', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
   const PGEN = ['stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo'];
   const pgen = w => PGEN.some(g => w === g || (w.length > g.length && w.startsWith(g)) || wsim(w, g) >= 0.85);
   async function placeFind(text) {
@@ -301,7 +301,7 @@
     const words = t.split(' ').filter(Boolean);
     if (!words.length || words.length > 7 || /\?|nima|qanday|qaysi|necha|qancha|nega|probka|tirband|suv|zilzila|evaku|yongin|bosh reja/.test(t)) return null;
     const q = words.filter(w => !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3) || wsim(w, x) >= 0.86));
-    const strong = q.filter(w => w.length > 2 && !pgen(w));
+    const strong = q.filter(w => w.length > 2 && !pgen(w) && !VVOC.some(v => wsim(w, v) >= 0.8 || (w.length > v.length + 1 && w.startsWith(v))));
     if (!strong.length) return null;
     const idx = await placeIndex(); let best = null, bs = 0;
     const tsim = (w, tk) => { let b = 0; tk.forEach(n => { let s2 = wsim(w, n); if (n.length >= 4 && w.length > n.length && w.startsWith(n.slice(0, Math.max(4, n.length - 1)))) s2 = Math.max(s2, 0.9); if (s2 > b) b = s2; }); return b; };
@@ -353,6 +353,9 @@
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
+    // “Dinamo stadionidan yaqinlashdir” — kamera buyrugi emas, joyni topib koʻrsatish
+    const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
+    if (plan && VIEWK.includes(plan)) { const pp = await placePlan(list); if (pp) plan = pp; }
     if (!plan) { plan = await placePlan(list); }
     if (!plan) { plan = await voiceAI(list); }
     if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); NX.voice.beep(1175, 90); } plan.run(); return; }
