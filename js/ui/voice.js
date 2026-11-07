@@ -40,7 +40,7 @@
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
         if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
-        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1500) return stop(); } }
+        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
       }
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
       if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
@@ -111,8 +111,13 @@
         try { blob = await record(ui.onLevel, ui); } finally { wc.stop(); }
         if (!blob) return null;
         ui.onState && ui.onState('busy');
-        const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 1500))]);
-        try { const srv = await transcribe(blob).catch(e => { if (webT) return ''; throw e; }); NX.voice.cands = [srv, webT].filter((x, i, a) => x && a.indexOf(x) === i); return srv || webT; }
+        // Tezlik: brauzer matni allaqachon tayyor va oddiy buyruqqa aniq mos kelsa — serverni kutmaymiz
+        const w0 = wc.text;
+        if (w0 && ui.quick && ui.quick(w0)) { NX.voice.cands = [w0]; return w0; }
+        const srvP = transcribe(blob);   // server bilan brauzer tanishi parallel (oldin ketma-ket 1.5 s kutilardi)
+        srvP.catch(() => {});
+        const webT = await Promise.race([wc.done, new Promise(r => setTimeout(() => r(wc.text), 250))]);
+        try { const srv = await srvP.catch(e => { const w = wc.text || webT; if (w) return ''; throw e; }); const wt = wc.text || webT; NX.voice.cands = [srv, wt].filter((x, i, a) => x && a.indexOf(x) === i); return srv || wt; }
         catch (e) {
           // Server ovoz modeliga kira olmasa (OpenAI loyihasida ruxsat yoʻq) — bu sessiyada brauzerning oʻz tanishi ishlatiladi
           if (!/tanib boʻlmadi|modeli|HTTP 4\d\d/.test(e.message) || !(window.SpeechRecognition || window.webkitSpeechRecognition)) throw e;

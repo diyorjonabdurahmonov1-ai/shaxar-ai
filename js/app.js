@@ -404,7 +404,7 @@
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
       if (!quiet) hud('busy', 'Tushunilmoqda…', '«' + list[0] + '»');
       try {
-        const x = await vlex(list), res = await NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions });
+        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 6000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', places: x.places, streets: x.streets, questions: x.questions })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
           else if (res.t === 'place') { const pl = (await placeIndex()).find(z => z.name === res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
@@ -436,6 +436,7 @@
     try {
       const t = await NX.voice.listen({
         silentOk: loop,
+        quick: x => { try { const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
           if (loop) { if (st === 'busy') hud('busy', 'Matnga oʻgirilmoqda…', ''); return; }
