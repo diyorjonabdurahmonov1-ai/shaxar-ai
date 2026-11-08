@@ -251,6 +251,14 @@
   }
   const VCMD = {
     map: gotab('map'), problems: gotab('problems'), systems: gotab('systems'), twin: gotab('twin'), ai: gotab('ai'), report: gotab('report'),
+    closeproblem: { label: 'muammo yopildi', run: () => { closeOpenProblem(); if (S.tab === 'problems') render(); } },
+    clearmarks: { label: 'belgi olib tashlandi', run: () => {
+      try { if (placeShow.pin) { placeShow.pin.remove(); placeShow.pin = null; } clearTimeout(placeShow.t); } catch (e) { /* */ }
+      try { if (!S.road) NX.view.showPlace(null); } catch (e) { /* */ }
+      try { NX.view.showActions(null); } catch (e) { /* */ }
+      try { hazardClear(); } catch (e) { /* */ }
+      closeOpenProblem();
+    } },
     clear: { label: 'natija yopildi', run: () => { hazardClear(); NX.view.showActions(null); } },
     fotoreal: { label: '🌐 Fotoreal 3D', run: () => { setTab('twin'); if (NX.g3d.available() && !NX.g3d.active()) NX.g3d.toggle(); } },
     maket: { label: '🧊 Maket', run: () => { setTab('twin'); if (NX.g3d.active()) NX.g3d.hide(true); } },
@@ -387,6 +395,9 @@
       const k = tab[0]; if (k === 'twin' && /fotoreal|real/.test(ct)) return VCMD.fotoreal;
       return VCMD[k];
     }
+    if (nw <= 5 && /\bmuammo(ni|si|sini)?\b/.test(ct) && /(yop|ochir|olib\s*tashla|kerakmas)/.test(ct) && !/muammolar|\?|nima/.test(ct)) return VCMD.closeproblem;
+    // “Belgini olib tashla”, “joyni/koʻchani oʻchir”, “chiziqni yoʻqot”: koʻrsatilgan joy/koʻcha/bino belgisini xaritadan olib tashlash
+    if (nw <= 6 && !/\?|nima|qanday|qaysi/.test(ct) && (/\b(belgi|belgini|belgilarni|nuqta|nuqtani|chiziq|chiziqni|marker|joyni|kochani|binoni|aylana|aylanani|pin)\b/.test(ct) && /(olib\s*tashla|ochir|tozala|yoqot|yop|yashir|kerakmas|kerak\s*emas)/.test(ct) || /\b(olib\s*tashla|hammasini\s*(olib\s*tashla|ochir|tozala))\b/.test(ct)) && !/muammo\w*\s*(ni)?\s*(yop|ochir)|hisobot|tizim/.test(ct)) return VCMD.clearmarks;
     if (/natija|tozala|hammasini yop|\byop\b/.test(ct) && !/\?|nima|qanday/.test(ct)) return VCMD.clear;
     if (/fotoreal/.test(ct)) return VCMD.fotoreal;
     if (/maket|sxema/.test(ct)) return VCMD.maket;
