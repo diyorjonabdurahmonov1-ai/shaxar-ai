@@ -238,6 +238,15 @@
     if ((tries || 0) > 20) return;
     setTimeout(() => whenMap3d(fn, (tries || 0) + 1), 300);
   }
+  // Oʻng paneldagi maʼlumotni aylantirish (ovoz bilan skroll)
+  function scrollPanel(dir) {
+    const els = [document.querySelector('#panel'), document.querySelector('aside'), document.scrollingElement].filter(Boolean);
+    const el = els.find(e => e.scrollHeight > e.clientHeight + 8) || els[0]; if (!el) return;
+    const h = el.clientHeight || innerHeight;
+    if (dir === 'top') el.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (dir === 'end') el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    else el.scrollBy({ top: (dir === 'up' ? -1 : 1) * h * 0.7, behavior: 'smooth' });
+  }
   const VCMD = {
     map: gotab('map'), problems: gotab('problems'), systems: gotab('systems'), twin: gotab('twin'), ai: gotab('ai'), report: gotab('report'),
     clear: { label: 'natija yopildi', run: () => { hazardClear(); NX.view.showActions(null); } },
@@ -260,6 +269,10 @@
     hideleft: { label: 'chap tomon uylari yashirildi', run: () => { NX.city3d.setStreet(true); NX.city3d.scanSide('chap', false); NX.city3d.scanSide('ong', true); } },
     hideright: { label: 'oʻng tomon uylari yashirildi', run: () => { NX.city3d.setStreet(true); NX.city3d.scanSide('ong', false); NX.city3d.scanSide('chap', true); } },
     showsides: { label: 'uylar qaytarildi', run: () => NX.city3d.showAll() },
+    scrolldown: { label: 'paneldagi maʼlumot pastga aylantirildi', run: () => scrollPanel('down') },
+    scrollup: { label: 'paneldagi maʼlumot tepaga aylantirildi', run: () => scrollPanel('up') },
+    scrolltop: { label: 'panel boshiga qaytdi', run: () => scrollPanel('top') },
+    scrollend: { label: 'panel oxiriga tushdi', run: () => scrollPanel('end') },
     scan3d: { label: '🏘 Real 3D koʻcha', run: () => { setTab('twin'); setTimeout(() => { try { if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); } catch (e) { /* */ } }, 700); } },
     top: { label: 'tepadan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -89 })) return; whenMap3d(m => m.easeTo({ pitch: 0, bearing: 0, duration: 900 })); } },
     side: { label: 'yon tomondan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -25 })) return; whenMap3d(m => m.easeTo({ pitch: 68, duration: 900 })); } },
@@ -307,6 +320,16 @@
       const qq = ct.replace(/\b(muammo\w*|bos\w*|och\w*|korsat\w*|top\w*|kir\w*|ber|bering|yonidagi|yonida|atrofidagi|yaqinidagi|menga)\b/g, ' ').replace(/\s+/g, ' ').trim();
       return { label: 'Muammo ochilmoqda' + (qq ? ': ' + qq : ''), run: () => { problemOpenVoice(qq || 'birinchi'); } };
     }
+    // Oʻng paneldagi maʼlumotni aylantirish: “pastga tushir”, “skroll qil”, “davomini koʻrsat”, “oxirigacha”, “boshiga qayt”
+    if (nw <= 6 && !/\?|nima|qanday|qaysi|necha|qancha|xarita|kocha|suv|zilzila/.test(ct)) {
+      if (/(boshiga|tepasiga|yuqorisiga)\s*(qayt|chiq|bor|ot)|eng\s*tepaga/.test(ct)) return VCMD.scrolltop;
+      if (/(oxirigacha|oxiriga|eng\s*pastga|pastigacha)/.test(ct) && /(tush|bor|aylan|skrol|scroll|qara|ot)/.test(ct)) return VCMD.scrollend;
+      if (/(skrol|scroll|skrul)/.test(ct)) return /(tepa|yuqori|orqaga)/.test(ct) ? VCMD.scrollup : VCMD.scrolldown;
+      if (/(pastga|pastroq|pastiga|davomini|davomi|keyingisini|yana\s*korsat|kopro[kq]\s*korsat)\s*(tushir|tush|aylantir|korsat|och|bor)?/.test(ct) && /(tushir|tush\b|aylantir|davomi|pastroq|ma.lumot|royxat|panel)/.test(ct) && !/sur\w*|siljit/.test(ct)) return VCMD.scrolldown;
+      if (/(tepaga|yuqoriga|teparoq|orqaga)\s*(tushir|qayt|aylantir|ko.tar|chiq)|(tepaga|yuqoriga)\s*skrol/.test(ct) && !/sur\w*|siljit|xarita/.test(ct)) return VCMD.scrollup;
+    }
+    // “Shuni och”, “buni bos”, “mana shu muammoni och”: hozir koʻrinib turgan/ochiq muammo
+    if (nw <= 5 && /\b(shuni|buni|ushani|manashuni|mana\s*shuni|mana\s*buni|shu\s*muammo\w*|bu\s*muammo\w*)\b/.test(ct) && /\b(och|bos|bosing|korsat|tushuntir|batafsil|haqida|malumot)\w*/.test(ct) && !/hal\s*qil|yechim/.test(ct)) return { label: 'Shu muammo ochilmoqda', run: () => { problemOpenVoice('bu'); } };
     // Koʻcha ichida yurish/qarash va uy tomonlarini yashirish (Angren skani)
     if (nw <= 7 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
       if (/(kocha|yol)\s*ichi|koz\s*balandlig|ichkaridan|odamdek|piyoda\s*korin/.test(ct)) return VCMD.streeteye;
@@ -492,6 +515,13 @@
   async function problemFind(q) {
     const M = S.model; if (!M || !M.problems.length) return null;
     const ps = M.problems, k = nrm(q);
+    if (/^(bu|shu|ana|mana|ushbu)( (shu|bu))?$/.test(k.replace(/\b(muammo\w*|mana|ana)\b/g, ' ').replace(/\s+/g, ' ').trim() || k)) {
+      const cur = S.problemOpen && ps.find(z => z.id === S.problemOpen); if (cur) return cur;
+      const fp = S.focusPid && ps.find(z => z.id === S.focusPid); if (fp) return fp;
+      // xarita markaziga eng yaqin muammo
+      let c = null; try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym) { const cc = ym.getCenter(); c = [cc[0], cc[1]]; } else { const l = NX.map.leaflet && NX.map.leaflet(); if (l) { const cc = l.getCenter(); c = [cc.lat, cc.lng]; } } } catch (e) { /* */ }
+      if (c) { const d = p => (p.lat - c[0]) ** 2 + ((p.lon - c[1]) * 0.77) ** 2; return ps.slice().sort((a, b) => d(a) - d(b))[0]; }
+    }
     if (/\b(birinchi|first|top|eng xavfli|eng katta|eng muhim|worst)\b/.test(k) || !k) return ps.slice().sort((a, b) => (b.sev || 0) - (a.sev || 0))[0];
     const ws = k.split(' ').filter(w => w.length > 3 && !/^(muammo\w*|bos|och\w*|korsat\w*|yonida|yaqinida|atrofida|joy\w*)$/.test(w));
     if (ws.length) {
@@ -511,7 +541,8 @@
   async function problemOpenVoice(q) {
     const p = await problemFind(q);
     if (!p) { hud('warn', 'Bunday muammo topilmadi', '«' + q + '»'); return false; }
-    setTab('problems'); await new Promise(r => setTimeout(r, 250)); await openProblem(p);
+    if (!(S.tab === 'problems' && S.problemOpen === p.id)) { setTab('problems'); await new Promise(r => setTimeout(r, 250)); await openProblem(p); }
+    scrollPanel('top');
     return true;
   }
   // Agent uchun joriy holat: qaysi boʻlim, qaysi muammo/koʻcha/hudud ochiq
