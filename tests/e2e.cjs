@@ -936,7 +936,7 @@ async function roadBlock(browser) {
   // Ikkinchi foydalanuvchi: AI natijalari umumiy — qayta pul sarflanmaydi
   const postsBefore = pc.posts;
   const p8b = await ctx8.newPage();
-  await p8b.addInitScript(() => localStorage.clear());
+  await p8b.addInitScript(() => { localStorage.clear(); localStorage.setItem('nx:map:cams', 'true'); localStorage.setItem('nx:map:fixes', 'true'); });
   await p8b.goto(BASE);
   await p8b.waitForFunction(() => NX.state.review && !NX.state.review.busy && NX.state.review.ts, null, { timeout: 60000 });
   ok('AI natijasi umumiy: boshqa foydalanuvchida qayta soʻralmaydi', pc.posts === postsBefore && (await p8b.evaluate(() => NX.state.review.fixed.some(f => f.by === 'AI'))), `yangi soʻrovlar: ${pc.posts - postsBefore}`);
