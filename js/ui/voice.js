@@ -95,6 +95,7 @@
     if (!r.ok || !r.data || r.data.error) throw new Error((r.data && r.data.error && r.data.error.message) || 'Ovozni matnga oʻgirib boʻlmadi (HTTP ' + r.status + ')');
     let t = toLatin(r.data.text || '').trim();
     // Model eshitmay qolsa kontekst matnini qaytaradi — bunday “javob” buyruq emas (eski Worker’ning uzun promptini ham taniydi)
+    if (/^\s*(samarqand|самарканд|самарқанд)\W*$/i.test(t)) t = '';   // prompt aks-sadosi
     if (/lotin yozuv|oʻzbek tili, lotin|o‘zbek tili, lotin|shahar hokimiyati, o|3d egizak, xarita, hisobot|oʻzbekcha gap/i.test(t)) t = '';
     // Nutq modellari jim/xira ovozda oʻzidan gap oʻylab topadi — buyruq emas
     if (/субтитр|thank you|thanks for watching|спасибо за просмотр|продолжение следует|amara\.org|dimatorzok|bu video|obuna bo/i.test(t) && t.split(/\s+/).length < 9) t = '';

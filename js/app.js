@@ -330,6 +330,10 @@
       if (/(pastga|pastroq|pastiga|davomini|davomi|keyingisini|yana\s*korsat|kopro[kq]\s*korsat)\s*(tushir|tush|aylantir|korsat|och|bor)?/.test(ct) && /(tushir|tush\b|aylantir|davomi|pastroq|ma.lumot|royxat|panel)/.test(ct) && !/sur\w*|siljit/.test(ct)) return VCMD.scrolldown;
       if (/(tepaga|yuqoriga|teparoq|orqaga)\s*(tushir|qayt|aylantir|ko.tar|chiq)|(tepaga|yuqoriga)\s*skrol/.test(ct) && !/sur\w*|siljit|xarita/.test(ct)) return VCMD.scrollup;
     }
+    // “Panelda pastga sur / maʼlumotni tepaga tushir”: panel soʻzi bor — xarita emas, panel aylantiriladi
+    if (nw <= 6 && /\b(panel|malumot|royxat)\w*/.test(ct) && /(pastga|tepaga|yuqoriga|pastroq|orqaga)/.test(ct) && !/\?|nima|qanday/.test(ct)) return /(tepa|yuqori|orqaga)/.test(ct) ? VCMD.scrollup : VCMD.scrolldown;
+    // “Xaritani <tomonsiz> sur”: yon aniq emas — boʻlimga oʻtib ketmaydi
+    if (nw <= 5 && /\b(sur|surib|surgin|siljit)\w*/.test(ct) && /xarita/.test(ct) && !/(ong|ung|chap|yuqori|tepa|past|shimol|janub|sharq|garb)/.test(ct)) return { warn: true, label: 'Qaysi tomonga? “oʻngga sur”, “chapga sur”, “yuqoriga sur” yoki “pastga sur” deng', run: () => { } };
     // “Shuni och”, “buni bos”, “mana shu muammoni och”: hozir koʻrinib turgan/ochiq muammo
     if (nw <= 5 && /\b(shuni|buni|ushani|manashuni|mana\s*shuni|mana\s*buni|shu\s*muammo\w*|bu\s*muammo\w*)\b/.test(ct) && /\b(och|bos|bosing|korsat|tushuntir|batafsil|haqida|malumot)\w*/.test(ct) && !/hal\s*qil|yechim/.test(ct)) return { label: 'Shu muammo ochilmoqda', run: () => { problemOpenVoice('bu'); } };
     // Koʻcha ichida yurish/qarash va uy tomonlarini yashirish (Angren skani)
@@ -520,7 +524,7 @@
     for (const w of k.split(' ')) { if (ORD[w]) return ORD[w]; if (w.length > 5) for (const o in ORD) if (wsim(w, o) >= 0.85) return ORD[o]; }
     return 0;
   }
-  const relDir = k => (/\b(chap\w*)\b/.test(k) ? 'l' : /\b(ong|ung)\w*\b/.test(k) ? 'r' : /\b(tepa|yuqori|shimol)\w*\b/.test(k) ? 't' : /\b(past|quyi|janub)\w*\b/.test(k) ? 'b' : '');
+  const relDir = k => (/\b(chap\w*)\b/.test(k) ? 'l' : /\b(ong|ung|10|on)\w*\b(?=\s*taraf|\s*tomon|\s*dagi|\s*gi\b)|\b(ong|ung)\w*\b/.test(k) ? 'r' : /\b(tepa|yuqori|shimol)\w*\b/.test(k) ? 't' : /\b(past|quyi|janub)\w*\b/.test(k) ? 'b' : '');
   function mapBounds() {
     try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym) { const b = ym.getBounds(); return { s: b[0][0], w: b[0][1], n: b[1][0], e: b[1][1] }; } } catch (e) { /* */ }
     try { const l = NX.map.leaflet && NX.map.leaflet(); if (l) { const b = l.getBounds(); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; } } catch (e) { /* */ }
@@ -532,7 +536,13 @@
     const M = S.model; if (!M || !M.problems.length) return null;
     const ps = M.problems, k = nrm(q);
     const ord = ordinalOf(k);
-    if (ord) { const id = listIds()[ord - 1]; const p = id && ps.find(z => z.id === id); if (p) return p; }
+    if (ord) {
+      // “Birinchi/ikkinchi muammo” — EKRANDA (xarita koʻrinishida) turganlar ichidan, roʻyxat tartibida; ekranda yoʻq boʻlsa — umumiy roʻyxatdan
+      const order = listIds().map(id => ps.find(z => z.id === id)).filter(Boolean), base = order.length ? order : ps, bb = mapBounds();
+      const vis = bb ? base.filter(p => p.lat >= bb.s && p.lat <= bb.n && p.lon >= bb.w && p.lon <= bb.e) : [];
+      if (vis.length) return vis[ord - 1] || null;
+      return base[ord - 1] || null;
+    }
     const rd = relDir(k);
     if (rd) {
       const bb = mapBounds(); let vis = bb ? ps.filter(p => p.lat >= bb.s && p.lat <= bb.n && p.lon >= bb.w && p.lon <= bb.e) : [];
@@ -668,8 +678,9 @@
   }
   async function voiceCommand0(raw, quiet, cands, opts) {
     let list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
+    list = list.filter(x => !/^\s*(samarqand|самарканд|самарқанд)\W*$/i.test(x));   // STT prompt aks-sadosi (jim/shovqinli ovozda model “Samarqand.” deb yozadi)
     list = list.filter(x => !/[\u0600-\u06FF\u0750-\u077F\u4E00-\u9FFF\u0590-\u05FF]/.test(x));   // arab/xitoy/ivrit yozuvi — til noaniq, shovqin: bajarilmaydi
-    if (!list.length) { if (!quiet) hud('warn', 'Aniq eshitilmadi — qayta ayting', ''); return 'warn'; }
+    if (!list.length) { if (!quiet && !(opts && opts.ambient)) hud('warn', 'Aniq eshitilmadi — qayta ayting', ''); return 'warn'; }
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
