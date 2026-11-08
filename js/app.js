@@ -287,7 +287,7 @@
     const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
     if (st0) {
       const ntk = NX.translit(st0.s.name).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2), wk = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2);
-      return { weak: !wk.some(w => ntk.some(n => wsim(w, n) >= 0.85)), label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
+      return { street: true, weak: !wk.some(w => ntk.some(n => wsim(w, n) >= 0.85)), label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
     }
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
     const tab = TABS.find(([, re]) => re.test(ct));
@@ -430,6 +430,19 @@
     const idx = await placeIndex(), k = nrm(n);
     return idx.find(z => z.name === n) || idx.find(z => nrm(z.name) === k) || await placeFind(n);
   }
+  // Agent uchun joriy holat: qaysi boʻlim, qaysi muammo/koʻcha/hudud ochiq
+  function uiState() {
+    const o = [];
+    try {
+      o.push('boʻlim: ' + (VTABS[S.tab] || S.tab));
+      if (S.problemOpen && S.model) { const p = S.model.problems.find(z => z.id === S.problemOpen); if (p) o.push('ochiq muammo: ' + (p.title || p.type)); }
+      if (S.street != null && S.model && S.model.streets[S.street]) o.push('tanlangan koʻcha: ' + S.model.streets[S.street].name);
+      if (S.area) o.push('hudud belgilangan');
+      if (S.road) o.push('chizilgan yangi koʻcha tahlili ochiq');
+      if (S.model) o.push('muammolar soni: ' + S.model.problems.length);
+    } catch (e) { /* */ }
+    return o.join('; ');
+  }
   async function agentRun(res, list, depth) {
     const H = {
       cmd: k => { const c = VCMD[k]; if (c) c.run(); },
@@ -438,10 +451,10 @@
       ask: q => { if (S.tab === 'twin') twinAsk(q); else { if (S.tab !== 'ai') setTab('ai'); chatSend(q); } },
     };
     await NX.agent.run(res.steps, H);
-    if (res.more && (depth || 0) < 3 && NX.ai.available()) {
+    if (res.more && (depth || 0) < 5 && NX.ai.available()) {
       await new Promise(r => setTimeout(r, 600));
       try {
-        const r2 = await NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, ui: NX.agent.compact(NX.agent.snapshot()), done: res.say || 'oldingi qadamlar' });
+        const r2 = await NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, state: uiState(), ui: NX.agent.compact(NX.agent.snapshot()), done: res.say || 'oldingi qadamlar' });
         if (r2 && r2.t === 'act') { hud('ok', '✓ ' + (r2.say || 'Davom etyapman'), ''); return agentRun(r2, list, (depth || 0) + 1); }
       } catch (e) { /* */ }
     }
@@ -479,7 +492,7 @@
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
       
       try {
-        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 4000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
+        const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 4000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], state: uiState(), places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
         if (res) {
           if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
           else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl && placeHeard(list, pl)) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
@@ -511,6 +524,17 @@
     const lm = S.chat.msgs[S.chat.msgs.length - 1];
     if (/probka|tirband|tiqil/.test(t) && !(lm && lm.hz && lm.hz.length)) { NX.yandex.setTraffic(true); NX.map.updateLegend(); toast('Xaritada Yandex’ning jonli probka qatlami (yashil — erkin, sariq — sekin, qizil — tirband).', 'ok'); }
   }
+  // Jonli buyruq: brauzer oraliq matni 0.35 s oʻzgarmasa va xavfsiz buyruqqa mos kelsa — yozib olish toʻxtatiladi va darrov bajariladi
+  let liveT = 0;
+  function liveWatch(t) {
+    clearTimeout(liveT);
+    const x = String(t || '').trim(); if (!x || x.split(/\s+/).length > 5) return;
+    let pl = null; try { pl = voicePlan(x); } catch (e) { /* */ }
+    if (!pl || pl.warn || pl.weak || pl.street) return;
+    const isTab = Object.keys(VTABS).some(k => VCMD[k] === pl), go = /\b(och|ochib|kir|kiring|ot|otish|bor|korsat|qayt|ochgin)\w*\b/.test(NX.translit(x.toLowerCase()));
+    if (isTab && !go) return;
+    liveT = setTimeout(() => { if (NX.voice.active()) NX.voice.stop(); }, isTab ? 600 : 350);
+  }
   async function voiceAgent(o) {
     const b = $('#btnVoice'), loop = !!(o && o.loop);
     if (NX.voice.active()) { NX.voice.stop(); return false; }
@@ -526,7 +550,8 @@
         onMic: lab => { voiceAgent.mic = lab || ''; const h = $('#voiceHud'); if (!loop && h && h.classList.contains('rec')) h.querySelector('small').textContent = '🎤 ' + (lab || 'mikrofon') ; },
         onQuiet: lab => { if (!loop) hud('rec', 'Ovoz kelmayapti — mikrofon: ' + (lab || 'nomaʼlum'), 'Windows → Ovoz → Kirish: toʻgʻri mikrofonni tanlang va ovozini oshiring'); },
         onLevel: lv => { b.style.setProperty('--lv', Math.min(1, lv * 3).toFixed(2)); if (!loop) hudLevel(lv); },
-        onPart: t => { if (loop) return; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
+        // Jarvis tezligi: gap tugashini kutmasdan — matn barqaror va buyruqqa aniq mos kelsa darrov bajariladi
+        onPart: t => { liveWatch(t); if (loop) return; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
       if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, ambient: loop }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
@@ -559,7 +584,7 @@
   }
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
-  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   let wpT = 0;
   function wakePill(t, awakeMode) {
