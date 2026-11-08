@@ -51,6 +51,7 @@
       if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }
     }
     const micLabel = (stream.getAudioTracks()[0] || {}).label || ''; ui && ui.onMic && ui.onMic(micLabel);
+    NX.voice.startAt = Date.now();
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
@@ -83,7 +84,7 @@
     };
     rec.start(250); tick();
     cur = { stop };
-    const blob = await done; cur = null;
+    const blob = await done; cur = null; NX.voice.endAt = Date.now();
     if ((!spoke || voicedMs < 350) && ui && ui.silentOk) return null;   // qisqa shovqin (shaqillash, ovoz) gap emas   // uygʻoq rejim: hech kim gapirmadi — serverga yuborilmaydi
     // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
     if (!spoke && an && peak < 0.004 && acOk) throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');

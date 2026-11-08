@@ -326,7 +326,7 @@
     if (nw <= 6 && !/\?|nima|qanday|qaysi|necha|qancha|xarita|kocha|suv|zilzila/.test(ct)) {
       if (/(boshiga|tepasiga|yuqorisiga)\s*(qayt|chiq|bor|ot)|eng\s*tepaga/.test(ct)) return VCMD.scrolltop;
       if (/(oxirigacha|oxiriga|eng\s*pastga|pastigacha)/.test(ct) && /(tush|bor|aylan|skrol|scroll|qara|ot)/.test(ct)) return VCMD.scrollend;
-      if (/(skrol|scroll|skrul)/.test(ct)) return /(tepa|yuqori|orqaga)/.test(ct) ? VCMD.scrollup : VCMD.scrolldown;
+      if (/(skrol|scroll|skrul|sroll|surol|sural|surul|suroll|skral)/.test(ct)) return /(tepa|yuqori|orqaga)/.test(ct) ? VCMD.scrollup : VCMD.scrolldown;
       if (/(pastga|pastroq|pastiga|davomini|davomi|keyingisini|yana\s*korsat|kopro[kq]\s*korsat)\s*(tushir|tush|aylantir|korsat|och|bor)?/.test(ct) && /(tushir|tush\b|aylantir|davomi|pastroq|ma.lumot|royxat|panel)/.test(ct) && !/sur\w*|siljit/.test(ct)) return VCMD.scrolldown;
       if (/(tepaga|yuqoriga|teparoq|orqaga)\s*(tushir|qayt|aylantir|ko.tar|chiq)|(tepaga|yuqoriga)\s*skrol/.test(ct) && !/sur\w*|siljit|xarita/.test(ct)) return VCMD.scrollup;
     }
@@ -357,7 +357,7 @@
       if (/yaqinlash|kattalash|zoom\s*in/.test(ct)) return VCMD.zoomin;
       if (/uzoqlash|kichray|zoom\s*out/.test(ct)) return VCMD.zoomout;
       if (/tepadan|yuqoridan/.test(ct)) return VCMD.top;
-      if (/yon\s*tomon|yondan|nishab/.test(ct)) return VCMD.side;
+      if (/yon\s*tomon|yondan|nishab|yonbosh|yonidan\s*korsat|yon\s*korinish/.test(ct)) return VCMD.side;
       if (/aylant|burish|bur\b|buring/.test(ct)) return VCMD.rotate;
       if (/yozuv\w*\s*(ochir|yashir|kerakmas)|(ochir|yashir)\w*\s*yozuv/.test(ct)) return VCMD.labelsoff;
       if (/yozuv\w*\s*(yoq|korsat|och)/.test(ct)) return VCMD.labelson;
@@ -514,9 +514,32 @@
     return idx.find(z => z.name === n) || idx.find(z => nrm(z.name) === k) || await placeFind(n);
   }
   // Muammoni nomi/turi/joyi boʻyicha topib ochish: “birinchi muammo”, “eng xavfli”, “Shohizinda yonidagi muammo”, “svetofor muammosi”
+  const ORD = { birinchi: 1, ikkinchi: 2, uchinchi: 3, tortinchi: 4, beshinchi: 5, oltinchi: 6, yettinchi: 7, sakkizinchi: 8, toqqizinchi: 9, oninchi: 10 };
+  function ordinalOf(k) {
+    const m = k.match(/\b(\d{1,2})\s*(chi|nchi|inchi)?\b/); if (m && m[2]) return +m[1];
+    for (const w of k.split(' ')) { if (ORD[w]) return ORD[w]; if (w.length > 5) for (const o in ORD) if (wsim(w, o) >= 0.85) return ORD[o]; }
+    return 0;
+  }
+  const relDir = k => (/\b(chap\w*)\b/.test(k) ? 'l' : /\b(ong|ung)\w*\b/.test(k) ? 'r' : /\b(tepa|yuqori|shimol)\w*\b/.test(k) ? 't' : /\b(past|quyi|janub)\w*\b/.test(k) ? 'b' : '');
+  function mapBounds() {
+    try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym) { const b = ym.getBounds(); return { s: b[0][0], w: b[0][1], n: b[1][0], e: b[1][1] }; } } catch (e) { /* */ }
+    try { const l = NX.map.leaflet && NX.map.leaflet(); if (l) { const b = l.getBounds(); return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; } } catch (e) { /* */ }
+    return null;
+  }
+  // Panel roʻyxatidagi tartib (foydalanuvchi “ikkinchi muammo” desa — roʻyxatdagi 2-qator)
+  const listIds = () => [...document.querySelectorAll('#panel button.loc[data-act=problem]')].map(b => b.dataset.id);
   async function problemFind(q) {
     const M = S.model; if (!M || !M.problems.length) return null;
     const ps = M.problems, k = nrm(q);
+    const ord = ordinalOf(k);
+    if (ord) { const id = listIds()[ord - 1]; const p = id && ps.find(z => z.id === id); if (p) return p; }
+    const rd = relDir(k);
+    if (rd) {
+      const bb = mapBounds(); let vis = bb ? ps.filter(p => p.lat >= bb.s && p.lat <= bb.n && p.lon >= bb.w && p.lon <= bb.e) : [];
+      if (!vis.length) vis = ps;
+      const key = { l: p => p.lon, r: p => -p.lon, t: p => -p.lat, b: p => p.lat }[rd];
+      return vis.slice().sort((a, b) => key(a) - key(b))[0];
+    }
     if (/^(bu|shu|ana|mana|ushbu)( (shu|bu))?$/.test(k.replace(/\b(muammo\w*|mana|ana)\b/g, ' ').replace(/\s+/g, ' ').trim() || k)) {
       // Hozir xaritada (markazda) koʻrinib turgan muammo; xarita markazi nomaʼlum boʻlsa — ochiq yoki oxirgi fokus
       let c = null; try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym) { const cc = ym.getCenter(); c = [cc[0], cc[1]]; } else { const l = NX.map.leaflet && NX.map.leaflet(); if (l) { const cc = l.getCenter(); c = [cc.lat, cc.lng]; } } } catch (e) { /* */ }
@@ -553,6 +576,11 @@
     try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym && !ym.__cjw) { ym.__cjw = 1; ym.events.add('actionbegin', mapMoved); } } catch (e) { /* */ }
   }
   async function problemOpenVoice(q) {
+    // “ikkinchi muammo” — roʻyxat kerak: Muammolar boʻlimi va ochiq muammo yopilgan holat
+    if (ordinalOf(nrm(q))) {
+      if (S.tab !== 'problems') { setTab('problems'); await new Promise(r => setTimeout(r, 400)); }
+      if (S.problemOpen) { closeOpenProblem(); await new Promise(r => setTimeout(r, 250)); }
+    }
     const p = await problemFind(q);
     if (!p) { hud('warn', 'Bunday muammo topilmadi', '«' + q + '»'); return false; }
     if (!(S.tab === 'problems' && S.problemOpen === p.id)) { setTab('problems'); await new Promise(r => setTimeout(r, 250)); await openProblem(p); }
@@ -658,7 +686,7 @@
     if (amb && !plan && !(vscore(list[0]) >= 0.25 || QW0.test(list[0]) || list.some(x => voicePlan(x)))) return 'warn';
     // Erkin gap (uzun/qoʻshma: “…koʻrsat, endi yaqinlashtir”) — AI tushunadi; AI ishlamasa mahalliy qoida
     const localPlan = plan;
-    if (plan && NX.ai.available() && (list[0].split(/\s+/).length > 4 || /\b(endi|keyin|yana|bitta|hazil)\b/i.test(NX.translit(list[0])))) plan = null;
+    if (plan && NX.ai.available() && (list[0].split(/\s+/).length > 4 || (list[0].split(/\s+/).length > 3 && /\b(endi|keyin|hazil)\b/i.test(NX.translit(list[0]))))) plan = null;   // “yana uzoqlashtir” kabi oddiy buyruq AI ga ketmaydi (jurnal: ~1.5 s tejaladi)
     const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
     if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
@@ -728,8 +756,8 @@
     const ok = items.length ? Math.round((st.ok || 0) / items.length * 100) : 0;
     let el = $('#vlogOv'); if (el) el.remove();
     el = document.createElement('div'); el.id = 'vlogOv';
-    el.innerHTML = `<div class="vl-box"><div class="vl-h"><b>🎙 Ovoz jurnali</b><span>${items.length} ta · ${NX.esc(src)} · muvaffaqiyat ${ok}% · oʻrtacha: gap ${avg('speech')} ms + tushunish ${avg('think')} ms</span><button type="button" class="btn sm" data-vl="copy">Nusxa olish</button><button type="button" class="btn sm" data-vl="close">Yopish</button></div>
-      <div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · ' + (x.ms.speech || 0) + '+' + (x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
+    el.innerHTML = `<div class="vl-box"><div class="vl-h"><b>🎙 Ovoz jurnali</b><span>${items.length} ta · ${NX.esc(src)} · muvaffaqiyat ${ok}% · gapdan keyin javobgacha oʻrtacha ${ms.some(x => x.ms.lag != null) ? avg('lag') : avg('think')} ms</span><button type="button" class="btn sm" data-vl="copy">Nusxa olish</button><button type="button" class="btn sm" data-vl="close">Yopish</button></div>
+      <div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · javob ' + (x.ms.lag != null ? x.ms.lag : x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
     document.body.appendChild(el);
     el.addEventListener('click', ev => { const b = ev.target.closest('[data-vl]'); if (!b && ev.target !== el) return; if (!b || b.dataset.vl === 'close') { el.remove(); return; } try { navigator.clipboard.writeText(JSON.stringify(items, null, 1)); toast('Jurnal nusxa olindi — yuboring', 'ok'); } catch (e) { toast('Nusxa olib boʻlmadi', 'warn'); } });
   }
@@ -755,7 +783,7 @@
       if (t) {
         const tHeard = Date.now(); S.vlast = null;
         await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, audio: true, cands: NX.voice.cands, ambient: loop });
-        if (S.vlast && S.vlast.status !== 'ambient') vlogAdd(Object.assign({}, S.vlast, { ms: { speech: tHeard - tStart, think: Date.now() - tHeard } }));
+        if (S.vlast && S.vlast.status !== 'ambient') { const ea = NX.voice.endAt || tHeard; vlogAdd(Object.assign({}, S.vlast, { ms: { speech: Math.max(0, ea - (NX.voice.startAt || tStart)), think: Date.now() - tHeard, lag: Date.now() - ea } })); }
         return t;
       }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
