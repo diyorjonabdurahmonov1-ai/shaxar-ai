@@ -67,8 +67,10 @@
         const lv = m / 128; if (onLevel && now - lvT > 100) { lvT = now; onLevel(lv); }
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
-        if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); }
-        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
+        if (!own && held && held.floor != null) { floor = held.floor; }
+        else if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); if (!own && held) held.floor = floor; }
+        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
+          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
       }
       lastT = now;
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
@@ -135,9 +137,10 @@
       if (await serverOk() && !sttOff) {
         ui.onState && ui.onState('rec');
         // Brauzer gap tugaganini sezsa (1 s jimlik) — yozuv ham darrov toʻxtaydi: javob tezroq
-        const wc = webCapture(ui.onPart, () => setTimeout(() => cur && cur.stop && cur.stop(), 250));
+        let recDone = false;
+        const wc = webCapture(ui.onPart, () => setTimeout(() => { if (!recDone && cur && cur.stop) cur.stop(); }, 250));
         let blob;
-        try { blob = await record(ui.onLevel, ui); } finally { wc.stop(); }
+        try { blob = await record(ui.onLevel, ui); } finally { recDone = true; wc.stop(); }
         if (!blob) return null;
         ui.onState && ui.onState('busy');
         // Tezlik: brauzer matni allaqachon tayyor va oddiy buyruqqa aniq mos kelsa — serverni kutmaymiz

@@ -56,6 +56,7 @@
     if (a === 'place' && h.place) return h.place(s.n);
     if (a === 'street' && h.street) return h.street(s.n);
     if (a === 'geo' && h.geo) return h.geo(s.q);
+    if (a === 'problem' && h.problem) return h.problem(s.q || s.n || '');
     if (a === 'ask' && h.ask) return h.ask(s.text);
     if (a === 'wait') return sleep(Math.min(2000, +s.ms || 600));
     if (a === 'scroll') { const el = document.querySelector('#panel') || document.scrollingElement; if (el) el.scrollBy({ top: s.dir === 'up' ? -420 : 420, behavior: 'smooth' }); return sleep(350); }

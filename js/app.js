@@ -291,6 +291,11 @@
         return { warn: true, label: 'Aniq eshitilmadi — “yaqinlashtir” yoki “uzoqlashtir” deng', run: () => { } };
       }
     }
+    // “Birinchi muammoni och”, “Shohizinda yonidagi muammoni bos”: aniq muammoni ochish (boʻlim emas)
+    if (/\bmuammo(ni|ga|si|sini)?\b/.test(ct) && !/muammolar|bolim|hal\s*qil|yechim|\?|nima|qanday|qaysi|necha/.test(ct) && /\b(bos|bosing|och|ochib|korsat|top|toping|kir)\w*/.test(ct) && nw >= 2 && nw <= 7) {
+      const qq = ct.replace(/\b(muammo\w*|bos\w*|och\w*|korsat\w*|top\w*|kir\w*|ber|bering|yonidagi|yonida|atrofidagi|yaqinidagi|menga)\b/g, ' ').replace(/\s+/g, ' ').trim();
+      return { label: 'Muammo ochilmoqda' + (qq ? ': ' + qq : ''), run: () => { problemOpenVoice(qq || 'birinchi'); } };
+    }
     // Xaritani surish: “o‘ngga sur”, “chapga surib qo‘y”, “shimolga/yuqoriga siljit”
     if (nw <= 5 && /\b(sur|surib|surgin|siljit|siljitib|jildir|harakatlan)\w*\b|\b(sur|siljit)\w*\s*(ber|qoy|yubor)/.test(ct) && !/\?|nima|qanday|qaysi/.test(ct)) {
       if (/\b(ong|ung|sharq)\w*/.test(ct)) return VCMD.panright;
@@ -458,6 +463,32 @@
     const idx = await placeIndex(), k = nrm(n);
     return idx.find(z => z.name === n) || idx.find(z => nrm(z.name) === k) || await placeFind(n);
   }
+  // Muammoni nomi/turi/joyi boʻyicha topib ochish: “birinchi muammo”, “eng xavfli”, “Shohizinda yonidagi muammo”, “svetofor muammosi”
+  async function problemFind(q) {
+    const M = S.model; if (!M || !M.problems.length) return null;
+    const ps = M.problems, k = nrm(q);
+    if (/\b(birinchi|first|top|eng xavfli|eng katta|eng muhim|worst)\b/.test(k) || !k) return ps.slice().sort((a, b) => (b.sev || 0) - (a.sev || 0))[0];
+    const ws = k.split(' ').filter(w => w.length > 3 && !/^(muammo\w*|bos|och\w*|korsat\w*|yonida|yaqinida|atrofida|joy\w*)$/.test(w));
+    if (ws.length) {
+      let best = null, bs = 0;
+      ps.forEach(p => { const t = nrm((p.title || '') + ' ' + ((NX.PROBLEM[p.type] || {}).short || '') + ' ' + (p.detail || '')), tk = t.split(' '); const sc = ws.filter(w => t.includes(w) || tk.some(x => x.length > 3 && wsim(w, x) >= 0.82)).length; if (sc > bs) { bs = sc; best = p; } });
+      if (best) return best;
+    }
+    // joy nomi boʻyicha — eng yaqin muammo (≤ 700 m)
+    const pl = ws.length ? (await placeByName(ws.join(' ')) || await geoFind(ws.join(' '))) : null;
+    if (pl) {
+      const d = p => { const dx = (p.lat - pl.c[0]) * 111000, dy = (p.lon - pl.c[1]) * 85000; return Math.sqrt(dx * dx + dy * dy); };
+      const near = ps.slice().sort((a, b) => d(a) - d(b))[0];
+      if (near && d(near) <= 700) return near;
+    }
+    return null;
+  }
+  async function problemOpenVoice(q) {
+    const p = await problemFind(q);
+    if (!p) { hud('warn', 'Bunday muammo topilmadi', '«' + q + '»'); return false; }
+    setTab('problems'); await new Promise(r => setTimeout(r, 250)); await openProblem(p);
+    return true;
+  }
   // Agent uchun joriy holat: qaysi boʻlim, qaysi muammo/koʻcha/hudud ochiq
   function uiState() {
     const o = [];
@@ -474,6 +505,7 @@
   async function agentRun(res, list, depth) {
     const H = {
       cmd: k => { const c = VCMD[k]; if (c) c.run(); },
+      problem: q => problemOpenVoice(q),
       geo: async q => { const pl = await geoFind(q); if (pl) await placeShow(pl); else hud('warn', '«' + q + '» topilmadi', ''); },
       place: async n => { const pl = await placeByName(n); if (pl) await placeShow(pl); },
       street: async n => { const sd = (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(n)); if (sd) openStreet(sd.id); else { const pl = await placeByName(n); if (pl) await placeShow(pl); } },
@@ -618,6 +650,7 @@
         // Jarvis tezligi: gap tugashini kutmasdan — matn barqaror va buyruqqa aniq mos kelsa darrov bajariladi
         onPart: t => { liveWatch(t); if (loop) return; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
+      clearTimeout(liveT);
       if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, audio: true, cands: NX.voice.cands, ambient: loop }); return t; }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
@@ -637,7 +670,7 @@
         if (document.hidden) { await new Promise(r => setTimeout(r, 1500)); awake.until += 1500; continue; }   // yashirin tabda ishlamaydi
         try {
           const t0i = Date.now(), t = await voiceAgent({ loop: true });
-          if (Date.now() - t0i < 900) await new Promise(r => setTimeout(r, 900));   // tez qaytsa (xato/soxta) — band aylanib qolmasin
+          if (Date.now() - t0i < 900) await new Promise(r => setTimeout(r, t ? 250 : 900));   // buyruqdan keyin deyarli kutmaydi (keyingi gap yoʻqolmasin); xato/boʻsh — band aylanib qolmasin
           if (t) { awake.until = Date.now() + AWAKE_MS; awake.errs = 0; if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(NX.translit(String(t)).replace(/[ʻʼ'‘’`]/g, ''))) break; }
         } catch (e) { if (++awake.errs >= 3 || /ruxsat/i.test(e.message)) break; await new Promise(r => setTimeout(r, 1200)); }
       }
@@ -649,7 +682,7 @@
   }
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
-  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.problemFind = problemFind; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   let wpT = 0;
   function wakePill(t, awakeMode) {
