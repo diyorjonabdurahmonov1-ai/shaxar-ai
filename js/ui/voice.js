@@ -67,10 +67,14 @@
         const lv = m / 128; if (onLevel && now - lvT > 100) { lvT = now; onLevel(lv); }
         peak = Math.max(peak, lv);
         // Xona shovqini birinchi 0.4 s da oʻlchanadi; gap — shovqindan 2.5 baravar baland (kamida 0.02)
-        if (!own && held && held.floor != null) { floor = held.floor; }
-        else if (Date.now() - t0 < 400) { floor = (floor * nF + lv) / (++nF); if (!own && held) held.floor = floor; }
-        else { const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* gap shovqin oʻlchovi vaqtida boshlangan boʻlsa ham chegara haddan oshmaydi */ if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
-          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || Date.now(); if (Date.now() - quietAt > 1000) return stop(); } }
+        const persist = !own && held && held.floor != null;
+        if (persist) floor = held.floor;
+        else if (now - t0 < 400) { floor = (floor * nF + lv) / (++nF); if (!own && held) held.floor = floor; }
+        if (persist || now - t0 >= 400) {
+          const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* chegara haddan oshmaydi; uygʻoq rejimda shovqin darajasi eslab qolinadi */
+          if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
+          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > 1000) return stop(); }
+        }
       }
       lastT = now;
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
