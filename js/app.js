@@ -384,6 +384,7 @@
       const ntk = NX.translit(st0.s.name).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2), wk = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2);
       return { street: true, weak: !wk.some(w => ntk.some(n => wsim(w, n) >= 0.85)), label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
     }
+    if (nw <= 5 && /\bmuammo(ni|si|sini)?\b/.test(ct) && /(yop|ochir|olib\s*tashla|kerakmas)/.test(ct) && !/muammolar|\?|nima/.test(ct)) return VCMD.closeproblem;
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
     const tab = TABS.find(([, re]) => re.test(ct));
     const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
@@ -395,7 +396,6 @@
       const k = tab[0]; if (k === 'twin' && /fotoreal|real/.test(ct)) return VCMD.fotoreal;
       return VCMD[k];
     }
-    if (nw <= 5 && /\bmuammo(ni|si|sini)?\b/.test(ct) && /(yop|ochir|olib\s*tashla|kerakmas)/.test(ct) && !/muammolar|\?|nima/.test(ct)) return VCMD.closeproblem;
     // “Belgini olib tashla”, “joyni/koʻchani oʻchir”, “chiziqni yoʻqot”: koʻrsatilgan joy/koʻcha/bino belgisini xaritadan olib tashlash
     if (nw <= 6 && !/\?|nima|qanday|qaysi/.test(ct) && (/\b(belgi|belgini|belgilarni|nuqta|nuqtani|chiziq|chiziqni|marker|joyni|kochani|binoni|aylana|aylanani|pin)\b/.test(ct) && /(olib\s*tashla|ochir|tozala|yoqot|yop|yashir|kerakmas|kerak\s*emas)/.test(ct) || /\b(olib\s*tashla|hammasini\s*(olib\s*tashla|ochir|tozala))\b/.test(ct)) && !/muammo\w*\s*(ni)?\s*(yop|ochir)|hisobot|tizim/.test(ct)) return VCMD.clearmarks;
     if (/natija|tozala|hammasini yop|\byop\b/.test(ct) && !/\?|nima|qanday/.test(ct)) return VCMD.clear;
