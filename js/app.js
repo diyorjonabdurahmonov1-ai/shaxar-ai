@@ -213,6 +213,7 @@
   const gotab = (k, extra) => ({ label: VTABS[k] + ' boʻlimi', run: () => { setTab(k); if (extra) extra(); } });
   // Yaqinlashtirish/uzoqlashtirish: 3D (MapLibre yoki fotoreal), Yandex yoki Leaflet — qaysi biri faol boʻlsa
   function zoomBy(d) {
+    S.problemOpenAt = 0; mapMoved();
     if (S.tab === 'twin') {
       if (NX.g3d.active() && NX.g3d.cam({ zoom: d > 0 ? 2 : 0.5 })) return;
       const m = NX.map3d.map(); if (m) { d > 0 ? m.zoomIn({ duration: 600 }) : m.zoomOut({ duration: 600 }); return; }
@@ -223,6 +224,7 @@
   }
   // Xaritani surish: dx,dy — ekran ulushi (−1..1); 3D (MapLibre / fotoreal), Yandex yoki Leaflet
   function panBy(dx, dy) {
+    S.problemOpenAt = 0; mapMoved();
     if (S.tab === 'twin') {
       if (NX.g3d.active() && NX.g3d.cam({ moveX: dx, moveY: dy })) return;
       const m = NX.map3d.map(); if (m) { const c = m.getCanvas(); m.panBy([dx * c.clientWidth * 0.4, dy * c.clientHeight * 0.4], { duration: 500 }); return; }
@@ -451,7 +453,7 @@
     return best;
   }
   function placeShow(p) {
-    const lat = p.c[0], lon = p.c[1];
+    const lat = p.c[0], lon = p.c[1]; if (S.problemOpen) { S.problemOpen = null; S.focusPid = null; }
     if (S.tab === 'twin') {
       try {
         const m = NX.map3d.map();
@@ -516,11 +518,10 @@
     const M = S.model; if (!M || !M.problems.length) return null;
     const ps = M.problems, k = nrm(q);
     if (/^(bu|shu|ana|mana|ushbu)( (shu|bu))?$/.test(k.replace(/\b(muammo\w*|mana|ana)\b/g, ' ').replace(/\s+/g, ' ').trim() || k)) {
-      const cur = S.problemOpen && ps.find(z => z.id === S.problemOpen); if (cur) return cur;
-      const fp = S.focusPid && ps.find(z => z.id === S.focusPid); if (fp) return fp;
-      // xarita markaziga eng yaqin muammo
+      // Hozir xaritada (markazda) koʻrinib turgan muammo; xarita markazi nomaʼlum boʻlsa — ochiq yoki oxirgi fokus
       let c = null; try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym) { const cc = ym.getCenter(); c = [cc[0], cc[1]]; } else { const l = NX.map.leaflet && NX.map.leaflet(); if (l) { const cc = l.getCenter(); c = [cc.lat, cc.lng]; } } } catch (e) { /* */ }
       if (c) { const d = p => (p.lat - c[0]) ** 2 + ((p.lon - c[1]) * 0.77) ** 2; return ps.slice().sort((a, b) => d(a) - d(b))[0]; }
+      return (S.problemOpen && ps.find(z => z.id === S.problemOpen)) || (S.focusPid && ps.find(z => z.id === S.focusPid)) || ps[0];
     }
     if (/\b(birinchi|first|top|eng xavfli|eng katta|eng muhim|worst)\b/.test(k) || !k) return ps.slice().sort((a, b) => (b.sev || 0) - (a.sev || 0))[0];
     const ws = k.split(' ').filter(w => w.length > 3 && !/^(muammo\w*|bos|och\w*|korsat\w*|yonida|yaqinida|atrofida|joy\w*)$/.test(w));
@@ -537,6 +538,19 @@
       if (near && d(near) <= 700) return near;
     }
     return null;
+  }
+  // Ochiq muammo xarita surilgach/oʻzgargach yopiladi (keyingi muammo uchun joy), balloon ham yopiladi
+  function closeOpenProblem() {
+    if (!S.problemOpen) return;
+    S.problemOpen = null; S.focusPid = null;
+    try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym && ym.balloon) ym.balloon.close(); } catch (e) { /* */ }
+    try { const l = NX.map.leaflet && NX.map.leaflet(); if (l) l.closePopup(); } catch (e) { /* */ }
+    if (S.tab === 'problems') render();
+  }
+  const mapMoved = () => { if (S.problemOpen && S.tab === 'problems' && Date.now() - (S.problemOpenAt || 0) > 1800) closeOpenProblem(); };
+  function watchMap() {
+    try { const l = NX.map.leaflet && NX.map.leaflet(); if (l && !l.__cjw) { l.__cjw = 1; l.on('dragstart zoomstart', mapMoved); } } catch (e) { /* */ }
+    try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym && !ym.__cjw) { ym.__cjw = 1; ym.events.add('actionbegin', mapMoved); } } catch (e) { /* */ }
   }
   async function problemOpenVoice(q) {
     const p = await problemFind(q);
@@ -903,7 +917,7 @@
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     const wasProblems = S.tab === 'problems';
     S.tab = t;
-    document.dispatchEvent(new CustomEvent('nx:tab', { detail: t }));
+    document.dispatchEvent(new CustomEvent('nx:tab', { detail: t })); if (t === 'problems') setTimeout(watchMap, 600);
     if (t === 'report') trfRefresh();
     // 3D egizak — xarita oʻrnida MapLibre 3D koʻrinishi
     const el3 = $('#map3d');
@@ -2199,7 +2213,7 @@
   }
   // Muammo bosilganda — panelda faqat shu muammo: holati, nima qilish kerak, reja, 4 tomondan suratlar, AI xulosasi
   async function openProblem(p) {
-    S.problemOpen = p.id;
+    S.problemOpen = p.id; S.problemOpenAt = Date.now(); watchMap();
     ensureLeaflet();
     focusProblem(p);
     render(); panel.scrollTop = 0;
@@ -3082,7 +3096,7 @@
         case 'retry': loadData(!!(S.model || S.load === 'error')); break;
         case 'home': clearStreet(); break;
         case 'street': if (id != null) { openStreet(id); } break;
-        case 'problem-close': S.problemOpen = null; render(); break;
+        case 'problem-close': closeOpenProblem(); if (S.tab === 'problems') render(); break;
         case 'pimg': {
           const pid = b.dataset.pid, mode = b.dataset.mode, v = S.verify[pid] || {};
           verifyPart(pid, mode === 'top' ? 'top' : 'photo', async (p, r) => NX.ai.solutionImage(V.effP(S, p), r, { mode, views: v.views && v.views.list, sat: mode === 'top' && v.sat && v.sat.ok ? v.sat.data : null, plan: mode === 'top' ? await NX.plan.png(S.model, V.effP(S, p)) : null }));
