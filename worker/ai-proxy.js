@@ -68,7 +68,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 13, features: ['vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
+    if (path === '/version') return json({ v: 14, features: ['geocode', 'voice', 'vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -77,6 +77,8 @@ export default {
     if (path === '/feedback') return feedback(req, env, cors, okOrigin);
     if (path === '/osm') return osmSnapshot(req, env, cors, okOrigin);
     if (path === '/stt') return stt(req, env, cors, okOrigin);
+    if (path === '/geocode') return geocode(req, env, cors);
+    if (path === '/voice') return voice(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
       if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
@@ -226,6 +228,55 @@ async function stt(req, env, cors, okOrigin) {
     if (r.status === 401 || r.status === 429) break;
   }
   return json({ error: { code: 'stt_error', message: 'Ovozni tanib boʻlmadi: ' + lastErr } }, 502, cors);
+}
+
+// ---------- Joy/koʻcha qidirish (Samarqand): OpenStreetMap Nominatim, kesh 1 kun ----------
+async function geocode(req, env, cors) {
+  const q = (new URL(req.url).searchParams.get('q') || '').trim().slice(0, 120);
+  if (q.length < 2) return json({ items: [] }, 200, cors);
+  if (limit('geo:' + (req.headers.get('CF-Connecting-IP') || 'x'), 300)) return json({ error: { code: 'proxy_rate_limit', message: 'Juda koʻp qidiruv' } }, 429, cors);
+  const u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&polygon_geojson=1&addressdetails=0&accept-language=uz,ru&bounded=1&viewbox=66.78,39.74,67.16,39.54&q=' + encodeURIComponent(q + ' Samarqand');
+  const cache = caches.default, key = new Request(u);
+  let r = await cache.match(key);
+  if (!r) {
+    r = await fetch(u, { headers: { 'User-Agent': 'CityJam-Samarqand/1.0 (hokimiyat raqamli egizak)', Accept: 'application/json' } });
+    if (!r.ok) return json({ error: { code: 'geo_error', message: 'Qidiruv xizmati javob bermadi (HTTP ' + r.status + ')' } }, 502, cors);
+    r = new Response(r.body, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' } });
+    await cache.put(key, r.clone());
+  }
+  const d = await r.json();
+  const items = (Array.isArray(d) ? d : []).map(x => {
+    const g = x.geojson, bb = x.boundingbox ? x.boundingbox.map(Number) : null;   // [s, n, w, e]
+    let lines = null;
+    if (g && g.type === 'LineString') lines = [g.coordinates.map(c => [c[1], c[0]])];
+    else if (g && g.type === 'MultiLineString') lines = g.coordinates.map(l => l.map(c => [c[1], c[0]]));
+    else if (g && g.type === 'Polygon') lines = [g.coordinates[0].map(c => [c[1], c[0]])];
+    if (lines) lines = lines.map(l => l.length > 200 ? l.filter((_, i) => i % Math.ceil(l.length / 200) === 0) : l);
+    return { name: String(x.display_name || x.name || '').split(',').slice(0, 2).join(',').trim(), kind: x.type || x.category || '', lat: +x.lat, lon: +x.lon, bbox: bb && bb.length === 4 ? [[bb[0], bb[2]], [bb[1], bb[3]]] : null, lines };
+  }).filter(x => isFinite(x.lat) && isFinite(x.lon));
+  return json({ items }, 200, Object.assign({ 'Cache-Control': 'public, max-age=3600' }, cors));
+}
+
+// ---------- Ovoz → toʻgʻridan-toʻgʻri tushunish: audio + sayt konteksti bitta soʻrovda (matnga oʻgirish bosqichisiz) ----------
+async function voice(req, env, cors, okOrigin) {
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: { code: 'no_server_key', message: 'Serverda OpenAI kaliti sozlanmagan' } }, 500, cors);
+  if (limit('voice:' + (req.headers.get('CF-Connecting-IP') || 'x'), 200)) return json({ error: { code: 'proxy_rate_limit', message: 'Bir soatda juda koʻp ovozli soʻrov' } }, 429, cors);
+  const raw = await req.text();
+  if (raw.length > 1500000) return json({ error: { code: 'too_large', message: 'Ovoz juda uzun' } }, 413, cors);
+  let b; try { b = JSON.parse(raw); } catch (e) { return json({ error: { code: 'bad_json', message: 'JSON xato' } }, 400, cors); }
+  if (!b.audio || !b.sys) return json({ error: { code: 'bad_request', message: 'audio va sys kerak' } }, 400, cors);
+  const messages = [{ role: 'system', content: String(b.sys).slice(0, 20000) }, { role: 'user', content: [{ type: 'text', text: String(b.msg || '').slice(0, 20000) }, { type: 'input_audio', input_audio: { data: String(b.audio), format: 'wav' } }] }];
+  let lastErr = '';
+  for (const model of ['gpt-4o-mini-audio-preview', 'gpt-4o-audio-preview']) {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages, modalities: ['text'], max_tokens: 700, temperature: 0.1 }) });
+    if (r.ok) { const d = await r.json(); return json({ text: String((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || ''), model }, 200, cors); }
+    let msg = ''; try { const e = await r.json(); msg = (e.error && e.error.message) || ''; } catch (e) { /* */ }
+    lastErr = `${model}: HTTP ${r.status} ${msg}`.slice(0, 300);
+    if (r.status === 401 || r.status === 429) break;
+  }
+  return json({ error: { code: 'voice_error', message: 'Ovozni tushunib boʻlmadi: ' + lastErr } }, 502, cors);
 }
 
 // ---------- Xarita maʼlumotining umumiy nusxasi (koʻchalar, bekatlar, avtobus yoʻnalishlari) ----------

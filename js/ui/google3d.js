@@ -419,6 +419,7 @@
     if (!viewer || !window.Cesium) return false;
     const C = window.Cesium, c = viewer.camera;
     if (o.zoom) { const d = o.zoom > 1 ? c.positionCartographic.height * (1 - 1 / o.zoom) : -c.positionCartographic.height * (1 / o.zoom - 1); d > 0 ? c.moveForward(d) : c.moveBackward(-d); }
+    if (o.moveX || o.moveY) { const h = c.positionCartographic.height * 0.5; if (o.moveX) o.moveX > 0 ? c.moveRight(h * o.moveX) : c.moveLeft(-h * o.moveX); if (o.moveY) o.moveY < 0 ? c.moveUp(h * -o.moveY) : c.moveDown(h * o.moveY); }
     if (o.pitch != null || o.turn) {
       const r = viewer.camera.pickEllipsoid(new C.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2));
       if (r) { const g = C.Cartographic.fromCartesian(r); look(C.Math.toDegrees(g.latitude), C.Math.toDegrees(g.longitude), C.Cartesian3.distance(c.position, r), C.Math.toDegrees(c.heading) + (o.turn || 0), o.pitch != null ? o.pitch : C.Math.toDegrees(c.pitch)); }

@@ -12,6 +12,20 @@
     try { const r = await NX.fetchJSON(base() + '/version', {}, 8000); ver = r.ok && r.data ? +r.data.v || 0 : 0; } catch (e) { ver = 0; }
     return ver >= 13;
   }
+  const serverVer = async () => { await serverOk(); return ver || 0; };
+  // Yozuv (webm/opus) → 16 kHz mono WAV (base64): AI audio kirishi shuni qabul qiladi
+  async function toWav(blob) {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) throw new Error('AudioContext yoʻq');
+    const ac = new AC(); let buf;
+    try { buf = await ac.decodeAudioData(await blob.arrayBuffer()); } finally { ac.close().catch(() => {}); }
+    const sec = Math.min(buf.duration, 20), n = Math.round(sec * 16000), oc = new OfflineAudioContext(1, n, 16000), src = oc.createBufferSource();
+    src.buffer = buf; src.connect(oc.destination); src.start(); const out = (await oc.startRendering()).getChannelData(0);
+    const pcm = new DataView(new ArrayBuffer(44 + n * 2)), W = (o, s) => { for (let i = 0; i < s.length; i++) pcm.setUint8(o + i, s.charCodeAt(i)); };
+    W(0, 'RIFF'); pcm.setUint32(4, 36 + n * 2, true); W(8, 'WAVE'); W(12, 'fmt '); pcm.setUint32(16, 16, true); pcm.setUint16(20, 1, true); pcm.setUint16(22, 1, true); pcm.setUint32(24, 16000, true); pcm.setUint32(28, 32000, true); pcm.setUint16(32, 2, true); pcm.setUint16(34, 16, true); W(36, 'data'); pcm.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) pcm.setInt16(44 + i * 2, Math.max(-1, Math.min(1, out[i])) * 32767, true);
+    const u8 = new Uint8Array(pcm.buffer); let bin = ''; for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+    return btoa(bin);
+  }
   // Kirill → lotin (katta-kichik harf saqlanadi)
   const CY = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'x', ц: 's', ч: 'ch', ш: 'sh', щ: 'sh', ъ: 'ʼ', ы: 'i', ь: '', э: 'e', ю: 'yu', я: 'ya', ў: 'oʻ', қ: 'q', ғ: 'gʻ', ҳ: 'h' };
   const toLatin = s => String(s || '').replace(/[А-Яа-яЁёЎўҚқҒғҲҳ]/g, c => { const l = c.toLowerCase(), t = CY[l] != null ? CY[l] : c; return c === l ? t : t.charAt(0).toUpperCase() + t.slice(1); });
@@ -129,6 +143,7 @@
         // Tezlik: brauzer matni allaqachon tayyor va oddiy buyruqqa aniq mos kelsa — serverni kutmaymiz
         const w0 = wc.text;
         if (w0 && ui.quick && ui.quick(w0)) { NX.voice.cands = [w0]; return w0; }
+        NX.voice.lastBlob = blob;
         let srvP = null; const srv$ = () => (srvP = srvP || transcribe(blob));   // server faqat kerak boʻlganda chaqiriladi (tushunilmasa)
         NX.voice.later = () => srv$().then(x => x, () => '');
         // Eng tez yoʻl: brauzer matni bor — darrov tahlilga beriladi; tushunilmasa server matni bilan qayta uriniladi
@@ -179,5 +194,5 @@
   }
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { serverVer, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, waking: () => !!(wk && wk.on), beep };
 })();

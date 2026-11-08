@@ -777,10 +777,10 @@ map — xaritaga oʻtish; problems — muammolar boʻlimi; systems — shahar ti
     return w && VOICE_KEYS.includes(w[0]) && w[0] !== 'question' ? w[0] : null;
   }
   // Ovoz tushunuvchi: nutq tanish xatolarini domen lugʻati (buyruqlar, joy/koʻcha nomlari, katalog savollari) bilan tuzatadi
-  const VRES_CMDS = { map: 'Xarita boʻlimiga oʻtish', problems: 'Muammolar boʻlimi', systems: 'Shahar tizimlari boʻlimi', twin: '3D egizak boʻlimi', ai: 'AI yordamchi boʻlimi', report: 'Hisobot boʻlimi', clear: 'natijani yopish/tozalash', measure: 'oʻlchash rejimi', tour: 'obidalar boʻylab sayohat', fotoreal: 'fotoreal 3D', maket: 'maket/sxema koʻrinishi', area: 'hudud belgilash', refresh: 'maʼlumotni yangilash', traffic: 'jonli probka qatlami', zoomin: 'xaritani yaqinlashtirish (kattalashtir)', zoomout: 'xaritani uzoqlashtirish (kichraytir)', scan3d: '3D real koʻcha (skanlangan koʻcha)ga oborish', top: 'tepadan koʻrinish', side: 'yon tomondan koʻrinish', rotate: 'aylantirish/burish', labelsoff: 'obidalar yozuvlarini oʻchirish', labelson: 'yozuvlarni yoqish', lite: 'yengil rejim', settings: 'sozlamalar', stop: 'toʻxtatish', theme: 'qorongʻi/yorugʻ rejim', wakeon: 'doim tinglashni yoqish', wakeoff: 'doim tinglashni oʻchirish' };
+  const VRES_CMDS = { map: 'Xarita boʻlimiga oʻtish', problems: 'Muammolar boʻlimi', systems: 'Shahar tizimlari boʻlimi', twin: '3D egizak boʻlimi', ai: 'AI yordamchi boʻlimi', report: 'Hisobot boʻlimi', clear: 'natijani yopish/tozalash', measure: 'oʻlchash rejimi', tour: 'obidalar boʻylab sayohat', fotoreal: 'fotoreal 3D', maket: 'maket/sxema koʻrinishi', area: 'hudud belgilash', refresh: 'maʼlumotni yangilash', traffic: 'jonli probka qatlami', zoomin: 'xaritani yaqinlashtirish (kattalashtir)', zoomout: 'xaritani uzoqlashtirish (kichraytir)', panleft: 'xaritani chapga surish', panright: 'xaritani oʻngga surish', panup: 'xaritani yuqoriga (shimolga) surish', pandown: 'xaritani pastga (janubga) surish', scan3d: '3D real koʻcha (skanlangan koʻcha)ga oborish', top: 'tepadan koʻrinish', side: 'yon tomondan koʻrinish', rotate: 'aylantirish/burish', labelsoff: 'obidalar yozuvlarini oʻchirish', labelson: 'yozuvlarni yoqish', lite: 'yengil rejim', settings: 'sozlamalar', stop: 'toʻxtatish', theme: 'qorongʻi/yorugʻ rejim', wakeon: 'doim tinglashni yoqish', wakeoff: 'doim tinglashni oʻchirish' };
   const VRES_SYS = `Sen Samarqand shahri raqamli egizagi saytining ovozli agentisan: foydalanuvchi odam bilan gaplashgandek erkin gapiradi (hazil, soʻzlashuv, “bitta yaqinlashtirib yubor”, “endi…”, “yana”), sen uni tushunib ishni bajarasan. Bir gapda bir necha ish soʻralsa — act ichida qadamlarni ketma-ket yoz. Foydalanuvchi oʻzbekcha (baʼzan ruscha aralash) gapirgan; nutq tanish bir nechta variantda xato qilgan: soʻzlar buzilgan, qoʻshilgan yoki tushib qolgan. Maʼnosiga va fonetik oʻxshashlikka qarab aslida nima deyilganini aniqla.
 Faqat bitta JSON qaytar (boshqa matn yoʻq):
-{"t":"cmd","k":"<buyruq kaliti>"} | {"t":"place","n":"<joy nomi>"} | {"t":"street","n":"<koʻcha nomi>"} | {"t":"q","text":"<toʻgʻrilangan savol>"} | {"t":"chat","say":"<1 gaplik doʻstona javob>"} | {"t":"act","say":"<qisqa oʻzbekcha tasdiq>","steps":[...],"more":false} | {"t":"unclear"}
+{"t":"cmd","k":"<buyruq kaliti>"} | {"t":"place","n":"<joy nomi>"} | {"t":"street","n":"<koʻcha nomi>"} | {"t":"q","text":"<toʻgʻrilangan savol>"} | {"t":"geo","q":"<xaritadan qidiriladigan joy/koʻcha nomi>"} | {"t":"chat","say":"<1 gaplik doʻstona javob>"} | {"t":"act","say":"<qisqa oʻzbekcha tasdiq>","steps":[...],"more":false} | {"t":"unclear"}
 Qoidalar:
 1) Buyruq kalitlari faqat berilgan roʻyxatdan. Qisqa gap (1–3 soʻz) koʻpincha buyruq; “yaqin/uzoq” aniq boʻlmasa — unclear.
 2) Joy va koʻcha nomi FAQAT berilgan nomzodlar roʻyxatidan (nusxa koʻchir); roʻyxatda mos nom yoʻq boʻlsa uydirma.
@@ -789,14 +789,27 @@ Qoidalar:
 5) Hozirgi boʻlim va oldingi buyruq berilgan: kontekstga qara.
 6) Agar foydalanuvchi ekrandagi biror tugma/maydon/roʻyxat bandini bosish, ochish, yoqish/oʻchirish, tanlash, matn yozish yoki bir necha qadamli ish soʻrasa — "act": steps ichida qadamlar: {"a":"click","id":N} (N — «Ekrandagi elementlar» roʻyxatidagi raqam), {"a":"type","id":N,"text":"...","enter":true}, {"a":"select","id":N,"v":"..."}, {"a":"scroll","dir":"down|up"}, {"a":"cmd","k":"<buyruq kaliti>"}, {"a":"place","n":"<joy>"}, {"a":"street","n":"<koʻcha>"}, {"a":"ask","text":"<savol>"}, {"a":"wait","ms":600}. Faqat roʻyxatdagi elementlarni ishlat, raqamni uydirma. Oddiy buyruq (cmd) yoki savol (q) yetarli boʻlsa act ishlatma. Qadamlar 1–6 ta. Bosgandan keyin yangi element chiqishi kerak boʻlsa (menyu/dialog ochiladi) va davomi kerak boʻlsa "more":true qoʻy — yangi ekran suratini berib davom ettiramiz.
 7) Tozalash/oʻchirish/reset tugmalarini bosma.
+7b) Foydalanuvchi shaharning istalgan koʻcha/joy/bino/obyektini koʻrsatishni soʻrasa va u nomzodlar roʻyxatida YOʻQ boʻlsa — {"t":"geo","q":"nom"} (act ichida: {"a":"geo","q":"nom"}); nomni lotin yoki kirillda toʻgʻri yoz. Nomzodlarda aniq mos nom boʻlsa — place/street.
 7a) Sayt imkoniyatlari (hammasini ovoz bilan bajar): Muammolar boʻlimida roʻyxat qatorlari (har bir qator — tugma): bosilsa muammo ochiladi; ochilgan muammoda “yechim”, “rasm”, “xaritada koʻrsat”, “hal qilish yoʻli” tugmalari bor — foydalanuvchi “shu muammoni hal qil/yechimini koʻrsat” desa shu tugmalarni bos (kerak boʻlsa avval qatorni och, more:true). “Birinchi/eng xavfli muammo” — roʻyxatdagi birinchi qator. Xarita boʻlimi: koʻcha/hudud tahlili; 3D egizak: savol (ask) orqali zilzila/suv/yongʻin tahlili; Hisobot: brifing/aniqlik tugmalari; Sozlamalar: katakchalar. Roʻyxat ekranga sigʻmasa — scroll. Noaniq boʻlsa eng mantiqiy birinchi qadamni qil.
 8) Hazil, salomlashish, minnatdorchilik kabi ishga aloqasiz gap — "chat" (qisqa, iliq javob). Ishga oid boʻlsa avval ishni bajar.
 9) “bitta/ozgina yaqinlashtir”, “endi uzoqlashtir” — cmd zoomin/zoomout; “3D real koʻcha”ga oborish — cmd scan3d. Joy/koʻcha nomini nomzodlardan tanla.`;
-  async function voiceResolve(list, extra) {
-    const x = extra || {};
-    const msg = 'Variantlar:\n' + list.slice(0, 3).map((q, i) => (i + 1) + ') ' + q).join('\n') + '\n\nHozirgi boʻlim: ' + (x.tab || '?') + (x.state ? '\nHolat: ' + x.state : '') + (x.prev ? '\nOldingi buyruq: ' + x.prev : '') + ((x.hist || []).length ? '\nOxirgi gaplar: ' + x.hist.join(' | ') : '') +
+  // Ovoz bevosita AI ga (Worker /voice): audio + sayt konteksti → shu JSON, matnga oʻgirish alohida bosqich emas
+  async function voiceAudio(blob, list, extra) {
+    const wav = await NX.voice.toWav(blob), base = ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
+    const msg = voiceMsg(list, extra) + '\n\nAUDIO ham berilgan: foydalanuvchining oʻzbekcha gapini oʻzing tingla (matn variantlari xato boʻlishi mumkin). JSONga "heard" maydoni qoʻsh — eshitgan gapingni lotin yozuvida.';
+    const r = await NX.fetchJSON(base + '/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: wav, sys: VRES_SYS, msg }) }, 20000);
+    if (!r.ok || !r.data || r.data.error) return null;
+    const m = String(r.data.text || '').match(/\{[\s\S]*\}/); if (!m) return null;
+    try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; if (j.t === 'act' && !Array.isArray(j.steps)) return null; return j; } catch (e) { return null; }
+  }
+  function voiceMsg(list, x0) {
+    const x = x0 || {};
+    return 'Variantlar:\n' + list.slice(0, 3).map((q, i) => (i + 1) + ') ' + q).join('\n') + '\n\nHozirgi boʻlim: ' + (x.tab || '?') + (x.state ? '\nHolat: ' + x.state : '') + (x.prev ? '\nOldingi buyruq: ' + x.prev : '') + ((x.hist || []).length ? '\nOxirgi gaplar: ' + x.hist.join(' | ') : '') +
       '\n\nBuyruqlar:\n' + Object.keys(VRES_CMDS).map(k => k + ' — ' + VRES_CMDS[k]).join('\n') +
       '\n\nJoy nomzodlari: ' + JSON.stringify(x.places || []) + '\nKoʻcha nomzodlari: ' + JSON.stringify(x.streets || []) + '\nKatalog savollari (oʻxshash): ' + JSON.stringify(x.questions || []);
+  }
+  async function voiceResolve(list, extra) {
+    const msg = voiceMsg(list, extra);
     const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VRES_SYS }, { role: 'user', content: msg }], NX.config.openaiLight, 'router');
     const m = String(r.text || '').match(/\{[\s\S]*\}/); if (!m) return null;
     try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; if (j.t === 'act' && !Array.isArray(j.steps)) return null; return j; } catch (e) { return null; }
@@ -910,5 +923,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, voiceResolve, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, voiceResolve, voiceAudio, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();
