@@ -150,7 +150,7 @@
 
   // AI ishlayotganda: “Tahlil qilinmoqda” — neyron orb va yugurik chiziq (bosqich matni faqat ekran oʻquvchi uchun)
   function thinking(stage) {
-    return `<div class="chat-msg ai"><div class="bubble think" role="status"><div class="think-orb" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div class="think-t"><span class="think-w">Tahlil qilinmoqda</span><span class="think-bar" aria-hidden="true"><i></i></span><span class="sr-only">${E(stage || '')}</span></div></div></div>`;
+    return `<div class="chat-msg ai"><div class="bubble think" role="status"><div class="think-orb" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div class="think-t"><span class="think-w">Tahlil qilinmoqda</span><span class="think-bar" aria-hidden="true"><i></i></span><span class="sr-only">${E(stage || '')}</span></div><div class="think-live"${NX.ai && NX.ai.stream && NX.ai.stream.last ? '' : ' hidden'}>${E((NX.ai && NX.ai.stream && NX.ai.stream.last) || '')}</div></div></div>`;
   }
   // Javob ostida: xaritadagi belgilar roʻyxati, manbalar, AI rasm
   function msgExtras(m, fly) {

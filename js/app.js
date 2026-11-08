@@ -645,13 +645,14 @@
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
     let plan = null, used = list[0];
     for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
+    let via = plan ? 'local' : '';
     // “Dinamo stadionidan yaqinlashdir” — kamera buyrugi emas, joyni topib koʻrsatish
     const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
     if (plan && plan.weak) { const pp = await placePlan(list); if (pp) plan = pp; else if (NX.ai.available()) plan = null; }   // eshitilgan soʻz koʻcha nomiga aniq oʻxshamasa — joy yoki AI
     if (plan && VIEWK.includes(plan) && PLX) { const pp = await placePlan(list); if (pp) plan = pp; }   // indeks tayyor boʻlmasa kamera buyrugʻi kechikmasin
-    if (!plan) { plan = await placePlan(list); }
+    if (!plan) { plan = await placePlan(list); if (plan) via = 'place'; }
     let qText = null;
-    if (opts && opts.preRes) { const r0 = await resToPlan(opts.preRes, list); if (r0.plan) { plan = r0.plan; used = list[0]; } if (r0.qText) qText = r0.qText; }
+    if (opts && opts.preRes) { const r0 = await resToPlan(opts.preRes, list); if (r0.plan) { plan = r0.plan; used = list[0]; } if (r0.qText) qText = r0.qText; if (plan || qText) via = 'audio'; }
     const amb = !!(opts && opts.ambient), QW0 = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Uygʻoq rejim: atrofdagi suhbat/shovqin matni — buyruqqa oʻxshamasa jimgina eʼtiborsiz qoldiriladi (hech narsa koʻrsatilmaydi)
     if (amb && !plan && !(vscore(list[0]) >= 0.25 || QW0.test(list[0]) || list.some(x => voicePlan(x)))) return 'warn';
@@ -664,24 +665,26 @@
       
       try {
         const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 4000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], state: uiState(), places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
-        if (res) { const r1 = await resToPlan(res, list); if (r1.plan) plan = r1.plan; if (r1.qText) qText = r1.qText; if (plan) used = list[0]; }
+        if (res) { const r1 = await resToPlan(res, list); if (r1.plan) plan = r1.plan; if (r1.qText) qText = r1.qText; if (plan) used = list[0]; if (r1.plan || r1.qText) via = 'ai'; }
       } catch (e) { /* AI ishlamasa — mahalliy qoidalar */ }
     }
     if (!plan && localPlan) plan = localPlan;
     // AI yoʻq: “…koʻrsat/top” soʻrovi lugʻatda topilmasa — butun shahar qidiruvi
     if (!plan && !qText && !NX.ai.available() && proxyBase() && /\b(korsat|top|toping|qayerda|olib bor|obor|och)\w*/.test(NX.translit(list[0].toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '')) && !QW.test(list[0]) && nw0 <= 6) {
       const gq = NX.translit(list[0].toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2 && !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3))).join(' ');
-      if (gq.length > 3) plan = { label: '🔎 ' + gq + ' — xaritada qidirilmoqda', run: () => { geoShow(gq); } };
+      if (gq.length > 3) { plan = { label: '🔎 ' + gq + ' — xaritada qidirilmoqda', run: () => { geoShow(gq); } }; via = 'geo'; }
     }
     if (!plan && !qText) { plan = await voiceAI(list); }
     // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
     if (!plan && !qText && amb && !(nw0 >= 3 && (QW.test(list[0]) || vscore(list[0]) >= 0.5))) return 'warn';
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
-    if (plan && plan.warn && opts && opts.later && !opts.retried) return 'unclear';
-    if (plan && plan.warn && amb) return 'warn';
-    if (plan && plan.warn) { if (!quiet) { hud('warn', plan.label, '«' + used + '»'); } return; }
-    if (plan) { if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
+    const vrec = st => { S.vlast = { heard: list.slice(0, 3), via: via || '?', label: plan ? plan.label : (qText ? 'savol: ' + qText : ''), status: st, retried: !!(opts && opts.retried) }; };
+    if (plan && plan.warn && opts && opts.later && !opts.retried) { vrec('unclear'); return 'unclear'; }
+    if (plan && plan.warn && amb) { vrec('ambient'); return 'warn'; }
+    if (plan && plan.warn) { vrec('warn'); if (!quiet) { hud('warn', plan.label, '«' + used + '»'); } return; }
+    if (plan) { vrec('ok'); if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
+    vrec('question');
     const t0 = qText || list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
     if (!quiet) hud('ok', 'Savol sifatida yuborildi', '«' + t0 + '»');
     if (S.tab === 'twin') { twinAsk(t0); return; }
@@ -702,8 +705,36 @@
     if (isTab && !go) return;
     liveT = setTimeout(() => { if (NX.voice.active()) NX.voice.stop(); }, isTab ? 600 : 350);
   }
+  // ---------- Ovoz jurnali: nima eshitildi / nima bajarildi / necha ms — sifatni haqiqiy maʼlumot bilan yaxshilash uchun ----------
+  const VLOG = { items: [], q: [], t: 0 };
+  try { VLOG.items = JSON.parse(localStorage.getItem('nx:vlog') || '[]').slice(-120); } catch (e) { /* */ }
+  async function vlogFlush() {
+    if (!VLOG.q.length || !proxyBase()) { VLOG.q = []; return; }
+    const items = VLOG.q.splice(0, 30);
+    try { if ((await NX.voice.serverVer()) >= 15) await NX.fetchJSON(proxyBase() + '/voicelog', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) }, 8000); } catch (e) { /* jurnal ixtiyoriy */ }
+  }
+  function vlogAdd(e) {
+    if (!e) return; e.ts = Date.now(); e.tab = S.tab;
+    VLOG.items.push(e); if (VLOG.items.length > 120) VLOG.items.shift();
+    try { localStorage.setItem('nx:vlog', JSON.stringify(VLOG.items)); } catch (x) { /* */ }
+    VLOG.q.push(e); clearTimeout(VLOG.t); VLOG.t = setTimeout(vlogFlush, 4000);
+  }
+  async function vlogShow() {
+    let items = VLOG.items.slice(), src = 'shu kompyuter';
+    try { if (proxyBase() && (await NX.voice.serverVer()) >= 15) { const r = await NX.fetchJSON(proxyBase() + '/voicelog', {}, 8000); if (r.ok && r.data && r.data.items && r.data.items.length) { items = r.data.items; src = 'barcha xodimlar (server)'; } } } catch (e) { /* */ }
+    items = items.slice(-60).reverse();
+    const ms = items.filter(x => x.ms && x.ms.think != null), avg = k => ms.length ? Math.round(ms.reduce((a, x) => a + (x.ms[k] || 0), 0) / ms.length) : 0;
+    const st = {}; items.forEach(x => { st[x.status] = (st[x.status] || 0) + 1; });
+    const ok = items.length ? Math.round((st.ok || 0) / items.length * 100) : 0;
+    let el = $('#vlogOv'); if (el) el.remove();
+    el = document.createElement('div'); el.id = 'vlogOv';
+    el.innerHTML = `<div class="vl-box"><div class="vl-h"><b>🎙 Ovoz jurnali</b><span>${items.length} ta · ${NX.esc(src)} · muvaffaqiyat ${ok}% · oʻrtacha: gap ${avg('speech')} ms + tushunish ${avg('think')} ms</span><button type="button" class="btn sm" data-vl="copy">Nusxa olish</button><button type="button" class="btn sm" data-vl="close">Yopish</button></div>
+      <div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · ' + (x.ms.speech || 0) + '+' + (x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-vl]'); if (!b && ev.target !== el) return; if (!b || b.dataset.vl === 'close') { el.remove(); return; } try { navigator.clipboard.writeText(JSON.stringify(items, null, 1)); toast('Jurnal nusxa olindi — yuboring', 'ok'); } catch (e) { toast('Nusxa olib boʻlmadi', 'warn'); } });
+  }
   async function voiceAgent(o) {
-    const b = $('#btnVoice'), loop = !!(o && o.loop);
+    const b = $('#btnVoice'), loop = !!(o && o.loop), tStart = Date.now();
     if (NX.voice.active()) { NX.voice.stop(); return false; }
     try {
       const t = await NX.voice.listen({
@@ -721,7 +752,12 @@
         onPart: t => { liveWatch(t); if (loop) return; const h = $('#voiceHud'); if (h && h.classList.contains('rec')) h.querySelector('small').textContent = '«' + t + '»'; },
       });
       clearTimeout(liveT);
-      if (t) { await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, audio: true, cands: NX.voice.cands, ambient: loop }); return t; }
+      if (t) {
+        const tHeard = Date.now(); S.vlast = null;
+        await voiceCommand(t, false, NX.voice.cands, { later: NX.voice.later, audio: true, cands: NX.voice.cands, ambient: loop });
+        if (S.vlast && S.vlast.status !== 'ambient') vlogAdd(Object.assign({}, S.vlast, { ms: { speech: tHeard - tStart, think: Date.now() - tHeard } }));
+        return t;
+      }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
     } catch (e) { hud('warn', e.message, ''); if (loop) throw e; return false; }
@@ -3049,6 +3085,7 @@
     if (cmBox) { cmBox.checked = camsOn(); cmBox.addEventListener('change', () => { NX.store.set('map:cams', cmBox.checked); NX.camwall.show(cmBox.checked && S.tab === 'map' && !NX.fx.active()); }); }
     const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', true); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
+    const bvl = $('#btnVlog'); if (bvl) bvl.addEventListener('click', vlogShow);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
     const liteBtn = $('#btnLite'), liteSync = () => liteBtn.setAttribute('aria-pressed', String(document.documentElement.classList.contains('lite')));
     liteSync();

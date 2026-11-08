@@ -49,6 +49,8 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 
 - Koʻcha ichida yurish (Angren skani, 2026-11-08): `NX.city3d` — `eye()` (koʻz balandligi, pitch 84, FOV 55°), tugmalar paneli `#streetPad` (burilish/oldinga/yon/tepa-past qarash, chap/oʻng tomon uylarini yashirish `scanSide`, `hideNear` — kameraga yaqin tomon), klavishlar W/A/S/D/Q/E/R/F/Esc, `flyScan` ham shu rejimni yoqadi; `maxPitch` 85 (MapLibre 4.7.1 chegarasi — tepaga >90° qarab boʻlmaydi). Ovoz: koʻcha ichiga tush, tepaga/pastga qara, chapga/oʻngga bur, oldinga/orqaga yur, yaqin tomon uyini yashir, chap/oʻng uylarni yashir, uylarni qaytar.
 
+- Worker v15 (2026-11-08): `/voicelog` (ovoz jurnali, KV `vlog`, soʻnggi 400) + AI javobini oqim bilan uzatish (`stream:true` → SSE; faqat gpt-* modellar). Sayt: `callOpenAI` `deep|twin|facts|traffic` kalitlarida oqimdan foydalanadi (`NX.ai.stream`, `.think-live` — “Tahlil qilinmoqda” ostida token-token matn; `serverVer() >= 15` boʻlsa), `vlogAdd/vlogShow` — Sozlamalar “🎙 Ovoz jurnali” (nima eshitildi, `via` local/place/ai/audio/geo, holat, gap+tushunish ms; “Nusxa olish”). Worker v15 deploy qilinishi kerak.
+
 ## Testlar
 - `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 207/207. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
 - `node tests/real-data.cjs` — haqiqiy relyef/koʻchalar/binolar bilan qoʻlda tekshiruv (internet kerak).

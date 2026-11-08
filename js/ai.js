@@ -184,6 +184,31 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
     if (!proxyUrl()) return false;
     try { const r = await NX.fetchJSON(proxyUrl().replace(/\/+$/, '') + '/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(it) }, 10000); return r.ok; } catch (e) { return false; }
   }
+  // Javobni oqim bilan koʻrsatish (Worker v15+): “Tahlil qilinmoqda” ostida matn token-token paydo boʻladi
+  const STREAM = { last: '', busy: false };
+  const streamClean = t => String(t || '').replace(/```[\s\S]*$/, '').replace(/\n\s*[\[{][\s\S]*$/, '').replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim();
+  function streamPaint(text) {
+    const c = streamClean(text); STREAM.last = c.length > 900 ? '…' + c.slice(-900) : c;
+    document.querySelectorAll('.think-live').forEach(el => { el.textContent = STREAM.last; el.hidden = !STREAM.last; });
+  }
+  async function streamFetch(url, body) {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), body.reasoning_effort === 'medium' ? 120000 : 60000);
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({}, body, { stream: true })), signal: ctl.signal });
+      if (!res.ok || !/event-stream/.test(res.headers.get('content-type') || '')) { const t = await res.text(); let data = null; try { data = JSON.parse(t); } catch (e) { /* */ } return { ok: res.ok, status: res.status, data }; }
+      const rd = res.body.getReader(), dec = new TextDecoder(); let buf = '', text = '', fin = null;
+      for (;;) {
+        const { done, value } = await rd.read(); if (done) break;
+        buf += dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (line.indexOf('data:') !== 0) continue; const d = line.slice(5).trim(); if (d === '[DONE]') continue;
+          try { const j = JSON.parse(d), ch = j.choices && j.choices[0]; if (ch) { if (ch.delta && ch.delta.content) { text += ch.delta.content; streamPaint(text); } if (ch.finish_reason) fin = ch.finish_reason; } } catch (e) { /* */ }
+        }
+      }
+      return { ok: true, status: 200, data: { choices: [{ message: { content: text }, finish_reason: fin || 'stop' }] } };
+    } finally { clearTimeout(to); }
+  }
   async function callOpenAI(key, ctx, onModel, history, messages, models, cacheKey) {
     let lastErr = null, down = 0;
     if (!/^(router|imgprompt)$/.test(cacheKey || '')) await loadLessons().catch(() => null);
@@ -204,7 +229,12 @@ UMUMIY TAHLIL QOIDALARI (har javobda):
       body.prompt_cache_key = 'cityjam-' + (cacheKey || 'chat');
       if (!key) body.messages = fitMessages(body.messages, BODY_SOFT);
       let r, tries = 0;
+      const wantStream = !key && !STREAM.busy && /^(deep|twin|facts|traffic)$/.test(cacheKey || '') && /^gpt-/.test(model) && NX.voice && NX.voice.serverVer && (await NX.voice.serverVer().catch(() => 0)) >= 15;
       const send = async () => { try {
+        if (wantStream) {
+          STREAM.busy = true; STREAM.last = '';
+          try { r = await streamFetch(proxyUrl(), body); return; } finally { STREAM.busy = false; STREAM.last = ''; document.querySelectorAll('.think-live').forEach(el => { el.textContent = ''; el.hidden = true; }); }
+        }
         r = key
           ? await NX.fetchJSON(NX.config.openaiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body) }, body.reasoning_effort === 'medium' ? 120000 : 60000)
           : await NX.fetchJSON(proxyUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, body.reasoning_effort === 'medium' ? 120000 : 60000);
@@ -923,5 +953,5 @@ Faqat berilgan maʼlumotdan foydalan; yoʻq raqamni (masalan aniq qavat cheklovi
     catch (e) { return { text: localText, src: 'hisob', error: e.message }; }
   }
 
-  NX.ai = { checkNums, verify, trafficAsk, factsAsk, voiceIntent, voiceResolve, voiceAudio, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
+  NX.ai = { stream: STREAM, checkNums, verify, trafficAsk, factsAsk, voiceIntent, voiceResolve, voiceAudio, feedback, loadLessons, route, streetVision, roadAsk, planAsk, ask, available: aiAvailable, detectStreets, detectScenario, render, vision, webcamCheck, photoCheck, photoChecksAll, proxyReady, webSearch, webSearchQ, deepAsk, twinAsk, chatImage, systemsFacts, solutionImage, areaAsk, areaFacts, _core: core };
 })();

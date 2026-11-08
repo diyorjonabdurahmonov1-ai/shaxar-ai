@@ -68,7 +68,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 14, features: ['geocode', 'voice', 'vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
+    if (path === '/version') return json({ v: 15, features: ['stream', 'voicelog', 'geocode', 'voice', 'vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -78,6 +78,7 @@ export default {
     if (path === '/osm') return osmSnapshot(req, env, cors, okOrigin);
     if (path === '/stt') return stt(req, env, cors, okOrigin);
     if (path === '/geocode') return geocode(req, env, cors);
+    if (path === '/voicelog') return voicelog(req, env, cors, okOrigin);
     if (path === '/voice') return voice(req, env, cors, okOrigin);
     if (path === '/search' || path === '/image') {
       if (req.method !== 'POST') return json({ error: { code: 'method', message: 'Faqat POST' } }, 405, cors);
@@ -119,11 +120,14 @@ export default {
 
     if (/^claude-/.test(body.model)) return anthropic(out, env, cors);
     if (/^gemini-/.test(body.model)) return gemini(out, env, cors);
+    // Oqim (SSE): javob token-token toʻgʻridan-toʻgʻri uzatiladi — birinchi soʻzlar ~1 s da koʻrinadi
+    if (body.stream === true) out.stream = true;
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.OPENAI_API_KEY },
       body: JSON.stringify(out),
     });
+    if (out.stream && r.ok && r.body) return new Response(r.body, { status: 200, headers: Object.assign({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' }, cors) });
     return new Response(await r.text(), { status: r.status, headers: Object.assign({ 'Content-Type': 'application/json' }, cors) });
   },
 };
@@ -277,6 +281,28 @@ async function voice(req, env, cors, okOrigin) {
     if (r.status === 401 || r.status === 429) break;
   }
   return json({ error: { code: 'voice_error', message: 'Ovozni tushunib boʻlmadi: ' + lastErr } }, 502, cors);
+}
+
+// ---------- Ovoz jurnali: nima eshitildi, nima bajarildi, har bosqich necha ms (sifatni haqiqiy maʼlumot bilan yaxshilash uchun) ----------
+async function voicelog(req, env, cors, okOrigin) {
+  if (!env.CORRECTIONS) return json({ error: { code: 'no_kv', message: 'Ombor ulanmagan' } }, 501, cors);
+  if (req.method === 'GET') {
+    if (env.REQUIRE_PIN === '1' && !pinOk(env, req.headers.get('X-Staff-Code'))) return json({ error: { code: 'bad_pin', message: 'Xodim kodi kerak' } }, 403, cors);
+    const list = JSON.parse((await env.CORRECTIONS.get('vlog')) || '[]');
+    return json({ items: list }, 200, Object.assign({ 'Cache-Control': 'no-store' }, cors));
+  }
+  if (req.method !== 'POST') return json({ error: { code: 'method', message: 'GET yoki POST' } }, 405, cors);
+  if (!okOrigin) return json({ error: { code: 'forbidden_origin', message: 'Bu manzildan ruxsat yoʻq' } }, 403, cors);
+  if (limit('vlog:' + (req.headers.get('CF-Connecting-IP') || 'x'), 600)) return json({ error: { code: 'proxy_rate_limit', message: 'Juda koʻp' } }, 429, cors);
+  let b; try { b = JSON.parse(await req.text()); } catch (e) { return json({ error: { code: 'bad_json', message: 'JSON xato' } }, 400, cors); }
+  const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map(x => ({
+    ts: +x.ts || Date.now(), heard: (Array.isArray(x.heard) ? x.heard : []).slice(0, 3).map(h => String(h).slice(0, 160)), via: String(x.via || '').slice(0, 12), label: String(x.label || '').slice(0, 160), status: String(x.status || '').slice(0, 12),
+    ms: x.ms && typeof x.ms === 'object' ? { speech: Math.round(+x.ms.speech) || 0, think: Math.round(+x.ms.think) || 0 } : null, tab: String(x.tab || '').slice(0, 12),
+  }));
+  if (!items.length) return json({ ok: true }, 200, cors);
+  const list = JSON.parse((await env.CORRECTIONS.get('vlog')) || '[]').concat(items).slice(-400);
+  await env.CORRECTIONS.put('vlog', JSON.stringify(list));
+  return json({ ok: true, n: list.length }, 200, cors);
 }
 
 // ---------- Xarita maʼlumotining umumiy nusxasi (koʻchalar, bekatlar, avtobus yoʻnalishlari) ----------
