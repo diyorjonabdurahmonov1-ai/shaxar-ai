@@ -43,6 +43,7 @@ async function reveal(page, sel) { if (!(await page.locator(sel).first().isVisib
 async function setupRoutes(ctx, opts = {}) {
   ctx.overpassCalls = 0; ctx.openaiBodies = [];
   if (!opts.chatOnly) await ctx.addInitScript(() => { window.__noChatOnly = true; });
+  await ctx.addInitScript(() => { try { localStorage.setItem('nx:map:cams', 'true'); localStorage.setItem('nx:map:fixes', 'true'); } catch (e) { /* */ } });
   // Test sayt egasining haqiqiy kalitiga bogʻliq boʻlmasligi uchun keys.js boʻsh kalit bilan almashtiriladi
   await ctx.route(/\/js\/keys\.js/, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '' };" }));
   // Butun shahar binolari fayli: testda — OSM mock (alohida test haqiqiy faylni tekshiradi)

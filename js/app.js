@@ -69,7 +69,7 @@
         // Muammolar real suratlar bilan avtomatik tekshiriladi (bir marta): Mapillary + AI
         if (!S.reviewStarted) { S.reviewStarted = true; review(); }
         // Xarita ustidagi kamera devori
-        NX.camwall.init(); NX.camwall.show(S.tab === 'map');
+        NX.camwall.init(); NX.camwall.show(S.tab === 'map' && camsOn());
         // Yomgʻir prognozi (hodisalar uchun) va saqlangan relyef boʻlsa — toshqin xavfi
         // Prognozdagi yomgʻir boʻyicha qaysi koʻchalarda suv toʻplanishi (relyef saqlangan boʻlsa)
         const alertScen = () => { const T = twinState(); if (T.dem && T.rain && T.rain.d24 >= 8) T.alertScen = rainScen(T.rain.d24); if (S.tab === 'map') renderKeepScroll(); };
@@ -679,8 +679,10 @@
   const renderActions = () => { const s = ctxStreet(); if (s) swap('#whatif', V.actions(S, s)); };
   const renderAI = () => swap('#aiBox', V.aiBox(S, ctxStreet()));
 
+  // Xarita boʻlimi — faqat real tirbandlik: namuna kameralar lentasi va foydalanuvchi belgilari Sozlamalarda yoqiladi
+  const camsOn = () => !!NX.store.get('map:cams', false);
   // Xaritada foydalanuvchi qoʻygan belgilar; Muammolar boʻlimida — faqat muammolar, avtomatik tekshiruv belgilari hech qachon
-  const shownFixes = () => (S.tab === 'problems' ? [] : NX.fixes.list().filter(x => x.id[0] !== 'a'));
+  const shownFixes = () => (S.tab === 'problems' || !NX.store.get('map:fixes', false) ? [] : NX.fixes.list().filter(x => x.id[0] !== 'a'));
   // Shahar tizimlari xaritada (Muammolar boʻlimida yashiriladi)
   function drawSys() {
     if (S.tab === 'problems') return NX.view.drawSystems([]);
@@ -729,7 +731,7 @@
     $('.map-wrap').classList.toggle('twin-on', t === 'twin');
     if (t !== 'twin' && document.body.classList.contains('big3d')) { document.body.classList.remove('big3d', 'panel-hide'); document.querySelectorAll('.tw-ctl [data-tw=big]').forEach(b => { b.classList.remove('on'); b.querySelector('span').textContent = 'Katta 3D'; }); }
     if (t === 'twin') loadTwin();
-    NX.camwall.show(t === 'map' && !NX.fx.active());
+    NX.camwall.show(t === 'map' && !NX.fx.active() && camsOn());
     // Natija (masalan suv yechimi) 3D da olingan boʻlsa — xaritaga oʻtganda shu joyga uchadi
     hzVisibility();
     if (t === 'map' && S.twin && S.twin.hz && S.twin.hz.origin !== 'twin' && NX.fx.active()) setTimeout(() => { const pts = []; S.twin.hz.items.forEach(a => { if (a.kind !== 'water' && a.kind !== 'zone' && a.lat != null) pts.push([a.lat, a.lon]); }); if (pts.length) NX.view.fitPoints(pts); }, 200);
@@ -1005,7 +1007,7 @@
     const wrap = $('.map-wrap');
     if (!wrap) return;
     wrap.classList.toggle('hz-on', !!on);
-    NX.camwall.show(!on && S.tab === 'map');
+    NX.camwall.show(!on && S.tab === 'map' && camsOn());
     // Yandex tirbandlik ranglari natijani toʻsmasin — vaqtincha oʻchiriladi
     if (NX.yandex && NX.yandex.setTraffic) { if (on && hazardFocus.traffic == null) { hazardFocus.traffic = NX.yandex.trafficOn ? NX.yandex.trafficOn() : true; NX.yandex.setTraffic(false); } if (!on && hazardFocus.traffic != null) { NX.yandex.setTraffic(hazardFocus.traffic); hazardFocus.traffic = null; } }
     let b = wrap.querySelector('.hz-close');
@@ -2848,6 +2850,9 @@
       const kick = () => { if (NX.store.get('voice:wake', true) && !NX.voice.waking()) wakeSet(true); };
       document.addEventListener('pointerdown', kick, { once: true, capture: true }); document.addEventListener('keydown', kick, { once: true, capture: true });
     }
+    const fxBox = $('#mapFixes'), cmBox = $('#mapCams');
+    if (fxBox) { fxBox.checked = !!NX.store.get('map:fixes', false); fxBox.addEventListener('change', () => { NX.store.set('map:fixes', fxBox.checked); NX.view.drawFixes(shownFixes()); }); }
+    if (cmBox) { cmBox.checked = camsOn(); cmBox.addEventListener('change', () => { NX.store.set('map:cams', cmBox.checked); NX.camwall.show(cmBox.checked && S.tab === 'map' && !NX.fx.active()); }); }
     const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', true); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
