@@ -258,8 +258,79 @@
   function flyScan() {
     const sc = scanList[0]; if (!sc || !map) return;
     const a = sc.heading * Math.PI / 180, d = 35, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
+    try { map.setMaxPitch(85); } catch (e) { /* */ }
     map.flyTo({ center: [lon, lat], zoom: 21, pitch: 78, bearing: sc.heading, duration: 2400 });
+    setStreet(true);
   }
+
+  // ---------- 🏘 Koʻcha ichida yurish: kamera tugmalari/klavishlar, uy tomonlarini yashirish ----------
+  const scanOff = new Set();
+  const sideOf = sc => (/oʻng|o‘ng|ong/i.test(sc.nomi) ? 'ong' : /chap/i.test(sc.nomi) ? 'chap' : null);
+  let street = false, pad = null;
+  const clampPitch = p => Math.max(0, Math.min(85, p));
+  function sideState() { const o = {}; ['chap', 'ong'].forEach(s => { const g = scans.filter(x => sideOf(x) === s); o[s] = g.length ? !g.every(x => scanOff.has(x.id)) : null; }); return o; }
+  function scanSide(side, show) {
+    scans.forEach(sc => { if (sideOf(sc) === side) { if (show) scanOff.delete(sc.id); else scanOff.add(sc.id); } });
+    if (map) map.triggerRepaint(); syncPad(); return sideState();
+  }
+  // Kameraga yaqin tomon uylarini yashirish (uzoq tomon toʻliq koʻrinadi)
+  function hideNear() {
+    if (!map) return null;
+    let cam = null; try { const p = map.getFreeCameraOptions().position; cam = [p.x, p.y]; } catch (e) { /* */ }
+    if (!cam) { const c = map.getCenter(), m = window.maplibregl.MercatorCoordinate.fromLngLat(c, 0); cam = [m.x, m.y]; }
+    const d = {}; ['chap', 'ong'].forEach(s => { const g = scans.filter(x => sideOf(x) === s); if (!g.length) return; d[s] = Math.min.apply(null, g.map(x => { const m = window.maplibregl.MercatorCoordinate.fromLngLat([x.lon, x.lat], 0); return (m.x - cam[0]) ** 2 + (m.y - cam[1]) ** 2; })); });
+    const near = d.chap != null && d.ong != null ? (d.chap < d.ong ? 'chap' : 'ong') : (d.chap != null ? 'chap' : 'ong');
+    scanSide(near, false); scanSide(near === 'chap' ? 'ong' : 'chap', true);
+    return near;
+  }
+  const showAll = () => { scanOff.clear(); if (map) map.triggerRepaint(); syncPad(); };
+  const meterLL = (ll, br, m) => { const a = br * Math.PI / 180; return [ll.lng + Math.sin(a) * m / (111320 * Math.cos(ll.lat * Math.PI / 180)), ll.lat + Math.cos(a) * m / 110574]; };
+  function look(d) { if (map) map.easeTo({ pitch: clampPitch(map.getPitch() + d), duration: 250 }); }
+  function turn(d) { if (map) map.easeTo({ bearing: map.getBearing() + d, duration: 250 }); }
+  function walk(m, strafe) { if (!map) return; const br = map.getBearing() + (strafe ? 90 : 0); map.easeTo({ center: meterLL(map.getCenter(), br, m), duration: 300, easing: t => t }); }
+  // Koʻcha ichi koʻrinishi: koʻz balandligida (past kamera), yoʻl boʻylab, keng koʻrish burchagi
+  function eye() {
+    const sc = scanList[0]; if (!sc || !map) return;
+    try { map.transform.fov = 55; } catch (e) { /* */ }
+    try { map.setMaxPitch(85); } catch (e) { /* */ }
+    const a = sc.heading * Math.PI / 180, d = 10, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
+    map.flyTo({ center: [lon, lat], zoom: 22.6, pitch: 84, bearing: sc.heading, duration: 2000 });
+    setStreet(true);
+  }
+  function setStreet(on) { street = !!on; syncPad(); }
+  function syncPad() {
+    const host = map && map.getContainer && map.getContainer(); if (!host) return;
+    if (!street) { if (pad) pad.hidden = true; return; }
+    if (!pad) {
+      pad = document.createElement('div'); pad.id = 'streetPad'; pad.className = 'street-pad';
+      pad.innerHTML = '<div class="sp-row"><button data-sp="turnL" title="Chapga burilish (Q)">↶</button><button data-sp="fwd" title="Oldinga (W)">▲</button><button data-sp="turnR" title="Oʻngga burilish (E)">↷</button></div>' +
+        '<div class="sp-row"><button data-sp="left" title="Chapga siljish (A)">◀</button><button data-sp="back" title="Orqaga (S)">▼</button><button data-sp="right" title="Oʻngga siljish (D)">▶</button></div>' +
+        '<div class="sp-row"><button data-sp="up" title="Tepaga qarash (R)">⤒ tepa</button><button data-sp="down" title="Pastga qarash (F)">⤓ past</button></div>' +
+        '<div class="sp-row"><button data-sp="hideL" data-side="chap" title="Chap tomon uylarini yashirish/koʻrsatish">◧ chap uylar</button><button data-sp="hideR" data-side="ong" title="Oʻng tomon uylarini yashirish/koʻrsatish">oʻng uylar ◨</button></div>' +
+        '<div class="sp-row"><button data-sp="near" title="Kameraga yaqin tomon uylarini yashirish">👁 yaqin uyni yashir</button><button data-sp="exit" title="Chiqish (Esc)">✕</button></div>';
+      host.appendChild(pad);
+      pad.addEventListener('click', e => {
+        const b = e.target.closest('button[data-sp]'); if (!b) return; e.stopPropagation();
+        const k = b.dataset.sp;
+        if (k === 'turnL') turn(-15); else if (k === 'turnR') turn(15); else if (k === 'fwd') walk(4); else if (k === 'back') walk(-4);
+        else if (k === 'left') walk(-3, true); else if (k === 'right') walk(3, true); else if (k === 'up') look(8); else if (k === 'down') look(-8);
+        else if (k === 'hideL') scanSide('chap', !sideState().chap); else if (k === 'hideR') scanSide('ong', !sideState().ong);
+        else if (k === 'near') hideNear(); else if (k === 'exit') { showAll(); setStreet(false); }
+      });
+    }
+    pad.hidden = false;
+    pad.querySelectorAll('[data-side]').forEach(b => { const on = sideState()[b.dataset.side]; b.classList.toggle('off', on === false); });
+  }
+  document.addEventListener('keydown', e => {
+    if (!street || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    const k = e.key.toLowerCase(); let h = true;
+    if (k === 'w') walk(4); else if (k === 's') walk(-4); else if (k === 'a') walk(-3, true); else if (k === 'd') walk(3, true);
+    else if (k === 'q') turn(-15); else if (k === 'e') turn(15); else if (k === 'r') look(8); else if (k === 'f') look(-8);
+    else if (k === 'escape') { showAll(); setStreet(false); } else h = false;
+    if (h) e.preventDefault();
+  });
+  document.addEventListener('nx:tab', e => { if (street && e.detail !== 'twin') { showAll(); setStreet(false); } });
   async function loadScans() {
     const list = await scanListP;
     if (!list || !list.length) return;
@@ -303,7 +374,7 @@
     if (!map || !lastM || !THREE) return null;
     const cv = map.getCanvas(), W = cv.clientWidth, H = cv.clientHeight, nx = x / W * 2 - 1, ny = -(y / H) * 2 + 1;
     const rc = new THREE.Raycaster(), cand = [];
-    if (map.getZoom() >= 14.5) scans.forEach(sc => { if (sc.scene) cand.push({ obj: sc.scene, l: sc.l, kind: 'skan' }); });
+    if (map.getZoom() >= 14.5) scans.forEach(sc => { if (sc.scene && !scanOff.has(sc.id)) cand.push({ obj: sc.scene, l: sc.l, kind: 'skan' }); });
     if (built && on()) cand.push({ obj: built.grp, l: built.l, kind: 'maket' });
     let best = null;
     cand.forEach(c => {
@@ -369,7 +440,7 @@
         this.renderer.resetState();
         if (built && on()) { this.camera.projectionMatrix = M.clone().multiply(built.l); this.renderer.render(this.scene, this.camera); }
         // Real 3D skanlar (Polycam va h.k.) — har biri oʻz joyida, istalgan rejimda (zoom ≥ 14.5)
-        if (map.getZoom() >= 14.5) scans.forEach(sc => { if (!sc.scene) return; this.camera.projectionMatrix = M.clone().multiply(sc.l); this.renderer.render(sc.scene, this.camera); });
+        if (map.getZoom() >= 14.5) scans.forEach(sc => { if (!sc.scene || scanOff.has(sc.id)) return; this.camera.projectionMatrix = M.clone().multiply(sc.l); this.renderer.render(sc.scene, this.camera); });
         // 📏 Oʻlchash chiziqlari — haqiqiy 3D nuqtalarda (skan/uy yuzasida), har doim koʻrinadi
         if (MS.scene) { this.renderer.clearDepth(); this.camera.projectionMatrix = M.clone().multiply(MS.l); this.renderer.render(MS.scene, this.camera); }
       },
@@ -383,5 +454,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { pick, setMeasure, project, _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { scanSide, hideNear, showAll, sideState, eye, look, turn, walk, setStreet, streetOn: () => street, pick, setMeasure, project, _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();

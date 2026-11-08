@@ -249,6 +249,17 @@
     refresh: { label: '🔄 yangilash', run: () => loadData(true) },
     zoomin: { label: 'yaqinlashtirildi', run: () => zoomBy(1) },
     zoomout: { label: 'uzoqlashtirildi', run: () => zoomBy(-1) },
+    streeteye: { label: '👁 Koʻcha ichida', run: () => { setTab('twin'); setTimeout(() => { try { if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.eye(); } catch (e) { /* */ } }, 700); } },
+    lookup: { label: 'tepaga qaradi', run: () => NX.city3d.look(12) },
+    lookdown: { label: 'pastga qaradi', run: () => NX.city3d.look(-12) },
+    turnleft: { label: 'chapga burildi', run: () => NX.city3d.turn(-30) },
+    turnright: { label: 'oʻngga burildi', run: () => NX.city3d.turn(30) },
+    forward: { label: 'oldinga yurdi', run: () => NX.city3d.walk(8) },
+    backward: { label: 'orqaga yurdi', run: () => NX.city3d.walk(-8) },
+    hidenear: { label: 'yaqin tomon uylari yashirildi', run: () => { NX.city3d.setStreet(true); NX.city3d.hideNear(); } },
+    hideleft: { label: 'chap tomon uylari yashirildi', run: () => { NX.city3d.setStreet(true); NX.city3d.scanSide('chap', false); NX.city3d.scanSide('ong', true); } },
+    hideright: { label: 'oʻng tomon uylari yashirildi', run: () => { NX.city3d.setStreet(true); NX.city3d.scanSide('ong', false); NX.city3d.scanSide('chap', true); } },
+    showsides: { label: 'uylar qaytarildi', run: () => NX.city3d.showAll() },
     scan3d: { label: '🏘 Real 3D koʻcha', run: () => { setTab('twin'); setTimeout(() => { try { if (NX.g3d.active()) NX.g3d.hide(true); NX.map3d.setMode('height'); NX.city3d.flyScan(); } catch (e) { /* */ } }, 700); } },
     top: { label: 'tepadan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -89 })) return; whenMap3d(m => m.easeTo({ pitch: 0, bearing: 0, duration: 900 })); } },
     side: { label: 'yon tomondan koʻrinish', run: () => { setTab('twin'); if (NX.g3d.active() && NX.g3d.cam({ pitch: -25 })) return; whenMap3d(m => m.easeTo({ pitch: 68, duration: 900 })); } },
@@ -295,6 +306,20 @@
     if (/\bmuammo(ni|ga|si|sini)?\b/.test(ct) && !/muammolar|bolim|hal\s*qil|yechim|\?|nima|qanday|qaysi|necha/.test(ct) && /\b(bos|bosing|och|ochib|korsat|top|toping|kir)\w*/.test(ct) && nw >= 2 && nw <= 7) {
       const qq = ct.replace(/\b(muammo\w*|bos\w*|och\w*|korsat\w*|top\w*|kir\w*|ber|bering|yonidagi|yonida|atrofidagi|yaqinidagi|menga)\b/g, ' ').replace(/\s+/g, ' ').trim();
       return { label: 'Muammo ochilmoqda' + (qq ? ': ' + qq : ''), run: () => { problemOpenVoice(qq || 'birinchi'); } };
+    }
+    // Koʻcha ichida yurish/qarash va uy tomonlarini yashirish (Angren skani)
+    if (nw <= 7 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
+      if (/(kocha|yol)\s*ichi|koz\s*balandlig|ichkaridan|odamdek|piyoda\s*korin/.test(ct)) return VCMD.streeteye;
+      if (/(yaqin|bu|oldingi)\s*(tomon|taraf)\w*\s*(uy\w*\s*)?(yashir|ochir|olib\s*tashla|kerakmas)|(yaqin|oldingi)\s*uy\w*\s*(yashir|ochir|olib\s*tashla)|toskinlik\w*\s*(qil|ochir)|xalaqit\s*ber\w*\s*uy/.test(ct)) return VCMD.hidenear;
+      if (/chap\w*\s*(tomon|taraf)?\w*\s*(uy\w*\s*)?(yashir|ochir|olib\s*tashla)/.test(ct) && /uy|tomon|taraf/.test(ct)) return VCMD.hideleft;
+      if (/(ong|ung)\w*\s*(tomon|taraf)?\w*\s*(uy\w*\s*)?(yashir|ochir|olib\s*tashla)/.test(ct) && /uy|tomon|taraf/.test(ct)) return VCMD.hideright;
+      if (/\buy\w*\s*(hammasini\s*)?(qaytar|korsat|yoq|chiqar)|yashirilgan\w*\s*(qaytar|korsat)|ikkala\s*tomon\w*\s*(korsat|qaytar)/.test(ct) && !/muammo|hisobot/.test(ct)) return VCMD.showsides;
+      if (/(tepa|yuqori|osmon|tom)\w*\s*(taraf|tomon)?\w*\s*(qara|boq|korsat)|boshingni\s*kotar|yuqoriga\s*qara/.test(ct) && /qara|boq|kotar/.test(ct)) return VCMD.lookup;
+      if (/(past|yer|oyoq)\w*\s*(taraf|tomon)?\w*\s*(qara|boq)|pastga\s*qara/.test(ct)) return VCMD.lookdown;
+      if (/chap\w*\s*(taraf|tomon)?\w*\s*(bur|qara|boq)/.test(ct)) return VCMD.turnleft;
+      if (/(ong|ung)\w*\s*(taraf|tomon)?\w*\s*(bur|qara|boq)/.test(ct)) return VCMD.turnright;
+      if (/(oldinga|ilgari|toppa-toggri|toggri)\s*(yur|bor|kel|yuring)?|oldinga\b/.test(ct) && /(oldinga|ilgari|toggri)/.test(ct) && /yur|bor|kel|oldinga/.test(ct) && !/(och|kir|ot)\b/.test(ct)) return VCMD.forward;
+      if (/orqaga\s*(yur|qayt|bor|kel)|orqaga\b/.test(ct) && /yur|qayt|bor|kel|orqaga/.test(ct) && !/(och|kir|ot)\b/.test(ct)) return VCMD.backward;
     }
     // Xaritani surish: “o‘ngga sur”, “chapga surib qo‘y”, “shimolga/yuqoriga siljit”
     if (nw <= 5 && /\b(sur|surib|surgin|siljit|siljitib|jildir|harakatlan)\w*\b|\b(sur|siljit)\w*\s*(ber|qoy|yubor)/.test(ct) && !/\?|nima|qanday|qaysi/.test(ct)) {
@@ -847,6 +872,7 @@
     if ((t === 'forecast' || t === 'problems') && S.tab !== t) NX.view.clearDeltas(false);
     const wasProblems = S.tab === 'problems';
     S.tab = t;
+    document.dispatchEvent(new CustomEvent('nx:tab', { detail: t }));
     if (t === 'report') trfRefresh();
     // 3D egizak — xarita oʻrnida MapLibre 3D koʻrinishi
     const el3 = $('#map3d');
