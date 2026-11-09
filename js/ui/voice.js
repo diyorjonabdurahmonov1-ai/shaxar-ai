@@ -188,7 +188,7 @@
         if (!wk || wk.r !== r) return;
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const t = e.results[i][0].transcript; wk.stat.results++; wk.stat.heard.push(t.slice(0, 80)); if (wk.stat.heard.length > 12) wk.stat.heard.shift();
-          if (onState) onState('heard', t);
+          if (onState) onState('heard', t, !!e.results[i].isFinal);
           const wm = NX.voice.wakeTest ? NX.voice.wakeTest(t) : t.match(WAKE);
           if (wm) { const rest = toLatin(t.slice(wm.index + wm[0].length)).replace(/^[\s,.!:-]+/, '').trim(); wk.paused = true; try { r.abort(); } catch (x) { /* */ } onWake(rest).finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
         }

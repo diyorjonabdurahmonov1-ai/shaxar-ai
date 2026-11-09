@@ -772,7 +772,7 @@
   async function vlogShow() {
     let items = VLOG.items.slice(), src = 'shu kompyuter';
     try { if (proxyBase() && (await NX.voice.serverVer()) >= 15) { const r = await NX.fetchJSON(proxyBase() + '/voicelog', {}, 8000); if (r.ok && r.data && r.data.items && r.data.items.length) { items = r.data.items; src = 'barcha xodimlar (server)'; } } } catch (e) { /* */ }
-    items = items.slice(-60).reverse();
+    const wakeRows = items.filter(x => x.via === 'wake').slice(-8).reverse(); items = items.filter(x => x.via !== 'wake').slice(-60).reverse();
     const ms = items.filter(x => x.ms && x.ms.think != null), avg = k => ms.length ? Math.round(ms.reduce((a, x) => a + (x.ms[k] || 0), 0) / ms.length) : 0;
     const st = {}; items.forEach(x => { st[x.status] = (st[x.status] || 0) + 1; });
     const ok = items.length ? Math.round((st.ok || 0) / items.length * 100) : 0;
@@ -781,7 +781,7 @@
     const wi = NX.voice.wakeInfo && NX.voice.wakeInfo();
     const wiTxt = wi ? `Chaqiruv tinglovchisi: ${wi.listening ? 'tinglayapti' : wi.hold || wi.paused ? 'pauza' : 'ulanmoqda'} · ishga tushishlar ${wi.starts}, natijalar ${wi.results}, xatolar ${JSON.stringify(wi.errs)} · eshitilgan: ${(wi.heard || []).slice(-6).map(x => '«' + x + '»').join(' ')}` : 'Chaqiruv tinglovchisi oʻchiq';
     el.innerHTML = `<div class="vl-box"><div class="vl-h"><b>🎙 Ovoz jurnali</b><span>${items.length} ta · ${NX.esc(src)} · muvaffaqiyat ${ok}% · gapdan keyin javobgacha oʻrtacha ${ms.some(x => x.ms.lag != null) ? avg('lag') : avg('think')} ms</span><button type="button" class="btn sm" data-vl="copy">Nusxa olish</button><button type="button" class="btn sm" data-vl="close">Yopish</button></div>
-      <div class="vl-wake">${NX.esc(wiTxt)}</div><div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · javob ' + (x.ms.lag != null ? x.ms.lag : x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
+      <div class="vl-wake">${NX.esc(wiTxt)}${wakeRows.length ? ' · soʻnggi chaqiruv eshitilganlari: ' + NX.esc(wakeRows.map(x => '«' + (x.heard || [''])[0] + '»' + (x.status === 'match' ? '✓' : '')).join(' ')) : ''}</div><div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · javob ' + (x.ms.lag != null ? x.ms.lag : x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
     document.body.appendChild(el);
     el.addEventListener('click', ev => { const b = ev.target.closest('[data-vl]'); if (!b && ev.target !== el) return; if (!b || b.dataset.vl === 'close') { el.remove(); return; } try { navigator.clipboard.writeText(JSON.stringify(items, null, 1)); toast('Jurnal nusxa olindi — yuboring', 'ok'); } catch (e) { toast('Nusxa olib boʻlmadi', 'warn'); } });
   }
@@ -875,6 +875,13 @@
   }
   setInterval(wakeBadge, 1500);
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
+  // Chaqiruv tinglovchisi eshitgan matnlar (faqat yakuniy) — jurnalga (qaysi soʻzlar “City Jam” deb yozilayotganini koʻrish uchun); 1.5 s dan tez emas
+  let wlT = 0;
+  function wakeLog(t) {
+    if (Date.now() - wlT < 1500) return; wlT = Date.now();
+    let m = null; try { m = NX.voice.wakeTest && NX.voice.wakeTest(String(t)); } catch (e) { /* */ }
+    vlogAdd({ heard: [String(t).slice(0, 120)], via: 'wake', label: m ? 'CHAQIRUV TANILDI' : '', status: m ? 'match' : 'heard' });
+  }
   let wpT = 0;
   function wakePill(t, awakeMode) {
     let e = $('#wakePill'); if (!e) { e = document.createElement('div'); e.id = 'wakePill'; document.body.appendChild(e); }
@@ -894,6 +901,7 @@
         awakeLoop();   // 1 daqiqa uygʻoq: keyingi buyruqlar chaqiruvsiz
       }, function (st) {
         if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
+        if (st === 'heard' && arguments[2] && String(arguments[1]).trim()) wakeLog(arguments[1]);
         if (st === 'heard') { S.wakeHeard = arguments[1]; wakePill(arguments[1]); if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
         if (st === 'error') toast('Doim tinglash xatosi: ' + arguments[1] + ' (internet yoki mikrofon)', 'warn');
         if (st === 'denied') { b && b.classList.remove('wake'); NX.store.set('voice:wake', false); toast('Mikrofonga ruxsat berilmagan — doim tinglash oʻchirildi.', 'warn'); }
