@@ -254,7 +254,7 @@
   }
   // Roʻyxat sahifa ochilishi bilan yuklanadi (panel tugmasi uchun); 3D modellar — 3D egizak ochilganda
   let scanList = [];
-  const scanListP = fetch('data/scans.json').then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => { scanList = Array.isArray(l) ? l : []; if (scanList.length) document.dispatchEvent(new Event('nx:scans')); return scanList; });
+  const scanListP = fetch('data/scans.json?v=20261109j').then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => { scanList = Array.isArray(l) ? l : []; if (scanList.length) document.dispatchEvent(new Event('nx:scans')); return scanList; });
   // Kamera koʻchaning boshida, koʻcha boʻylab qaraydi (birinchi skan boshlanishidan 35 m ichkarida)
   function flyScan() {
     const sc = scanList[0]; if (!sc || !map) return; ensureScanModels();
@@ -267,6 +267,14 @@
   // ---------- 🏘 Koʻcha ichida yurish: kamera tugmalari/klavishlar, uy tomonlarini yashirish ----------
   const scanOff = new Set();
   const sideOf = sc => (/oʻng|o‘ng|ong/i.test(sc.nomi) ? 'ong' : /chap/i.test(sc.nomi) ? 'chap' : null);
+  // Skan sifati: 'opt' — siqilgan (kichik, tez), 'orig' — asl (4096 px, 96 MB). Yonma-yon solishtirish va qaytarish uchun
+  const scanQ = () => NX.store.get('scan:q', 'opt');
+  function scanQuality(q) {
+    NX.store.set('scan:q', q === 'orig' ? 'orig' : 'opt');
+    scans.forEach(it => { if (it.scene) { it.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); it.scene = null; } it.loading = false; });
+    if (modelsLoading) scans.forEach(it => it.load && it.load()); else ensureScanModels();
+    if (map) map.triggerRepaint(); syncPad(); return scanQ();
+  }
   let street = false, pad = null;
   const clampPitch = p => Math.max(0, Math.min(85, p));
   function sideState() { const o = {}; ['chap', 'ong'].forEach(s => { const g = scans.filter(x => sideOf(x) === s); o[s] = g.length ? !g.every(x => scanOff.has(x.id)) : null; }); return o; }
@@ -308,7 +316,8 @@
         '<div class="sp-row"><button data-sp="left" title="Chapga siljish (A)">◀</button><button data-sp="back" title="Orqaga (S)">▼</button><button data-sp="right" title="Oʻngga siljish (D)">▶</button></div>' +
         '<div class="sp-row"><button data-sp="up" title="Tepaga qarash (R)">⤒ tepa</button><button data-sp="down" title="Pastga qarash (F)">⤓ past</button></div>' +
         '<div class="sp-row"><button data-sp="hideL" data-side="chap" title="Chap tomon uylarini yashirish/koʻrsatish">◧ chap uylar</button><button data-sp="hideR" data-side="ong" title="Oʻng tomon uylarini yashirish/koʻrsatish">oʻng uylar ◨</button></div>' +
-        '<div class="sp-row"><button data-sp="near" title="Kameraga yaqin tomon uylarini yashirish">👁 yaqin uyni yashir</button><button data-sp="exit" title="Chiqish (Esc)">✕</button></div>';
+        '<div class="sp-row"><button data-sp="near" title="Kameraga yaqin tomon uylarini yashirish">👁 yaqin uyni yashir</button><button data-sp="exit" title="Chiqish (Esc)">✕</button></div>' +
+        '<div class="sp-row"><button data-sp="q" title="Skan sifati: siqilgan (16 MB, tez) yoki asl (96 MB, 4096 px) — solishtiring">◐ <span class="sp-q"></span></button></div>';
       host.appendChild(pad);
       pad.addEventListener('click', e => {
         const b = e.target.closest('button[data-sp]'); if (!b) return; e.stopPropagation();
@@ -316,10 +325,11 @@
         if (k === 'turnL') turn(-15); else if (k === 'turnR') turn(15); else if (k === 'fwd') walk(4); else if (k === 'back') walk(-4);
         else if (k === 'left') walk(-3, true); else if (k === 'right') walk(3, true); else if (k === 'up') look(8); else if (k === 'down') look(-8);
         else if (k === 'hideL') scanSide('chap', !sideState().chap); else if (k === 'hideR') scanSide('ong', !sideState().ong);
-        else if (k === 'near') hideNear(); else if (k === 'exit') { showAll(); setStreet(false); }
+        else if (k === 'near') hideNear(); else if (k === 'q') scanQuality(scanQ() === 'opt' ? 'orig' : 'opt'); else if (k === 'exit') { showAll(); setStreet(false); }
       });
     }
     pad.hidden = false;
+    const sq = pad.querySelector('.sp-q'); if (sq) sq.textContent = scanQ() === 'opt' ? 'siqilgan (bosing — asl)' : 'asl 4096 (bosing — siqilgan)';
     pad.querySelectorAll('[data-side]').forEach(b => { const on = sideState()[b.dataset.side]; b.classList.toggle('off', on === false); });
   }
   document.addEventListener('keydown', e => {
@@ -363,7 +373,9 @@
       item.l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(k, -k, k)).multiply(new THREE.Matrix4().makeRotationZ(h)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
       item.load = () => {
         if (item.loading) return; item.loading = true;
-        new window.THREE.GLTFLoader().load(sc.file, g => {
+        const ld = new window.THREE.GLTFLoader(); if (window.MeshoptDecoder) ld.setMeshoptDecoder(window.MeshoptDecoder);
+        const q = scanQ(), url = q === 'opt' && sc.fileOpt ? sc.fileOpt : sc.file; item.q = q;
+        ld.load(url, g => {
           const scn = new window.THREE.Scene();
           g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; capTex(t); t.encoding = window.THREE.LinearEncoding; t.anisotropy = 16; t.minFilter = window.THREE.LinearMipmapLinearFilter; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });
           scn.add(g.scene); item.scene = scn; map.triggerRepaint();
@@ -379,6 +391,7 @@
     try {
       // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
       if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+      if (!window.MeshoptDecoder) await new Promise(res => { const s = document.createElement('script'); s.src = 'vendor/three/meshopt_decoder.js?v=1'; s.onload = res; s.onerror = res; document.head.appendChild(s); });   // siqilgan (meshopt) skanlar uchun
       scans.forEach(it => it.load && it.load());
     } catch (e) { modelsLoading = false; console.warn('skan yuklovchi:', e && e.message); }
   }
@@ -476,5 +489,5 @@
   function update(force) { if (force && built) built.R = -1; check(); }
   function reapply() { if (ids.length && map) ids.forEach(id => map.setFeatureState({ source: 'bld', id }, { r3d: true })); }
 
-  NX.city3d = { scanSide, hideNear, showAll, sideState, eye, look, turn, walk, setStreet, streetOn: () => street, pick, setMeasure, project, _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
+  NX.city3d = { scanQuality, scanSide, hideNear, showAll, sideState, eye, look, turn, walk, setStreet, streetOn: () => street, pick, setMeasure, project, _dbg: () => ({ layer, built, FAC, scans }), scans: () => scanList.map(x => ({ id: x.id, nomi: x.nomi, lat: x.lat, lon: x.lon, heading: x.heading })), flyScan, attach, update, reapply, active: () => !!built, pilot: () => FAC && { street: FAC.street, c: FAC.c, n: FAC.walls.length } };
 })();

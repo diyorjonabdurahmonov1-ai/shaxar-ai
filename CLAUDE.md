@@ -51,6 +51,8 @@ Foydalanuvchi oʻzbek tilida (lotin) yozadi. Javoblar oʻzbekcha, qisqa va aniq 
 
 - Worker v15 (2026-11-08): `/voicelog` (ovoz jurnali, KV `vlog`, soʻnggi 400) + AI javobini oqim bilan uzatish (`stream:true` → SSE; faqat gpt-* modellar). Sayt: `callOpenAI` `deep|twin|facts|traffic` kalitlarida oqimdan foydalanadi (`NX.ai.stream`, `.think-live` — “Tahlil qilinmoqda” ostida token-token matn; `serverVer() >= 15` boʻlsa), `vlogAdd/vlogShow` — Sozlamalar “🎙 Ovoz jurnali” (nima eshitildi, `via` local/place/ai/audio/geo, holat, gap+tushunish ms; “Nusxa olish”). Worker v15 deploy qilinishi kerak.
 
+- Skan siqish (2026-11-09): `data/scans-opt/angren-1..4.glb` (96 → 16.3 MB: uchburchak 50%, tekstura 2048 WebP q82, meshopt; `gltf-transform` + `meshoptimizer` + `sharp`, parametrlar: ratio 0.5, error 0.0003) — `scans.json` `fileOpt`; asl fayllar `data/scans/` saqlangan. `NX.city3d.scanQuality('opt'|'orig')` (`scan:q`, sukut 'opt'), koʻcha ichi panelida “◐” tugmasi yonma-yon solishtirish uchun; dekoder `vendor/three/meshopt_decoder.js`. Foydalanuvchi yoqtirmasa — `scan:q` sukutini 'orig' qilib qaytariladi. Skanlar GLB faqat kerak boʻlganda yuklanadi (`ensureScanModels`, `nearScans`).
+
 ## Testlar
 - `(python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &); sleep 2; timeout 1750 node tests/e2e.cjs` — Playwright, ~12 daqiqa, hozir 207/207. Testda tashqi xizmatlar va `data/*-samarqand.json` mock qilinadi (`walk-samarqand.json` — kichik sintetik trotuar/zebra/zinapoya).
 - `node tests/real-data.cjs` — haqiqiy relyef/koʻchalar/binolar bilan qoʻlda tekshiruv (internet kerak).
