@@ -179,7 +179,7 @@
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) throw new Error('Doim tinglash uchun Chrome yoki Edge brauzeri kerak.');
     if (wk && wk.on) return;
-    wk = { on: true, paused: false, r: null, fails: 0 };
+    wk = { on: true, paused: false, r: null, fails: 0, stat: { starts: 0, ends: 0, results: 0, errs: {}, lastErr: '', lastEnd: 0, heard: [], t0: Date.now() } };
     const start = () => {
       if (!wk || !wk.on || wk.paused || wk.hold || cur) return;
       if (wk.r) { const o = wk.r; wk.r = null; try { o.onend = o.onerror = o.onresult = null; o.abort(); } catch (x) { /* */ } }   // bitta nusxa: eskisi toʻxtatiladi
@@ -187,21 +187,22 @@
       r.onresult = e => {
         if (!wk || wk.r !== r) return;
         for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
+          const t = e.results[i][0].transcript; wk.stat.results++; wk.stat.heard.push(t.slice(0, 80)); if (wk.stat.heard.length > 12) wk.stat.heard.shift();
           if (onState) onState('heard', t);
-          const wm = t.match(WAKE);
+          const wm = NX.voice.wakeTest ? NX.voice.wakeTest(t) : t.match(WAKE);
           if (wm) { const rest = toLatin(t.slice(wm.index + wm[0].length)).replace(/^[\s,.!:-]+/, '').trim(); wk.paused = true; try { r.abort(); } catch (x) { /* */ } onWake(rest).finally(() => { if (wk) { wk.paused = false; setTimeout(start, 400); } }); return; }
         }
       };
-      r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };
-      r.onstart = () => { wk.fails = 0; };
-      r.onend = () => { if (wk && wk.r === r && wk.on && !wk.paused && !wk.hold) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
+      r.onerror = e => { wk.stat.errs[e.error] = (wk.stat.errs[e.error] || 0) + 1; wk.stat.lastErr = e.error; if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { wk.on = false; onState && onState('denied'); } else { wk.fails++; if (e.error !== 'no-speech' && e.error !== 'aborted') onState && onState('error', e.error); } };
+      r.onstart = () => { wk.fails = 0; wk.stat.starts++; };
+      r.onend = () => { if (wk) { wk.stat.ends++; wk.stat.lastEnd = Date.now(); } if (wk && wk.r === r && wk.on && !wk.paused && !wk.hold) setTimeout(start, wk.fails > 5 ? 3000 : 300); };
       try { r.start(); onState && onState('on'); } catch (x) { setTimeout(start, 1000); }
     };
     wake.restart = start;
     start();
   }
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
+  const wakeInfo = () => (wk ? { on: wk.on, paused: wk.paused, hold: !!wk.hold, fails: wk.fails, listening: !!(wk.r && wk.on && !wk.paused && !wk.hold && !cur), ...wk.stat, up: Math.round((Date.now() - wk.stat.t0) / 1000) } : null);
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { serverVer, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { serverVer, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
 })();

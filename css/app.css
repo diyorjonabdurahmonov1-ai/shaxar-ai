@@ -1086,3 +1086,9 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 #vlogOv .vl-r.warn, #vlogOv .vl-r.unclear { background: rgba(244, 63, 94, .07); }
 #vlogOv .vl-r time { color: #64748b; } #vlogOv .vl-via { color: #5eead4; font-weight: 700; } #vlogOv .vl-h2 { color: #cbd5e1; } #vlogOv .vl-l { color: #fde68a; } #vlogOv small { color: #94a3b8; }
 @media (max-width: 820px) { #vlogOv .vl-r { grid-template-columns: 1fr; } }
+
+#wakeBadge { position: fixed; left: 12px; bottom: 12px; z-index: 2300; padding: 4px 11px; border-radius: 999px; font-size: .74rem; border: 1px solid rgba(148, 163, 184, .35); background: rgba(3, 7, 16, .82); color: #94a3b8; cursor: pointer; backdrop-filter: blur(4px); }
+#wakeBadge.on { color: #86efac; border-color: rgba(74, 222, 128, .5); }
+#wakeBadge.awake { color: #5eead4; border-color: rgba(94, 234, 212, .8); box-shadow: 0 0 12px rgba(45, 212, 191, .35); }
+#wakeBadge.err { color: #fca5a5; border-color: rgba(248, 113, 113, .6); }
+#vlogOv .vl-wake { padding: 8px 16px; font-size: .78rem; color: #fde68a; border-bottom: 1px solid rgba(148, 163, 184, .15); word-break: break-word; }

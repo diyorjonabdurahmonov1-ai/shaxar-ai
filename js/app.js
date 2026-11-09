@@ -778,8 +778,10 @@
     const ok = items.length ? Math.round((st.ok || 0) / items.length * 100) : 0;
     let el = $('#vlogOv'); if (el) el.remove();
     el = document.createElement('div'); el.id = 'vlogOv';
+    const wi = NX.voice.wakeInfo && NX.voice.wakeInfo();
+    const wiTxt = wi ? `Chaqiruv tinglovchisi: ${wi.listening ? 'tinglayapti' : wi.hold || wi.paused ? 'pauza' : 'ulanmoqda'} · ishga tushishlar ${wi.starts}, natijalar ${wi.results}, xatolar ${JSON.stringify(wi.errs)} · eshitilgan: ${(wi.heard || []).slice(-6).map(x => '«' + x + '»').join(' ')}` : 'Chaqiruv tinglovchisi oʻchiq';
     el.innerHTML = `<div class="vl-box"><div class="vl-h"><b>🎙 Ovoz jurnali</b><span>${items.length} ta · ${NX.esc(src)} · muvaffaqiyat ${ok}% · gapdan keyin javobgacha oʻrtacha ${ms.some(x => x.ms.lag != null) ? avg('lag') : avg('think')} ms</span><button type="button" class="btn sm" data-vl="copy">Nusxa olish</button><button type="button" class="btn sm" data-vl="close">Yopish</button></div>
-      <div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · javob ' + (x.ms.lag != null ? x.ms.lag : x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
+      <div class="vl-wake">${NX.esc(wiTxt)}</div><div class="vl-list">${items.map(x => `<div class="vl-r ${NX.esc(x.status || '')}"><time>${new Date(x.ts).toLocaleTimeString('uz-UZ')}</time><span class="vl-via">${NX.esc(x.via || '?')}</span><span class="vl-h2">«${NX.esc((x.heard || []).join(' | '))}»</span><span class="vl-l">${NX.esc(x.label || '—')}</span><small>${NX.esc(x.status || '')}${x.ms ? ' · javob ' + (x.ms.lag != null ? x.ms.lag : x.ms.think || 0) + ' ms' : ''}</small></div>`).join('') || '<p class="muted">Hali yozuv yoʻq — ovoz bilan buyruq bering.</p>'}</div></div>`;
     document.body.appendChild(el);
     el.addEventListener('click', ev => { const b = ev.target.closest('[data-vl]'); if (!b && ev.target !== el) return; if (!b || b.dataset.vl === 'close') { el.remove(); return; } try { navigator.clipboard.writeText(JSON.stringify(items, null, 1)); toast('Jurnal nusxa olindi — yuboring', 'ok'); } catch (e) { toast('Nusxa olib boʻlmadi', 'warn'); } });
   }
@@ -839,6 +841,39 @@
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
   NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.problemFind = problemFind; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  // Chaqiruv soʻzi (“City Jam”): ru-RU tanish nimani eshitsa ham — “сити джем / сити жам / ситижам / siti jem / city gem / сидж им…” — fonetik moslash
+  NX.voice.wakeTest = t => {
+    const re = /\S+/g; const toks = []; let m; while ((m = re.exec(t))) toks.push({ w: m[0], i: m.index, e: m.index + m[0].length });
+    const lt = x => NX.translit(String(x).toLowerCase()).replace(/[^a-z]/g, '');
+    for (let k = 0; k < toks.length; k++) {
+      const a = lt(toks[k].w); if (a.length < 3) continue;
+      // bitta soʻz: “ситиджем”
+      if (/^(siti|citi|city|sity|sidi)/.test(a) && a.length >= 6 && wsim(a.slice(4), 'jam') >= 0.5) return { index: toks[k].i, 0: t.slice(toks[k].i, toks[k].e), length: 1 };
+      if (wsim(a, 'siti') >= 0.72 || wsim(a, 'city') >= 0.8 || wsim(a, 'sity') >= 0.8) {
+        let nx = toks[k + 1]; if (!nx) continue; let b = lt(nx.w);
+        if (b.length <= 2 && toks[k + 2]) { nx = toks[k + 2]; b = lt(nx.w); }   // “сити и джем” — oraga qisqa soʻz tushsa
+        if (b && (wsim(b, 'jam') >= 0.5 || wsim(b, 'djem') >= 0.5 || wsim(b, 'gem') >= 0.6 || wsim(b, 'jem') >= 0.6 || /^(dj|zh|j|g)[aeiy]m/.test(b))) { const r = { index: toks[k].i, length: 1 }; r[0] = t.slice(toks[k].i, nx.e); return r; }
+      }
+    }
+    return null;
+  };
+  // Chaqiruv tinglovchisi holati koʻrsatkichi: sayt eshityaptimi, yoʻqmi — koʻzga koʻrinadi (bosilsa — batafsil)
+  function wakeBadge() {
+    let el = $('#wakeBadge');
+    const info = NX.voice.wakeInfo && NX.voice.wakeInfo(), want = NX.store.get('voice:wake', true);
+    if (!want && !info) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('button'); el.id = 'wakeBadge'; el.type = 'button'; el.onclick = vlogShow; document.body.appendChild(el); }
+    let cls = 'off', txt = '🎙 chaqiruv oʻchiq';
+    if (info) {
+      if (awake) { cls = 'awake'; txt = '🟢 uygʻoq'; }
+      else if (info.hold || info.paused) { cls = 'pause'; txt = '⏸ buyruq tinglanmoqda'; }
+      else if (info.lastErr && !/^(no-speech|aborted)$/.test(info.lastErr) && info.fails > 2) { cls = 'err'; txt = '⚠ chaqiruv ishlamayapti: ' + info.lastErr; }
+      else if (info.listening) { cls = 'on'; txt = '● «City Jam» deng'; }
+      else { cls = 'pause'; txt = '… qayta ulanmoqda'; }
+    } else if (want) { cls = 'err'; txt = '⚠ chaqiruv yoqilmagan (sahifaga bir marta bosing)'; }
+    el.className = cls; el.textContent = txt; el.title = 'Bosing — batafsil';
+  }
+  setInterval(wakeBadge, 1500);
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
   let wpT = 0;
   function wakePill(t, awakeMode) {
