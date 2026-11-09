@@ -812,7 +812,11 @@
       }
       if (!loop) hud('warn', 'Ovoz eshitilmadi', 'qayta ayting');
       return false;
-    } catch (e) { hud('warn', e.message, ''); if (loop) throw e; return false; }
+    } catch (e) {
+      // Uygʻoq rejimda: gap tanilmadi (shovqin/oʻz ovozimiz) — xato emas, jimgina davom etadi (oldin 3 martadan keyin tinglash toʻxtab qolardi)
+      if (loop && /Gap tanilmadi|Ovoz yozilmadi/i.test(e.message || '')) return false;
+      hud('warn', e.message, ''); if (loop) throw e; return false;
+    }
   }
   // “Alisa” kabi: chaqiruvdan keyin 1 daqiqa uygʻoq — chaqiruv soʻzisiz ketma-ket buyruqlar; har buyruqdan keyin muddat yangilanadi
   const AWAKE_MS = 60000;
