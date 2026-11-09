@@ -6,6 +6,8 @@
   const NX = window.NX;
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
   let ver = null, cur = null, sttOff = false, held = null;
+  // Telefon: Android Chrome nutq tanishi har boshlanish/tugashda “ting” tovush chiqaradi — telefonda faqat jim yozuv (MediaRecorder) + server tanish ishlatiladi
+  const IS_MOB = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
   async function serverOk() {
     if (ver != null) return ver >= 13;
     if (!base()) return false;
@@ -74,7 +76,7 @@
         if (persist || now - t0 >= 400) {
           const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* chegara haddan oshmaydi; uygʻoq rejimda shovqin darajasi eslab qolinadi */
           if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
-          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > 1000) return stop(); }
+          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > (IS_MOB ? 700 : 1000)) return stop(); }
         }
       }
       lastT = now;
@@ -106,7 +108,7 @@
   function webCapture(onPart, onSpeechEnd) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const out = { text: '', done: Promise.resolve(''), stop() {} };
-    if (!SR) return out;
+    if (!SR || IS_MOB) return out;
     let finish; out.done = new Promise(r => { finish = r; });
     const tryLang = lang => {
       let r; try { r = new SR(); } catch (e) { finish(''); return; }

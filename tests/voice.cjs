@@ -13,9 +13,9 @@ ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '6', path.join(D, 'q.w
 ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '0.7', path.join(D, 'q0.wav'));
 ff('-i', path.join(D, 'q0.wav'), '-i', path.join(D, 'sp.wav'), '-i', path.join(D, 'q.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1', '-ar', '48000', '-ac', '1', path.join(D, 'speech.wav'));
 const results = []; const ok = (n, c, x) => { results.push([c ? 'OK  ' : 'FAIL', n, x || '']); if (!c) process.exitCode = 1; };
-async function run(file, text, until, awake) {
+async function run(file, text, until, awake, mobile) {
   const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--use-file-for-fake-audio-capture=' + path.join(D, file)] });
-  const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, permissions: ['microphone'] });
+  const ctx = await b.newContext(Object.assign({ viewport: { width: 1280, height: 800 }, permissions: ['microphone'] }, mobile ? { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36', hasTouch: true } : {}));
   const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
   let stt = 0;
   await ctx.route(/\/js\/keys\.js/, r => r.fulfill({ status: 200, contentType: 'text/javascript', body: "window.CITYJAM_KEYS = { tomtom: '', aiProxy: 'https://cityjam-ai.example.workers.dev' };" }));
@@ -36,6 +36,8 @@ async function run(file, text, until, awake) {
   ok('Jim mikrofon: serverga yuborilmaydi, “ovoz kelmayapti” deyiladi', r.last && r.last.st === 'warn' && r.stt === 0, JSON.stringify(r));
   r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report', true);
   ok('Uygʻoq rejim: buyruqdan keyin ham tinglab turadi, uygʻoq turadi (soxta mikrofon faylni takrorlaydi)', r.last && r.last.tab === 'report' && r.stt >= 1 && r.aw && r.aw.on && /awake/.test(r.aw.pill), JSON.stringify(r));
+  r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report', false, true);
+  ok('Telefon: brauzer nutq tanishi (tovush chiqaradigan) ishlatilmaydi, faqat jim yozuv + server — buyruq bajariladi', r.last && r.last.tab === 'report' && r.stt === 1, JSON.stringify(r));
   console.log(results.map(x => x.join('  ')).join('\n'));
   fs.rmSync(D, { recursive: true, force: true });
 })();
