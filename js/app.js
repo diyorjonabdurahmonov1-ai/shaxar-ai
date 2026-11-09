@@ -213,7 +213,7 @@
   const gotab = (k, extra) => ({ label: VTABS[k] + ' boʻlimi', run: () => { setTab(k); if (extra) extra(); } });
   // Yaqinlashtirish/uzoqlashtirish: 3D (MapLibre yoki fotoreal), Yandex yoki Leaflet — qaysi biri faol boʻlsa
   function zoomBy(d) {
-    S.problemOpenAt = 0; mapMoved();
+    mapMoved(true);
     if (S.tab === 'twin') {
       if (NX.g3d.active() && NX.g3d.cam({ zoom: d > 0 ? 2 : 0.5 })) return;
       const m = NX.map3d.map(); if (m) { d > 0 ? m.zoomIn({ duration: 600 }) : m.zoomOut({ duration: 600 }); return; }
@@ -224,7 +224,7 @@
   }
   // Xaritani surish: dx,dy — ekran ulushi (−1..1); 3D (MapLibre / fotoreal), Yandex yoki Leaflet
   function panBy(dx, dy) {
-    S.problemOpenAt = 0; mapMoved();
+    mapMoved(true);
     if (S.tab === 'twin') {
       if (NX.g3d.active() && NX.g3d.cam({ moveX: dx, moveY: dy })) return;
       const m = NX.map3d.map(); if (m) { const c = m.getCanvas(); m.panBy([dx * c.clientWidth * 0.4, dy * c.clientHeight * 0.4], { duration: 500 }); return; }
@@ -591,7 +591,9 @@
     try { const l = NX.map.leaflet && NX.map.leaflet(); if (l) l.closePopup(); } catch (e) { /* */ }
     if (S.tab === 'problems') render();
   }
-  const mapMoved = () => { if (S.problemOpen && S.tab === 'problems' && Date.now() - (S.problemOpenAt || 0) > 1800) closeOpenProblem(); };
+  // Xarita foydalanuvchi tomonidan (barmoq/sichqoncha) yoki ovoz buyrugʻi bilan siljitilsa — ochiq muammo yopiladi. Balloon avto-surilishi, xarita oʻlchami oʻzgarishi (telefonda) yopmaydi.
+  const mapMoved = force => { if (S.problemOpen && S.tab === 'problems' && (force === true || (Date.now() - (S.mapTouchAt || 0) < 1000 && Date.now() - (S.problemOpenAt || 0) > 700))) closeOpenProblem(); };
+  ['pointerdown', 'touchstart', 'wheel'].forEach(ev => document.addEventListener(ev, e => { if (e.target && e.target.closest && e.target.closest('.map-wrap') && !e.target.closest('.leaflet-popup, .ymaps-2-1-79-balloon, [class*=balloon], button, a')) S.mapTouchAt = Date.now(); }, { capture: true, passive: true }));
   function watchMap() {
     try { const l = NX.map.leaflet && NX.map.leaflet(); if (l && !l.__cjw) { l.__cjw = 1; l.on('dragstart zoomstart', mapMoved); } } catch (e) { /* */ }
     try { const ym = NX.yandex.getMap && NX.yandex.getMap(); if (ym && !ym.__cjw) { ym.__cjw = 1; ym.events.add('actionbegin', mapMoved); } } catch (e) { /* */ }
@@ -828,7 +830,7 @@
     try { await NX.voice.hold(true); } catch (e) { /* ruxsat boʻlmasa — har gapda alohida */ }
     const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true); }, 1000);
     try {
-      while (awake && Date.now() < awake.until && NX.store.get('voice:wake', true)) {
+      while (awake && Date.now() < awake.until && wakeWanted()) {
         if (document.hidden) { await new Promise(r => setTimeout(r, 1500)); awake.until += 1500; continue; }   // yashirin tabda ishlamaydi
         try {
           const t0i = Date.now(), t = await voiceAgent({ loop: true });
@@ -845,6 +847,9 @@
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
   NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.problemFind = problemFind; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  // Telefon/planshet: doim tinglash oʻchiq (Android Chrome har qayta ishga tushishda “dit-dit” tovush chiqaradi va fonda ishonchsiz) — qoʻlda 🎙 tugmasi
+  const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
+  const wakeWanted = () => NX.store.get('voice:wake', !IS_MOBILE);
   // Chaqiruv soʻzi (“City Jam”): ru-RU tanish nimani eshitsa ham — “сити джем / сити жам / ситижам / siti jem / city gem / сидж им…” — fonetik moslash
   NX.voice.wakeTest = t => {
     const re = /\S+/g; const toks = []; let m; while ((m = re.exec(t))) toks.push({ w: m[0], i: m.index, e: m.index + m[0].length });
@@ -864,8 +869,8 @@
   // Chaqiruv tinglovchisi holati koʻrsatkichi: sayt eshityaptimi, yoʻqmi — koʻzga koʻrinadi (bosilsa — batafsil)
   function wakeBadge() {
     let el = $('#wakeBadge');
-    const info = NX.voice.wakeInfo && NX.voice.wakeInfo(), want = NX.store.get('voice:wake', true);
-    if (!want && !info) { if (el) el.remove(); return; }
+    const info = NX.voice.wakeInfo && NX.voice.wakeInfo(), want = wakeWanted();
+    if ((!want && !info) || (IS_MOBILE && !info)) { if (el) el.remove(); return; }
     if (!el) { el = document.createElement('button'); el.id = 'wakeBadge'; el.type = 'button'; el.onclick = vlogShow; document.body.appendChild(el); }
     let cls = 'off', txt = '🎙 chaqiruv oʻchiq';
     if (info) {
@@ -3171,16 +3176,17 @@
     (window.requestIdleCallback || (f => setTimeout(f, 6000)))(() => { placeIndex().catch(() => {}); }, { timeout: 12000 });   // joy/koʻcha nomlari indeksi oldindan
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
     document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
-    if (NX.store.get('voice:wake', true) && !navigator.webdriver) {
+    if (IS_MOBILE && !NX.store.get('voice:mobile-fix', false)) { NX.store.set('voice:wake', false); NX.store.set('voice:mobile-fix', true); }   // telefonda doim tinglash bir marta oʻchiriladi
+    if (wakeWanted() && !navigator.webdriver) {
       setTimeout(() => wakeSet(true), 2500);
       // Baʼzi brauzerlar sahifa ochilganda (foydalanuvchi bosmasdan) tinglashni boshlatmaydi — birinchi bosishda qayta yoqiladi
-      const kick = () => { if (NX.store.get('voice:wake', true) && !NX.voice.waking()) wakeSet(true); };
+      const kick = () => { if (wakeWanted() && !NX.voice.waking()) wakeSet(true); };
       document.addEventListener('pointerdown', kick, { once: true, capture: true }); document.addEventListener('keydown', kick, { once: true, capture: true });
     }
     const fxBox = $('#mapFixes'), cmBox = $('#mapCams');
     if (fxBox) { fxBox.checked = !!NX.store.get('map:fixes', false); fxBox.addEventListener('change', () => { NX.store.set('map:fixes', fxBox.checked); NX.view.drawFixes(shownFixes()); }); }
     if (cmBox) { cmBox.checked = camsOn(); cmBox.addEventListener('change', () => { NX.store.set('map:cams', cmBox.checked); NX.camwall.show(cmBox.checked && S.tab === 'map' && !NX.fx.active()); }); }
-    const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!NX.store.get('voice:wake', true); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
+    const wkBox = $('#voiceWake'); if (wkBox) { wkBox.checked = !!wakeWanted(); wkBox.addEventListener('change', () => wakeSet(wkBox.checked)); }
     $('#btnDiag').addEventListener('click', runDiag);
     const bvl = $('#btnVlog'); if (bvl) bvl.addEventListener('click', vlogShow);
     // Yengil rejim: orqa fon harakatsiz, kartochka nurlari, deraza miltillashi, yomgʻir tomchilari va kichik binolar oʻchadi
