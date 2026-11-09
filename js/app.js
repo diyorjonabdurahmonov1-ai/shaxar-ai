@@ -1796,7 +1796,7 @@
     // “rasm chiz / koʻrsat” — hozirgi 3D koʻrinish asosida AI rasm
     if (!accQ && /rasm|chiz|surat|tasvir|vizual/.test(n) && NX.ai.available()) {
       C.busy = 'AI rasm chizmoqda (~1 daqiqa)'; renderKeepScroll();
-      try { msg.img = await NX.ai.chatImage(q, twinFacts(extra), NX.map3d.snapshot(640)); } catch (e) { msg.imgErr = e.message; }
+      try { msg.img = await NX.ai.chatImage(q, twinFacts(extra), await NX.map3d.snapshot(640)); } catch (e) { msg.imgErr = e.message; }
     }
     C.busy = null; renderKeepScroll();
     return msg;

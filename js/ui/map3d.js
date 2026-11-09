@@ -366,7 +366,7 @@
       if (!window.maplibregl) return reject(new Error('3D kutubxonasi yuklanmadi.'));
       const c = NX.config.center;
       map = new window.maplibregl.Map({
-        container: el, center: [66.9757, 39.6545], zoom: 16.6, pitch: 62, bearing: -20, maxPitch: 85, maxZoom: 23.5, attributionControl: true, preserveDrawingBuffer: true, canvasContextAttributes: { preserveDrawingBuffer: true },
+        container: el, center: [66.9757, 39.6545], zoom: 16.6, pitch: 62, bearing: -20, maxPitch: 85, maxZoom: 23.5, attributionControl: true,
         style: (() => {
           const sources = {}, layers = [];
           Object.keys(BASE).forEach(k => { sources['base-' + k] = Object.assign({ type: 'raster', tileSize: 256 }, BASE[k]); layers.push({ id: 'base-' + k, type: 'raster', source: 'base-' + k, layout: { visibility: k === base ? 'visible' : 'none' }, paint: k === 'sat' ? { 'raster-saturation': 0.15 } : k === 'twin' ? { 'raster-brightness-max': 0.8, 'raster-contrast': 0.15 } : {} }); });
@@ -604,17 +604,26 @@
   function flyTo(lat, lon, z) { if (map) map.flyTo({ center: [lon, lat], zoom: z || 17, pitch: 60, duration: 900 }); }
 
   // Hozirgi 3D koʻrinish rasmi (AI rasm uchun asos) — kichraytirilgan PNG
+  // Rasm olish: preserveDrawingBuffer oʻchirilgan (har kadrda qoʻshimcha nusxa va sekinlashuvni oldini oladi) — kadr chizilgan paytda oʻqiladi
   function snapshot(maxW) {
-    if (!map) return null;
-    try {
-      const src = map.getCanvas(), k = Math.min(1, (maxW || 640) / src.width), c = document.createElement('canvas');
-      c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
-      c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-      // Jonli qatlam (evakuatsiya yoʻllari, oqim) ham rasmga tushadi — AI rasm shu asosda chiziladi
-      const fx = NX.fx && NX.fx.active() && NX.fx.canvas();
-      if (fx && fx.width) c.getContext('2d').drawImage(fx, 0, 0, c.width, c.height);
-      return c.toDataURL('image/png');
-    } catch (e) { return null; }
+    if (!map) return Promise.resolve(null);
+    return new Promise(res => {
+      let done = false;
+      const grab = () => {
+        if (done) return; done = true;
+        try {
+          const src = map.getCanvas(), k = Math.min(1, (maxW || 640) / src.width), c = document.createElement('canvas');
+          c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+          c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+          // Jonli qatlam (evakuatsiya yoʻllari, oqim) ham rasmga tushadi — AI rasm shu asosda chiziladi
+          const fx = NX.fx && NX.fx.active() && NX.fx.canvas();
+          if (fx && fx.width) c.getContext('2d').drawImage(fx, 0, 0, c.width, c.height);
+          res(c.toDataURL('image/png'));
+        } catch (e) { res(null); }
+      };
+      try { map.once('render', grab); map.triggerRepaint(); } catch (e) { grab(); }
+      setTimeout(() => { if (!done) { done = true; res(null); } }, 2500);
+    });
   }
   // ---------- 📏 Oʻlchash (3D): nuqta skan / uy yuzasiga yopishadi (raycast) — masofa, balandlik farqi, gorizontal masofa ----------
   // Yaqinlashib bir nuqta, uzoqlashib yoki burib keyingisi — nuqtalar real joyida qoladi. Balandlik (uy, ariq chuqurligi), diametr (quvur) — ikki nuqta.

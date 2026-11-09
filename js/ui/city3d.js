@@ -235,6 +235,7 @@
   // Faqat “Balandlik” rejimida va yaqin masshtabda (boshqa rejimlarda binolar maʼlumot rangida boʻlishi kerak)
   const on = () => map && getMode() === 'height' && map.getZoom() >= 15;
   function check() {
+    nearScans();
     if (!layer || !layer.scene) return;
     if (!on()) { if (built) { layer.scene.remove(built.grp); built.grp.traverse(o => o.geometry && o.geometry.dispose()); built = null; clearIds(); map.triggerRepaint(); } return; }
     const c = map.getCenter(), z = map.getZoom(), R = z >= 17 ? 650 : z >= 16 ? 900 : 1200;
@@ -256,7 +257,7 @@
   const scanListP = fetch('data/scans.json').then(r => (r.ok ? r.json() : [])).catch(() => []).then(l => { scanList = Array.isArray(l) ? l : []; if (scanList.length) document.dispatchEvent(new Event('nx:scans')); return scanList; });
   // Kamera koʻchaning boshida, koʻcha boʻylab qaraydi (birinchi skan boshlanishidan 35 m ichkarida)
   function flyScan() {
-    const sc = scanList[0]; if (!sc || !map) return;
+    const sc = scanList[0]; if (!sc || !map) return; ensureScanModels();
     const a = sc.heading * Math.PI / 180, d = 35, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
     try { map.setMaxPitch(85); } catch (e) { /* */ }
     map.flyTo({ center: [lon, lat], zoom: 21, pitch: 78, bearing: sc.heading, duration: 2400 });
@@ -290,7 +291,7 @@
   function walk(m, strafe) { if (!map) return; const br = map.getBearing() + (strafe ? 90 : 0); map.easeTo({ center: meterLL(map.getCenter(), br, m), duration: 300, easing: t => t }); }
   // Koʻcha ichi koʻrinishi: koʻz balandligida (past kamera), yoʻl boʻylab, keng koʻrish burchagi
   function eye() {
-    const sc = scanList[0]; if (!sc || !map) return;
+    const sc = scanList[0]; if (!sc || !map) return; ensureScanModels();
     try { map.transform.fov = 55; } catch (e) { /* */ }
     try { map.setMaxPitch(85); } catch (e) { /* */ }
     const a = sc.heading * Math.PI / 180, d = 10, lat = sc.lat + Math.cos(a) * d / 110574, lon = sc.lon + Math.sin(a) * d / (111320 * Math.cos(sc.lat * Math.PI / 180));
@@ -351,20 +352,41 @@
     if (ids.length) ['bld', 'bld-roof', 'bld-foot'].forEach(L => { if (map.getLayer(L)) { const f0 = map.getFilter(L), f = ['!', ['in', ['get', 'id'], ['literal', ids]]]; map.setFilter(L, f0 ? ['all', f0, f] : f); } });
     // Maket skan maʼlumoti bilan qayta quriladi (birinchi qurilish skanlar yuklanmasdan boshlangan boʻlishi mumkin)
     const again = () => { if (busy) return setTimeout(again, 300); if (built) built.R = -1; check(); }; again();
-    // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
-    if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    // Skan modellari (GLB, ~96 MB, 4096 px teksturalar) faqat kerak boʻlganda yuklanadi: koʻcha oldiga kelinganda, “Real 3D koʻcha” bosilganda
+    // (kirishda butun GLB yuklash va GPU’ga 4 ta katta tekstura yuborish 3D boʻlimini qotirardi). Sifat oʻzgarmaydi.
+    const LOWMEM = document.documentElement.classList.contains('lite') || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    const capTex = t => { try { const im = t.image, w = im && (im.width || im.videoWidth); if (LOWMEM && w > 2048) { const cv = document.createElement('canvas'); cv.width = Math.round(w / 2); cv.height = Math.round(im.height / 2); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); t.image = cv; } } catch (e) { /* */ } };
     list.forEach(sc => {
       const mc = window.maplibregl.MercatorCoordinate.fromLngLat([sc.lon, sc.lat], sc.z || 0), k = mc.meterInMercatorCoordinateUnits(), h = -(sc.heading - 90) * Math.PI / 180;
       const item = Object.assign({ scene: null }, sc);
       // mercator (y pastga) ← metr (z yuqoriga) ← azimut boʻyicha burish ← glTF (Y yuqoriga → Z)
       item.l = new THREE.Matrix4().makeTranslation(mc.x, mc.y, mc.z).scale(new THREE.Vector3(k, -k, k)).multiply(new THREE.Matrix4().makeRotationZ(h)).multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+      item.load = () => {
+        if (item.loading) return; item.loading = true;
+        new window.THREE.GLTFLoader().load(sc.file, g => {
+          const scn = new window.THREE.Scene();
+          g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; capTex(t); t.encoding = window.THREE.LinearEncoding; t.anisotropy = 16; t.minFilter = window.THREE.LinearMipmapLinearFilter; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });
+          scn.add(g.scene); item.scene = scn; map.triggerRepaint();
+        }, undefined, e => { item.loading = false; console.warn('skan:', sc.file, e && e.message); });
+      };
       scans.push(item);
-      new window.THREE.GLTFLoader().load(sc.file, g => {
-        const scn = new window.THREE.Scene();
-        g.scene.traverse(o => { if (o.isMesh && o.material && o.material.map) { const t = o.material.map; t.encoding = window.THREE.LinearEncoding; t.anisotropy = 16; t.minFilter = window.THREE.LinearMipmapLinearFilter; t.needsUpdate = true; o.material = new window.THREE.MeshBasicMaterial({ map: t, side: window.THREE.DoubleSide }); } });   // rang — suratdagidek (sRGB qayta kodlanmaydi)
-        scn.add(g.scene); item.scene = scn; map.triggerRepaint();
-      }, undefined, e => console.warn('skan:', sc.file, e && e.message));
     });
+    scansReady = true; if (wantModels) ensureScanModels();
+  }
+  let scansReady = false, wantModels = false, modelsLoading = false;
+  async function ensureScanModels() {
+    wantModels = true; if (!scansReady || modelsLoading) return; modelsLoading = true;
+    try {
+      // three.js ikki marta yuklangan boʻlishi mumkin (obidalar qatlami ham yuklaydi) — yuklovchi window.THREE’ga qoʻshiladi
+      if (!window.THREE.GLTFLoader) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'vendor/three/GLTFLoader.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+      scans.forEach(it => it.load && it.load());
+    } catch (e) { modelsLoading = false; console.warn('skan yuklovchi:', e && e.message); }
+  }
+  // Kamera skan koʻchasiga yaqin (≤ 900 m) va zoom ≥ 15.5 boʻlsa — modellar yuklanadi
+  function nearScans() {
+    if (modelsLoading || !scanList.length || !map || map.getZoom() < 15) return;
+    const c = map.getCenter();
+    if (scanList.some(s => Math.hypot((s.lat - c.lat) * 110574, (s.lon - c.lng) * 85700) < 900)) ensureScanModels();
   }
   // ---------- 📏 3D oʻlchash: ekrandagi nuqta → skan / maket uy yuzasidagi haqiqiy 3D nuqta (raycast) ----------
   let lastM = null;
