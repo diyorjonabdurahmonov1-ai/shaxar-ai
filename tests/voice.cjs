@@ -13,7 +13,7 @@ ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '6', path.join(D, 'q.w
 ff('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=mono', '-t', '0.7', path.join(D, 'q0.wav'));
 ff('-i', path.join(D, 'q0.wav'), '-i', path.join(D, 'sp.wav'), '-i', path.join(D, 'q.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1', '-ar', '48000', '-ac', '1', path.join(D, 'speech.wav'));
 const results = []; const ok = (n, c, x) => { results.push([c ? 'OK  ' : 'FAIL', n, x || '']); if (!c) process.exitCode = 1; };
-async function run(file, text, until, awake, mobile) {
+async function run(file, text, until, awake, mobile, holdMs) {
   const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--use-file-for-fake-audio-capture=' + path.join(D, file)] });
   const ctx = await b.newContext(Object.assign({ viewport: { width: 1280, height: 800 }, permissions: ['microphone'] }, mobile ? { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36', hasTouch: true } : {}));
   const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
@@ -23,7 +23,7 @@ async function run(file, text, until, awake, mobile) {
   await ctx.route(/overpass|maps\.mail/, r => r.abort('failed'));
   const p = await ctx.newPage();
   await p.goto(BASE); await p.waitForSelector('#panel .live', { timeout: 90000 }); await p.waitForTimeout(1500);
-  const t0 = Date.now(); if (awake) await p.evaluate(() => { NX.awakeLoop(); }); else await p.click('#btnVoice');
+  const t0 = Date.now(); if (awake) await p.evaluate(() => { NX.awakeLoop(); }); else if (holdMs) { const bb = await p.locator('#btnVoice').boundingBox(); await p.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await p.mouse.down(); await p.waitForTimeout(holdMs); await p.mouse.up(); } else await p.click('#btnVoice');
   let last = null;
   for (let i = 0; i < 80; i++) { last = await p.evaluate(() => { const e = document.getElementById('voiceHud'); return e ? { st: e.className.replace('show', '').trim(), t: e.querySelector('b').textContent, tab: NX.state.tab } : null; }); if (last && until(last)) break; await p.waitForTimeout(250); }
   let aw = null; if (awake) { await p.waitForTimeout(9000); aw = await p.evaluate(() => ({ on: NX.awakeOn(), pill: (document.getElementById('wakePill') || {}).className || '' })); }
@@ -38,6 +38,8 @@ async function run(file, text, until, awake, mobile) {
   ok('Uygʻoq rejim: buyruqdan keyin ham tinglab turadi, uygʻoq turadi (soxta mikrofon faylni takrorlaydi)', r.last && r.last.tab === 'report' && r.stt >= 1 && r.aw && r.aw.on && /awake/.test(r.aw.pill), JSON.stringify(r));
   r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report', false, true);
   ok('Telefon: brauzer nutq tanishi (tovush chiqaradigan) ishlatilmaydi, faqat jim yozuv + server — buyruq bajariladi', r.last && r.last.tab === 'report' && r.stt === 1, JSON.stringify(r));
+  r = await run('speech.wav', 'Xisobot bo‘limini och', h => h.tab === 'report', false, false, 2300);
+  ok('Bosib turib gapirish: qoʻyvorilganda darrov yuboriladi va buyruq bajariladi', r.last && r.last.tab === 'report' && r.stt === 1 && r.sec < 9, JSON.stringify(r));
   console.log(results.map(x => x.join('  ')).join('\n'));
   fs.rmSync(D, { recursive: true, force: true });
 })();

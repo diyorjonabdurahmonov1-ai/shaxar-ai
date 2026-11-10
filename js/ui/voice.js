@@ -50,7 +50,7 @@
     let stream, ac, an, own = true;
     if (held && held.stream.active) { if (IS_MOB) { clearTimeout(warmT); warmT = setTimeout(() => { if (!NX.voice.awakeHold) hold(false); }, 120000); } stream = held.stream; ac = held.ac; an = held.an; own = false; if (ac && ac.state === 'suspended') ac.resume().catch(() => {}); }
     else {
-      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: !NX.store.get('voice:noisy', false) } }); }
       catch (e) { throw new Error(e && e.name === 'NotAllowedError' ? 'Mikrofonga ruxsat berilmagan — manzil satridagi 🔒 belgisidan mikrofonga ruxsat bering.' : 'Mikrofon topilmadi yoki band.'); }
       const AC = window.AudioContext || window.webkitAudioContext; ac = AC ? new AC() : null; an = ac ? ac.createAnalyser() : null;
       if (ac) { ac.createMediaStreamSource(stream).connect(an); an.fftSize = 1024; if (ac.state === 'suspended') ac.resume().catch(() => {}); }
@@ -73,7 +73,8 @@
         else { stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); }
       }
     };
-    let voicedMs = 0, lastT = 0, lvT = 0;
+    let voicedMs = 0, lastT = 0, lvT = 0, uPeak = 0;
+    const noisy = !!NX.store.get('voice:noisy', false); let userLvl = +NX.store.get('voice:lvl', 0) || 0;
     const tick = () => {
       const now = Date.now();
       if (an) {
@@ -85,19 +86,26 @@
         if (persist) floor = held.floor;
         else if (now - t0 < 400) { floor = (floor * nF + lv) / (++nF); if (!own && held) held.floor = floor; }
         if (persist || now - t0 >= 400) {
-          const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* chegara haddan oshmaydi; uygʻoq rejimda shovqin darajasi eslab qolinadi */
+          let th = Math.max(0.02, Math.min(0.1, floor * (noisy ? 3.5 : 2.5))); /* chegara haddan oshmaydi; uygʻoq rejimda shovqin darajasi eslab qolinadi */
+          // Yaqin maydon: xonada boshqalar gaplashsa — ularning ovozi mikrofonga uzoqdan keladi (sustroq). Chegara foydalanuvchining oʻz ovoz darajasiga nisbatan
+          if (userLvl > 0.08) th = Math.max(th, Math.min(0.5, userLvl * (noisy ? 0.55 : 0.4)));
           if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
-          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > (IS_MOB ? 550 : 1000)) return stop(); }
+          if (lv > th) { spoke = true; quietAt = 0; uPeak = Math.max(uPeak, lv); voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > (IS_MOB ? 550 : 1000)) return stop(); }
         }
       }
       lastT = now;
       if (!quietWarned && !spoke && Date.now() - t0 > 2500 && peak < 0.004) { quietWarned = true; ui && ui.onQuiet && ui.onQuiet(micLabel); }
-      if (Date.now() - t0 > 40000 || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
+      if (Date.now() - t0 > ((ui && ui.maxMs) || 40000) || (!spoke && Date.now() - t0 > (peak < 0.004 ? 4500 : 8000))) return stop();
       raf = setTimeout(tick, 50);
     };
     rec.start(250); tick();
     cur = { stop };
     const blob = await done; cur = null; NX.voice.endAt = Date.now();
+    // Oʻz ovoz darajamni oʻrganish: faqat yetarli baland (yaqin) gaplar hisobga olinadi; hech narsa eshitilmasa daraja asta pasayadi (past ovozda gapirsangiz ham eshitiladi)
+    try {
+      if (spoke && voicedMs >= 350 && uPeak >= 0.08 && (!userLvl || uPeak >= userLvl * 0.6)) NX.store.set('voice:lvl', +(userLvl ? userLvl * 0.7 + uPeak * 0.3 : uPeak).toFixed(3));
+      else if (!spoke && userLvl) NX.store.set('voice:lvl', +(userLvl * 0.9).toFixed(3));
+    } catch (e) { /* */ }
     if ((!spoke || voicedMs < 350) && ui && ui.silentOk) return null;   // qisqa shovqin (shaqillash, ovoz) gap emas   // uygʻoq rejim: hech kim gapirmadi — serverga yuborilmaydi
     // Oʻlchagich gapni sezmagan boʻlsa ham (baʼzi mikrofonlar / uxlagan AudioContext) — yozuv baribir matnga oʻgiriladi; butunlay jim boʻlsa xabar
     if (!spoke && an && peak < 0.004 && acOk) throw new Error('Mikrofondan ovoz kelmayapti — Windows ovoz sozlamalarida toʻgʻri mikrofon tanlanganini va brauzerga ruxsat berilganini tekshiring.');
@@ -220,5 +228,5 @@
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   const wakeInfo = () => (wk ? { on: wk.on, paused: wk.paused, hold: !!wk.hold, fails: wk.fails, listening: !!(wk.r && wk.on && !wk.paused && !wk.hold && !cur), ...wk.stat, up: Math.round((Date.now() - wk.stat.t0) / 1000) } : null);
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { serverVer, warmNet, lastStt: null, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { resetLevel: () => NX.store.set('voice:lvl', 0), serverVer, warmNet, lastStt: null, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
 })();

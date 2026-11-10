@@ -793,7 +793,7 @@
     if (!loop) hud('rec', 'Tinglayapman…', 'mikrofon ulanmoqda');   // bosilgan zahoti koʻrinadi (mikrofon ochilishini kutmasdan)
     try {
       const t = await NX.voice.listen({
-        silentOk: loop, early: true,
+        silentOk: loop, early: true, maxMs: NX.store.get('voice:noisy', false) ? 8000 : 12000,
         quick: x => { try { if (x.split(/\s+/).length > 4) return false; const pl = voicePlan(x); return !!pl && !pl.warn && !pl.weak; } catch (e) { return false; } },
         onState: st => {
           b.classList.toggle('on', st === 'rec'); b.classList.toggle('busy', st === 'busy');
@@ -3173,10 +3173,16 @@
     $('#btnDraw').addEventListener('click', drawArea);
     $('#btnRoad').addEventListener('click', () => drawRoad());
     $('#btnSettings').addEventListener('click', () => openSettings());
-    $('#btnVoice').addEventListener('click', voiceAgent);
+    // Bosib turib gapirish: tugmani bosib turing — gapirasiz, qoʻyvorsangiz darrov yuboriladi (shovqinli xonada eng ishonchli yoʻl). Qisqa bosish — avvalgidek
+    { const bv = $('#btnVoice'); let hs = 0, started = false, swallow = 0;
+      bv.addEventListener('pointerdown', () => { hs = Date.now(); started = false; if (!NX.voice.active()) { started = true; voiceAgent(); } });
+      const up = () => { if (started && Date.now() - hs > 450 && NX.voice.active()) { NX.voice.stop(); } if (started) swallow = Date.now(); started = false; };
+      bv.addEventListener('pointerup', up); bv.addEventListener('pointercancel', up);
+      bv.addEventListener('click', e => { if (Date.now() - swallow < 600) { e.stopImmediatePropagation(); return; } voiceAgent(); }, true); }
     (window.requestIdleCallback || (f => setTimeout(f, 6000)))(() => { placeIndex().catch(() => {}); }, { timeout: 12000 });   // joy/koʻcha nomlari indeksi oldindan
     // Tez tugma: Alt+V — ovozli yordamchi; Esc — tinglashni toʻxtatish
-    document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); voiceAgent(); } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
+    let altV = 0; document.addEventListener('keyup', e => { if ((e.code === 'KeyV' || /^v$/i.test(e.key)) && altV && Date.now() - altV > 450 && NX.voice.active()) NX.voice.stop(); if (e.code === 'KeyV') altV = 0; });
+    document.addEventListener('keydown', e => { if (e.altKey && (e.code === 'KeyV' || /^v$/i.test(e.key))) { e.preventDefault(); if (!e.repeat) { altV = NX.voice.active() ? 0 : Date.now(); voiceAgent(); } } else if (e.key === 'Escape') { awakeStop(); if (NX.voice.active()) NX.voice.stop(); } });
     if (IS_MOBILE && !NX.store.get('voice:mobile-fix', false)) { NX.store.set('voice:wake', false); NX.store.set('voice:mobile-fix', true); }   // telefonda doim tinglash bir marta oʻchiriladi
     if (wakeWanted() && !navigator.webdriver) {
       setTimeout(() => wakeSet(true), 2500);
@@ -3184,6 +3190,7 @@
       const kick = () => { if (wakeWanted() && !NX.voice.waking()) wakeSet(true); };
       document.addEventListener('pointerdown', kick, { once: true, capture: true }); document.addEventListener('keydown', kick, { once: true, capture: true });
     }
+    const nzBox = $('#voiceNoisy'); if (nzBox) { nzBox.checked = !!NX.store.get('voice:noisy', false); nzBox.addEventListener('change', () => { NX.store.set('voice:noisy', nzBox.checked); NX.voice.resetLevel(); NX.voice.hold && NX.voice.hold(false); toast(nzBox.checked ? 'Shovqinli xona rejimi yoqildi — yaqin ovoz ustun' : 'Shovqinli xona rejimi oʻchirildi', 'ok'); }); }
     const fxBox = $('#mapFixes'), cmBox = $('#mapCams');
     if (fxBox) { fxBox.checked = !!NX.store.get('map:fixes', false); fxBox.addEventListener('change', () => { NX.store.set('map:fixes', fxBox.checked); NX.view.drawFixes(shownFixes()); }); }
     if (cmBox) { cmBox.checked = camsOn(); cmBox.addEventListener('change', () => { NX.store.set('map:cams', cmBox.checked); NX.camwall.show(cmBox.checked && S.tab === 'map' && !NX.fx.active()); }); }
