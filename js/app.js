@@ -1306,6 +1306,11 @@
     const T = twinState();
     // Boshqa hodisa natijasi — oʻynab turgan suv simulyatsiyasi toʻxtaydi (rejimni qaytarib olmasin)
     if (!/water|flood/.test(H.kind) && dynTimer) { clearInterval(dynTimer); dynTimer = null; T.playing = false; }
+    // Yangi natija eskisini ALMASHTIRADI: suv savolidan keyin evakuatsiya/zilzila/yongʻin soʻralsa, eski suv qatlami (koʻcha suvi, 2D animatsiya) xaritada qolmasin — ikki koʻrinish aralashib ketardi
+    if (!/water|flood/.test(H.kind)) {
+      try { if (NX.map3d.mode && NX.map3d.mode() === 'flood') NX.map3d.setMode('height'); NX.map3d.set({ scen: null }); } catch (e) { /* */ }
+      try { NX.view.clearDynamic(); S.dynT = null; } catch (e) { /* */ }
+    }
     H.items.forEach(a => { a.fx = true; });
     // Natija FAQAT savol berilgan boʻlimda: 3D egizakda soʻralsa — faqat 3D xaritada, boshqa boʻlimda — faqat 2D xaritada
     // (ikkala xaritaga chizish kompyuterga ogʻirlik qiladi). Natija yopilmaguncha shu boʻlimda turadi.
