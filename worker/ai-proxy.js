@@ -68,7 +68,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const path = new URL(req.url).pathname.replace(/\/+$/, '');
     if (path === '/webcams') return webcams(req, env, cors);
-    if (path === '/version') return json({ v: 15, features: ['stream', 'voicelog', 'geocode', 'voice', 'vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
+    if (path === '/version') return json({ v: 15, features: ['stt-fast', 'stream', 'voicelog', 'geocode', 'voice', 'vision', 'search', 'image', 'photo-check', 'image-multi', 'layers', 'traffic', 'feedback', 'effort', 'osm', 'limits-env', 'stt'] }, 200, cors);
     if (path === '/layers' || path.startsWith('/layers/')) return layers(req, env, cors, okOrigin, path);
     if (path === '/photo-checks' || path === '/photo-check') return photoChecks(req, env, cors, okOrigin, path);
     if (path === '/corrections') return corrections(req, env, cors, okOrigin);
@@ -222,7 +222,10 @@ async function stt(req, env, cors, okOrigin) {
   const prompt = 'Oʻzbekcha gap, lotin yozuvida.';
   let lastErr = '';
   // Har model: avval oʻzbekcha (language=uz + kontekst), rad etsa — tilsiz (model oʻzi aniqlaydi)
-  for (const [model, lang] of [['gpt-4o-transcribe', 'uz'], ['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-transcribe', ''], ['whisper-1', '']]) {
+  // ?fast=1 (telefon/planshet): tezroq mini model birinchi; aks holda aniqroq gpt-4o-transcribe
+  const fast = new URL(req.url).searchParams.get('fast') === '1';
+  const order = fast ? [['gpt-4o-mini-transcribe', 'uz'], ['gpt-4o-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-transcribe', ''], ['whisper-1', '']] : [['gpt-4o-transcribe', 'uz'], ['gpt-4o-mini-transcribe', 'uz'], ['whisper-1', 'uz'], ['gpt-4o-transcribe', ''], ['whisper-1', '']];
+  for (const [model, lang] of order) {
     const f = new FormData();
     f.append('file', new File([buf], 'ovoz.' + ext, { type })); f.append('model', model); if (lang) f.append('language', lang); f.append('prompt', prompt);
     const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: f });

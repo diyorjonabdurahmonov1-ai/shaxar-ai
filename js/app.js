@@ -790,6 +790,7 @@
   async function voiceAgent(o) {
     const b = $('#btnVoice'), loop = !!(o && o.loop), tStart = Date.now();
     if (NX.voice.active()) { NX.voice.stop(); return false; }
+    if (!loop) hud('rec', 'Tinglayapman…', 'mikrofon ulanmoqda');   // bosilgan zahoti koʻrinadi (mikrofon ochilishini kutmasdan)
     try {
       const t = await NX.voice.listen({
         silentOk: loop, early: true,

@@ -5,7 +5,7 @@
   'use strict';
   const NX = window.NX;
   const base = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
-  let ver = null, cur = null, sttOff = false, held = null;
+  let ver = null, cur = null, sttOff = false, held = null, warmT = 0;
   // Telefon: Android Chrome nutq tanishi har boshlanish/tugashda “ting” tovush chiqaradi — telefonda faqat jim yozuv (MediaRecorder) + server tanish ishlatiladi
   const IS_MOB = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
   async function serverOk() {
@@ -45,7 +45,7 @@
   async function record(onLevel, ui) {
     if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('Bu brauzer ovoz yozishni qoʻllamaydi (Chrome yoki Edge’ning yangi versiyasi kerak).');
     let stream, ac, an, own = true;
-    if (held && held.stream.active) { stream = held.stream; ac = held.ac; an = held.an; own = false; if (ac && ac.state === 'suspended') ac.resume().catch(() => {}); }
+    if (held && held.stream.active) { if (IS_MOB) { clearTimeout(warmT); warmT = setTimeout(() => { if (!NX.voice.awakeHold) hold(false); }, 120000); } stream = held.stream; ac = held.ac; an = held.an; own = false; if (ac && ac.state === 'suspended') ac.resume().catch(() => {}); }
     else {
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
       catch (e) { throw new Error(e && e.name === 'NotAllowedError' ? 'Mikrofonga ruxsat berilmagan — manzil satridagi 🔒 belgisidan mikrofonga ruxsat bering.' : 'Mikrofon topilmadi yoki band.'); }
@@ -55,13 +55,21 @@
     const micLabel = (stream.getAudioTracks()[0] || {}).label || ''; ui && ui.onMic && ui.onMic(micLabel);
     NX.voice.startAt = Date.now();
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined), chunks = [];
+    const mro = mime ? { mimeType: mime } : {}; if (IS_MOB) mro.audioBitsPerSecond = 24000;   // telefonda yuklash tezroq (nutq uchun yetarli)
+    const rec = new MediaRecorder(stream, Object.keys(mro).length ? mro : undefined), chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const buf = an ? new Uint8Array(an.fftSize) : null;
     let spoke = false, quietAt = 0, t0 = Date.now(), raf = 0, floor = 0, nF = 0, peak = 0, quietWarned = false;
     const done = new Promise(res => { rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })); });
     let acOk = false;
-    const stop = () => { acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); clearTimeout(raf); if (own) { stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); } };
+    const stop = () => {
+      acOk = !!(ac && ac.state === 'running'); if (rec.state !== 'inactive') rec.stop(); clearTimeout(raf);
+      if (own) {
+        // Telefon/planshet: mikrofonni ochish (getUserMedia) har safar 0.3–1 s oladi va birinchi soʻzlar yoʻqoladi — 2 daqiqa iliq tutiladi
+        if (IS_MOB && stream.active) { held = { stream, ac, an, floor: null }; clearTimeout(warmT); warmT = setTimeout(() => { if (!NX.voice.awakeHold) hold(false); }, 120000); }
+        else { stream.getTracks().forEach(t => t.stop()); if (ac) ac.close().catch(() => {}); }
+      }
+    };
     let voicedMs = 0, lastT = 0, lvT = 0;
     const tick = () => {
       const now = Date.now();
@@ -93,7 +101,7 @@
     return blob;
   }
   async function transcribe(blob) {
-    const r = await NX.fetchJSON(base() + '/stt', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 15000);
+    const r = await NX.fetchJSON(base() + '/stt' + (IS_MOB ? '?fast=1' : ''), { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 15000);
     if (!r.ok || !r.data || r.data.error) throw new Error((r.data && r.data.error && r.data.error.message) || 'Ovozni matnga oʻgirib boʻlmadi (HTTP ' + r.status + ')');
     let t = toLatin(r.data.text || '').trim();
     // Model eshitmay qolsa kontekst matnini qaytaradi — bunday “javob” buyruq emas (eski Worker’ning uzun promptini ham taniydi)
