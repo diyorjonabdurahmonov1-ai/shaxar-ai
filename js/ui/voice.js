@@ -225,8 +225,24 @@
     wake.restart = start;
     start();
   }
+  // Uygʻoq rejim uchun BITTA doimiy tinglovchi (continuous, oraliq natijalar bilan): har gapda yangi tanish ochilmaydi (oldin har gapga ~2–4 s server tanishi ketardi)
+  function awakeSR(cb, lang) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return null;
+    const st = { on: true, r: null, lang: lang || 'uz-UZ', fails: 0, gen: 0, started: 0, results: 0 };
+    const start = () => {
+      if (!st.on) return;
+      const r = new SR(); r.lang = st.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1; st.r = r; const gen = ++st.gen;
+      r.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) { const t = toLatin(e.results[i][0].transcript).trim(); if (t) { st.results++; cb(t, !!e.results[i].isFinal, gen + ':' + i); } } };
+      r.onerror = e => { st.fails++; if (e.error === 'language-not-supported' && st.lang === 'uz-UZ') st.lang = 'ru-RU'; if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { st.on = false; cb(null, true, 'denied'); } };
+      r.onstart = () => { st.fails = 0; st.started++; };
+      r.onend = () => { if (st.on && st.r === r) setTimeout(start, st.fails > 5 ? 2500 : 150); };
+      try { r.start(); } catch (x) { setTimeout(start, 600); }
+    };
+    start();
+    return { stop() { st.on = false; try { if (st.r) { st.r.onend = null; st.r.abort(); } } catch (e) { /* */ } }, info: () => ({ lang: st.lang, fails: st.fails, started: st.started, results: st.results }) };
+  }
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   const wakeInfo = () => (wk ? { on: wk.on, paused: wk.paused, hold: !!wk.hold, fails: wk.fails, listening: !!(wk.r && wk.on && !wk.paused && !wk.hold && !cur), ...wk.stat, up: Math.round((Date.now() - wk.stat.t0) / 1000) } : null);
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { resetLevel: () => NX.store.set('voice:lvl', 0), serverVer, warmNet, lastStt: null, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { resetLevel: () => NX.store.set('voice:lvl', 0), serverVer, warmNet, lastStt: null, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, awakeSR, wakeTest: null, waking: () => !!(wk && wk.on), beep };
 })();

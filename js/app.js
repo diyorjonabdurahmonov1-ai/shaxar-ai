@@ -824,10 +824,49 @@
   // “Alisa” kabi: chaqiruvdan keyin 1 daqiqa uygʻoq — chaqiruv soʻzisiz ketma-ket buyruqlar; har buyruqdan keyin muddat yangilanadi
   const AWAKE_MS = 60000;
   let awake = null;
+  // Uygʻoq rejim (kompyuter): doimiy brauzer tinglovchisi → buyruqlar darrov. Boshlanmasa false (eski sikl ishlaydi).
+  async function awakeSRMode() {
+    const done = new Set(); let liveTimer = 0, lastSeen = Date.now(), ctl = null, ended = false;
+    const isTab = pl => Object.keys(VTABS).some(k => VCMD[k] === pl);
+    const end = (why) => {
+      if (ended) return; ended = true; clearInterval(tick); clearTimeout(liveTimer); try { ctl && ctl.stop(); } catch (e) { /* */ }
+      const was = awake; awake = null; wakePill(null); NX.voice.wakeHold(false);
+      if (was && why === 'timeout') toast('🎙 Uygʻoq rejim tugadi — qayta uygʻotish uchun “City Jam” deng.', 'ok');
+    };
+    const tick = setInterval(() => {
+      if (!awake) return end('x');
+      const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true);
+      if (Date.now() >= awake.until) end(awake.until ? 'timeout' : 'stop');
+    }, 700);
+    const exec = async (t, key, via) => {
+      if (done.has(key)) return; done.add(key); if (done.size > 300) done.clear();
+      awake && (awake.until = Date.now() + AWAKE_MS);
+      const t0 = Date.now(); S.vlast = null;
+      try { await voiceCommand(t, false, [], { ambient: true }); } catch (e) { /* */ }
+      if (S.vlast && S.vlast.status !== 'ambient') vlogAdd(Object.assign({}, S.vlast, { via: S.vlast.via + '/sr', ms: { speech: 0, think: Date.now() - t0, lag: Date.now() - t0, stt: 0, kb: 0 } }));
+      if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(NX.translit(String(t)).replace(/[ʻʼ'‘’`]/g, ''))) end('stop');
+    };
+    ctl = NX.voice.awakeSR((t, fin, key) => {
+      if (key === 'denied') { end('x'); return; }
+      if (!t) return; lastSeen = Date.now();
+      clearTimeout(liveTimer);
+      if (fin) { exec(t, key, 'final'); return; }
+      // oraliq matn 0.35 s oʻzgarmasa va xavfsiz buyruqqa mos boʻlsa — gap tugashini kutmasdan bajariladi (boʻlim nomlari — 0.6 s va “och/kir” bilan)
+      let pl = null; try { pl = voicePlan(t); } catch (e) { /* */ }
+      if (!pl || pl.warn || pl.weak || pl.street || t.split(/\s+/).length > 5) return;
+      const go = /\b(och|ochib|kir|kiring|ot|otish|bor|korsat|qayt|ochgin)\w*\b/.test(NX.translit(t.toLowerCase()));
+      if (isTab(pl) && !go) return;
+      liveTimer = setTimeout(() => exec(t, key, 'live'), isTab(pl) ? 600 : 350);
+    });
+    if (!ctl) { clearInterval(tick); return false; }
+    return true;
+  }
   async function awakeLoop() {
     if (awake) { awake.until = Date.now() + AWAKE_MS; return; }
     awake = { until: Date.now() + AWAKE_MS, errs: 0 };
     NX.voice.wakeHold(true);
+    // Kompyuterda: bitta doimiy tinglovchi — gap tugashi bilan (yoki oraliq matn barqaror boʻlsa) darrov bajariladi, server tanishi kutilmaydi
+    if (NX.voice.awakeSR && (!navigator.webdriver || window.__awakeSR) && await awakeSRMode()) return;
     try { await NX.voice.hold(true); } catch (e) { /* ruxsat boʻlmasa — har gapda alohida */ }
     const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true); }, 1000);
     try {
