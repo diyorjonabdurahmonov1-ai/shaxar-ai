@@ -300,7 +300,7 @@ async function voicelog(req, env, cors, okOrigin) {
   let b; try { b = JSON.parse(await req.text()); } catch (e) { return json({ error: { code: 'bad_json', message: 'JSON xato' } }, 400, cors); }
   const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map(x => ({
     ts: +x.ts || Date.now(), heard: (Array.isArray(x.heard) ? x.heard : []).slice(0, 3).map(h => String(h).slice(0, 160)), via: String(x.via || '').slice(0, 12), label: String(x.label || '').slice(0, 160), status: String(x.status || '').slice(0, 12),
-    ms: x.ms && typeof x.ms === 'object' ? { speech: Math.round(+x.ms.speech) || 0, think: Math.round(+x.ms.think) || 0, lag: Math.round(+x.ms.lag) || 0 } : null, tab: String(x.tab || '').slice(0, 12),
+    ms: x.ms && typeof x.ms === 'object' ? { speech: Math.round(+x.ms.speech) || 0, think: Math.round(+x.ms.think) || 0, lag: Math.round(+x.ms.lag) || 0, stt: Math.round(+x.ms.stt) || 0, kb: Math.round(+x.ms.kb) || 0 } : null, sttModel: String(x.sttModel || '').slice(0, 30), tab: String(x.tab || '').slice(0, 12),
   }));
   if (!items.length) return json({ ok: true }, 200, cors);
   const list = JSON.parse((await env.CORRECTIONS.get('vlog')) || '[]').concat(items).slice(-400);

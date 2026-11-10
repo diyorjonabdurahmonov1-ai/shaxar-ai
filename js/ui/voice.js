@@ -15,6 +15,9 @@
     return ver >= 13;
   }
   const serverVer = async () => { await serverOk(); return ver || 0; };
+  // Aloqani iliq tutish: telefonda ulanish oʻrnatish 0.1–0.3 s oladi — yozuv boshlanishida oldindan ulanadi
+  let warmNetAt = 0;
+  const warmNet = () => { if (!base() || Date.now() - warmNetAt < 20000) return; warmNetAt = Date.now(); try { fetch(base() + '/version', { cache: 'no-store' }).catch(() => {}); } catch (e) { /* */ } };
   // Yozuv (webm/opus) → 16 kHz mono WAV (base64): AI audio kirishi shuni qabul qiladi
   async function toWav(blob) {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) throw new Error('AudioContext yoʻq');
@@ -84,7 +87,7 @@
         if (persist || now - t0 >= 400) {
           const th = Math.max(0.02, Math.min(0.1, floor * 2.5)); /* chegara haddan oshmaydi; uygʻoq rejimda shovqin darajasi eslab qolinadi */
           if (!own && held && lv <= th) held.floor = Math.min(0.04, held.floor * 0.97 + lv * 0.03);
-          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > (IS_MOB ? 700 : 1000)) return stop(); }
+          if (lv > th) { spoke = true; quietAt = 0; voicedMs += Math.min(100, now - (lastT || now)); } else if (spoke) { quietAt = quietAt || now; if (now - quietAt > (IS_MOB ? 550 : 1000)) return stop(); }
         }
       }
       lastT = now;
@@ -101,8 +104,10 @@
     return blob;
   }
   async function transcribe(blob) {
+    const tS = Date.now();
     const r = await NX.fetchJSON(base() + '/stt' + (IS_MOB ? '?fast=1' : ''), { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm' }, body: blob }, 15000);
     if (!r.ok || !r.data || r.data.error) throw new Error((r.data && r.data.error && r.data.error.message) || 'Ovozni matnga oʻgirib boʻlmadi (HTTP ' + r.status + ')');
+    NX.voice.lastStt = { ms: Date.now() - tS, kb: Math.round(blob.size / 1024), model: r.data.model || '' };
     let t = toLatin(r.data.text || '').trim();
     // Model eshitmay qolsa kontekst matnini qaytaradi — bunday “javob” buyruq emas (eski Worker’ning uzun promptini ham taniydi)
     if (/^\s*(samarqand|самарканд|самарқанд)\W*$/i.test(t)) t = '';   // prompt aks-sadosi
@@ -146,6 +151,7 @@
   async function listen(ui) {
     ui = ui || {};
     if (cur) { cur.stop(); return null; }
+    warmNet();
     NX.voice.cands = []; NX.voice.later = null;
     // Doim tinglash yoqilgan boʻlsa — buyruq yozilayotganda chaqiruv tinglovchisi toʻxtab turadi
     const wkWas = typeof wk !== 'undefined' && wk && !wk.paused; if (wkWas) { wk.paused = true; try { wk.r && wk.r.abort(); } catch (e) { /* */ } }
@@ -214,5 +220,5 @@
   function wakeHold(h) { if (!wk) return; wk.hold = !!h; if (h) { try { wk.r && wk.r.abort(); } catch (e) { /* */ } } else setTimeout(() => wk && wk.on && !wk.hold && wake.restart && wake.restart(), 300); }
   const wakeInfo = () => (wk ? { on: wk.on, paused: wk.paused, hold: !!wk.hold, fails: wk.fails, listening: !!(wk.r && wk.on && !wk.paused && !wk.hold && !cur), ...wk.stat, up: Math.round((Date.now() - wk.stat.t0) / 1000) } : null);
   function wakeStop() { if (!wk) return; wk.on = false; try { wk.r && wk.r.abort(); } catch (e) { /* */ } wk = null; }
-  NX.voice = { serverVer, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
+  NX.voice = { serverVer, warmNet, lastStt: null, toWav, lastBlob: null, cands: [], listen, stop: () => cur && cur.stop(), active: () => !!cur, toLatin, serverOk, wake, wakeHold, hold, wakeStop, wakeInfo, wakeTest: null, waking: () => !!(wk && wk.on), beep };
 })();
