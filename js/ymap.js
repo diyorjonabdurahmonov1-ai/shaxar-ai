@@ -94,8 +94,10 @@
         if (a.kind === 'zone' && a.lat == null) return;
         if (a.kind === 'line' && a.path) c.add(new window.ymaps.Polyline(a.path, bal, { strokeColor: a.color || '#16a34a', strokeWidth: a.dash ? 4 : 6, strokeStyle: a.dash ? 'dash' : 'solid', strokeOpacity: 0.95 }));
         if (a.dash) return;
-        else if (a.kind === 'line') c.add(new window.ymaps.Polyline([a.from, a.to], bal, { strokeColor: '#7c3aed', strokeWidth: 6, strokeStyle: 'dash', strokeOpacity: 0.95 }));
-        const p = a.kind === 'line' && !a.path ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : [a.lat, a.lon];
+        else if (a.kind === 'line' && !a.path && a.from && a.to) c.add(new window.ymaps.Polyline([a.from, a.to], bal, { strokeColor: '#7c3aed', strokeWidth: 6, strokeStyle: 'dash', strokeOpacity: 0.95 }));
+        /* yoʻl chizigʻi (path): oldin bu yerda [undefined, undefined] chiziq va belgi qoʻshilib, Yandex ichida xato chiqardi */
+        const p = a.kind === 'line' && !a.path ? (a.from && a.to ? [(a.from[0] + a.to[0]) / 2, (a.from[1] + a.to[1]) / 2] : null) : (isFinite(a.lat) && isFinite(a.lon) ? [a.lat, a.lon] : null);
+        if (!p) return;
         c.add(new window.ymaps.Placemark(p, { iconContent: a.id && a.id.length <= 5 ? a.id : String(i + 1), hintContent: a.title, balloonContent: NX.place.html(Object.assign({}, a, { lat: p[0], lon: p[1] }), i + 1) }, { preset: 'islands#violetCircleIcon', balloonMaxWidth: 320 }));
       });
     },

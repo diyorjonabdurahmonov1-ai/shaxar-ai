@@ -163,7 +163,7 @@
   function facts(R) {
     return {
       izoh: 'Yirik chorrahalarga kiruvchi yoʻllarda (~400 m) Yandex marshrut vaqti har 15 daqiqada oʻlchanadi (sayt ochiq turgan brauzer orqali); “marta_sekin” = probkali vaqt / probkasiz vaqt (1.0 — erkin, 1.3+ sekin, 1.8+ tirband, 2.5+ qattiq). Soat boʻyicha qiymat — shu yarim soatdagi barcha kunlar oʻrtachasi.',
-      vaqt: R.label, kunlar: R.we === 'we' ? 'dam olish kunlari' : 'ish kunlari',
+      vaqt: R.tm.now && R.latestTs && Date.now() - R.latestTs > 20 * 60000 ? 'OXIRGI OʻLCHOV (' + new Date(R.latestTs).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ') — hozirgi holat EMAS, javobda buni birinchi gapda ayt' : R.label, kunlar: R.we === 'we' ? 'dam olish kunlari' : 'ish kunlari',
       kuzatuv: { jami_olchovlar: R.n, shu_vaqtdagi_olchovlar: R.nAt, kuzatuv_kunlari: R.days, boshlangan: R.since ? new Date(R.since).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }) : null, oxirgi_olchov: R.latestTs ? new Date(R.latestTs).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand' }) : null, umumiy_tarix: R.remote ? 'ha (Worker, hamma xodimlar uchun)' : 'faqat shu brauzerda' },
       chorrahalar: R.rows.slice(0, 10).map((x, i) => ({ id: 'T' + (i + 1), chorraha: x.j.name, marta_sekin: +(x.r / 100).toFixed(2), eng_sekin_kirish: x.top ? `${x.top.c.road} (${x.top.c.side} tomondan)` : null, qoʻshimcha_daqiqa: x.top && x.top.d ? +(x.top.d / 60).toFixed(1) : null, eng_tirband_paytlar: x.peaks.map(p => `${slotLabel(p.slot)} — ${(p.r / 100).toFixed(1)}×`) })),
       kuzatiladigan_chorrahalar: R.total,
@@ -175,7 +175,7 @@
   function summary(R) {
     const L = [], wd = R.we === 'we' ? 'dam olish kunlari' : 'ish kunlari';
     if (!R.rows.length) return null;
-    L.push(R.tm.now ? `**Hozir eng sekin chorrahalar** (Yandex, ${R.latestTs ? new Date(R.latestTs).toLocaleTimeString('uz-UZ', { timeZone: 'Asia/Samarkand', hour: '2-digit', minute: '2-digit' }) : ''} oʻlchovi):`
+    L.push(R.tm.now ? `**${R.latestTs && Date.now() - R.latestTs > 20 * 60000 ? 'Oxirgi oʻlchovda eng sekin chorrahalar' : 'Hozir eng sekin chorrahalar'}** (Yandex, ${R.latestTs ? new Date(R.latestTs).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''} oʻlchovi):`
       : R.tm.peaks ? `**Kun davomida eng tirband chorrahalar va soatlari** (${wd}, ${R.days} kunlik kuzatuv, ${R.n} ta oʻlchov):`
       : `**Soat ${R.label} (${wd}) — eng tirband chorrahalar** (${R.nAt} kunlik oʻlchov oʻrtachasi):`);
     const busyRows = R.rows.filter(x => x.r >= 115), show = (busyRows.length ? busyRows : R.rows.slice(0, 3)).slice(0, 7);
@@ -197,7 +197,7 @@
     L.push('', `Xaritada: chorrahalar raqam bilan, sekin kirish yoʻllari rangli chiziq (sariq — sekin, qizil — tirband). Kuzatuv: ${R.total} ta yirik chorraha, tarix doimiy saqlanadi${R.remote ? '' : ' (hozircha faqat shu brauzerda)'}.`);
     return L.join('\n');
   }
-  function status() { const ce = St && St.cronErr; return { cronErr: ce ? { ts: ce.ts, err: /rejected|401|403/i.test(ce.err || '') ? 'Yandex kalitni rad etdi (Apikey rejected) — Cloudflare’dagi YANDEX_MATRIX_KEY qiymatini tekshiring' : String(ce.err || '').slice(0, 120) } : null, server: !!(St && St.src),  n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
+  function status() { const ce = St && St.cronErr; return { cronErr: ce ? { ts: ce.ts, err: /rejected|401|403/i.test(ce.err || '') ? 'Yandex kalitni rad etdi (Apikey rejected) — sinov kalitining muddati (12.11.2026 gacha edi) tugagan boʻlishi mumkin: Yandex’dan yangi yoki tijorat kaliti olib, Cloudflare’dagi YANDEX_MATRIX_KEY ga qoʻying. Ungacha yangi oʻlchov yoʻq — quyidagilar oxirgi oʻlchov' : String(ce.err || '').slice(0, 120) } : null, server: !!(St && St.src),  n: St ? St.n : 0, since: St && St.since, latest: St && St.latest && St.latest.ts, remote, busy, err: lastErr, can: canMeasure(), denied: !!denied, noRoute: NO_ROUTE }; }
 
   NX.trafficWatch = { corridors, state, measure, sampleNow, serverRun, start, query, items, facts, summary, parseTime, status, slotLabel, _addSample: addSample };
 })();

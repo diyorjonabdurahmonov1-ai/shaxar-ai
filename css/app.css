@@ -1089,7 +1089,7 @@ details.ai-more > summary { cursor: pointer; color: #5eead4; font-weight: 600; }
 
 #wakeBadge { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; margin-right: 2px; border-radius: 999px; font: inherit; font-size: .72rem; white-space: nowrap; border: 1px solid rgba(148, 163, 184, .3); background: rgba(3, 7, 16, .55); color: #94a3b8; cursor: pointer; }
 #wakeBadge i { font-style: normal; font-size: .7rem; }
-@media (max-width: 1320px) { #wakeBadge span { display: none; } #wakeBadge { padding: 0 8px; } }
+@media (max-width: 1560px) { #wakeBadge span { display: none; } #wakeBadge { padding: 0 8px; } }
 #wakeBadge.on { color: #86efac; border-color: rgba(74, 222, 128, .5); }
 #wakeBadge.awake { color: #5eead4; border-color: rgba(94, 234, 212, .8); box-shadow: 0 0 12px rgba(45, 212, 191, .35); }
 #wakeBadge.err { color: #fca5a5; border-color: rgba(248, 113, 113, .6); }

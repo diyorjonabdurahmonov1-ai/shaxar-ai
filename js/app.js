@@ -1285,14 +1285,14 @@
     let fin; T.ready = new Promise(r => { fin = r; });
     const step = t => { T.busy = t; if (S.tab === 'twin') renderKeepScroll(); };
     const jobs = [
-      NX.twin.solarYear().then(g => { T.ghi = g; }).catch(e => { T.err = e.message; }),
+      NX.twin.solarYear().then(g => { T.ghi = g; }).catch(e => { T.err = 'Quyosh maʼlumoti yuklanmadi (' + e.message + ').'; }),
       NX.twin.rain().then(r => { T.rain = r; }).catch(() => {}),
       NX.twin.climate().then(c => { T.climate = c; }).catch(() => {}),
     ];
-    try { T.buildings = await NX.buildings.load(step); } catch (e) { T.err = e.message; }
+    try { T.buildings = await NX.buildings.load(step); } catch (e) { T.err = 'Binolar yuklanmadi (' + e.message + ') — “🔄 Yangilash”ni bosing.'; }
     draw();
     // Relyef binolardan keyin — suv ostidagi binolar ham hisoblansin
-    try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = S.model && S.model.ways ? NX.twin.flood(T.dem, S.model) : null; } catch (e) { T.err = e.message; }
+    try { T.dem = await NX.twin.dem(step); step('Suv oqimi hisoblanmoqda'); T.flood = S.model && S.model.ways ? NX.twin.flood(T.dem, S.model) : null; } catch (e) { T.err = 'Relyef (yer balandligi) yuklanmadi (' + e.message + ') — suv toshqini hisobi hozircha ishlamaydi; internetni tekshirib “🔄 Yangilash”ni bosing.'; }
     if (S.tab === 'twin') renderKeepScroll();
     // Yigʻilish joylari va favqulodda xizmatlar — oldindan (savol berilganda kutilmasin)
     NX.hazard.openSpaces().catch(() => {}); NX.hazard.services().catch(() => {});
@@ -3107,6 +3107,15 @@
       const R0 = R; R = await TW.query('hozir', { streets });
       if (R0 && !R0.tm.now && R) note = `Soat ${R0.label} uchun hali oʻlchov yoʻq (kuzatuv ${R0.n ? R0.days + ' kundan beri, ' + R0.n + ' ta oʻlchov' : 'hozir boshlandi'}) — shu vaqtda sayt ochiq boʻlsa oʻlchov yigʻiladi. Hozirgi holat:`;
     }
+    // “Hozir” soʻralgan, lekin oxirgi oʻlchov eski (server kaliti rad etilgan yoki sayt yopiq turgan): qayta oʻlchashga uriniladi; boʻlmasa — eski ekani OCHIQ aytiladi (oldin 10 soat oldingi holat “hozir” deb koʻrsatilardi)
+    let stale = '';
+    const ageMs = () => { const st = TW.status(); return st.latest ? Date.now() - st.latest : Infinity; };
+    if (R && R.rows.length && R.tm && R.tm.now && ageMs() > 20 * 60000) {
+      S.chat.busy = 'Hozirgi holat oʻlchanmoqda (Yandex)…'; renderChat();
+      let why = ''; try { await TW.sampleNow((d, n) => { S.chat.busy = `Yandex’dan oʻlchanmoqda: ${d}/${n} yoʻl…`; renderChat(); }); } catch (e) { why = e.message; }
+      R = (await TW.query(q, { streets })) || R;
+      if (ageMs() > 20 * 60000) { const st = TW.status(); stale = '⚠️ Hozirgi holatni oʻlchab boʻlmadi' + (why ? ' (' + String(why).replace(/\.$/, '') + ')' : '') + '. Quyidagi maʼlumot — oxirgi oʻlchov (' + (st.latest ? new Date(st.latest).toLocaleString('uz-UZ', { timeZone: 'Asia/Samarkand', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'vaqti nomaʼlum') + ') holati, hozirgi EMAS. Hozirgi holat uchun xaritadagi Yandex jonli probka qatlamiga qarang.'; note = stale; try { NX.yandex.setTraffic(true); NX.map.updateLegend(); } catch (e) { /* */ } }
+    }
     if (!R || !R.rows.length) {
       const st = TW.status();
       return { role: 'ai', src: 'hisob', text: `Tirbandlik kuzatuvi hali maʼlumot yigʻmagan${st.n ? ` (${st.n} ta oʻlchov bor, lekin bu vaqt uchun emas)` : ''}. ${NX.yandex.mode() === 'api' ? (note || 'Yandex marshrut vaqtlari olinmadi.') : 'Yandex xaritasi API kaliti bilan ochilmagan — oʻlchab boʻlmaydi.'}\n\nSayt ochiq turganda har 15 daqiqada ${(await TW.corridors() || { junctions: [] }).junctions.length} ta yirik chorrahaga kiruvchi yoʻllar oʻlchanadi; bir necha kundan keyin “soat 8 da qaysi chorrahada”, “qachon eng tirband” savollariga tarix boʻyicha javob beriladi.` };
@@ -3117,7 +3126,7 @@
     const local = (note ? note + '\n\n' : '') + TW.summary(R);
     if (!NX.ai.available()) return { role: 'ai', src: 'hisob', text: local, hz: its, fly: 'ann-fly' };
     const facts = Object.assign({ eslatma: note || null }, TW.facts(R));
-    try { const r = await NX.ai.trafficAsk(q, facts, history); return { role: 'ai', text: r.text, src: r.src, check: r.check, verified: r.verified, hz: its, fly: 'ann-fly' }; }
+    try { const r = await NX.ai.trafficAsk(q, facts, history); return { role: 'ai', text: (stale ? stale + '\n\n' : '') + r.text, src: r.src, check: r.check, verified: r.verified, hz: its, fly: 'ann-fly' }; }
     catch (e) { return { role: 'ai', src: 'hisob', text: local, error: e.message, hz: its, fly: 'ann-fly' }; }
   }
   async function chatSend(q) {
