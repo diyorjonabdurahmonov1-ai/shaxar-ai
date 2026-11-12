@@ -8,7 +8,7 @@
   const RISKY = /tozalash|ochirish|oʻchirish|o‘chirish|delete|reset|clear/i;
   const txt = el => String(el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.placeholder || el.value || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 70);
   function visible(el) {
-    if (el.closest('#voiceHud, #wakePill, .ag-ptr')) return false;
+    if (el.closest('#voiceHud, #wakeBadge, .ag-ptr')) return false;
     const r = el.getBoundingClientRect(); if (r.width < 6 || r.height < 6) return false;
     if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) return false;
     const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || cs.opacity === '0' || cs.pointerEvents === 'none') return false;

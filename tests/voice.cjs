@@ -26,7 +26,7 @@ async function run(file, text, until, awake, mobile, holdMs) {
   const t0 = Date.now(); if (awake) await p.evaluate(() => { NX.awakeLoop(); }); else if (holdMs) { const bb = await p.locator('#btnVoice').boundingBox(); await p.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await p.mouse.down(); await p.waitForTimeout(holdMs); await p.mouse.up(); } else await p.click('#btnVoice');
   let last = null;
   for (let i = 0; i < 80; i++) { last = await p.evaluate(() => { const e = document.getElementById('voiceHud'); return e ? { st: e.className.replace('show', '').trim(), t: e.querySelector('b').textContent, tab: NX.state.tab } : null; }); if (last && until(last)) break; await p.waitForTimeout(250); }
-  let aw = null; if (awake) { await p.waitForTimeout(9000); aw = await p.evaluate(() => ({ on: NX.awakeOn(), pill: (document.getElementById('wakePill') || {}).className || '' })); }
+  let aw = null; if (awake) { await p.waitForTimeout(9000); aw = await p.evaluate(() => ({ on: NX.awakeOn(), pill: (document.getElementById('wakeBadge') || {}).className || '' })); }
   const sec = (Date.now() - t0) / 1000; await b.close(); return { last, stt, sec, aw };
 }
 (async () => {

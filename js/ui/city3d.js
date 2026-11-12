@@ -285,10 +285,15 @@
   // Kameraga yaqin tomon uylarini yashirish (uzoq tomon toʻliq koʻrinadi)
   function hideNear() {
     if (!map) return null;
-    let cam = null; try { const p = map.getFreeCameraOptions().position; cam = [p.x, p.y]; } catch (e) { /* */ }
-    if (!cam) { const c = map.getCenter(), m = window.maplibregl.MercatorCoordinate.fromLngLat(c, 0); cam = [m.x, m.y]; }
-    const d = {}; ['chap', 'ong'].forEach(s => { const g = scans.filter(x => sideOf(x) === s); if (!g.length) return; d[s] = Math.min.apply(null, g.map(x => { const m = window.maplibregl.MercatorCoordinate.fromLngLat([x.lon, x.lat], 0); return (m.x - cam[0]) ** 2 + (m.y - cam[1]) ** 2; })); });
-    const near = d.chap != null && d.ong != null ? (d.chap < d.ong ? 'chap' : 'ong') : (d.chap != null ? 'chap' : 'ong');
+    const sc = scanList[0] || scans[0]; if (!sc) return null;
+    // Kamera koʻcha oʻqining qaysi tomonida turibdi (MapLibre 4.7 da getFreeCameraOptions yoʻq — transform.getCameraPosition)
+    let cam = null; try { const cp = map.transform.getCameraPosition(); if (cp && cp.lngLat) cam = [cp.lngLat.lng, cp.lngLat.lat]; } catch (e) { /* */ }
+    if (!cam) { const c = map.getCenter(); cam = [c.lng, c.lat]; }
+    const a = sc.heading * Math.PI / 180, dx = (cam[0] - sc.lon) * 111320 * Math.cos(sc.lat * Math.PI / 180), dy = (cam[1] - sc.lat) * 110574;
+    const right = dx * Math.cos(a) - dy * Math.sin(a);   // koʻcha oʻqidan oʻngga (m)
+    let near;
+    if (Math.abs(right) >= 2.5) near = right > 0 ? 'ong' : 'chap';
+    else { const rel = ((map.getBearing() - sc.heading + 540) % 360) - 180; near = rel > 0 ? 'chap' : 'ong'; }   // koʻcha ichida: qaralayotgan tomon qoladi, orqadagisi yashiriladi
     scanSide(near, false); scanSide(near === 'chap' ? 'ong' : 'chap', true);
     return near;
   }
@@ -309,6 +314,7 @@
   function setStreet(on) { street = !!on; syncPad(); }
   function syncPad() {
     const host = map && map.getContainer && map.getContainer(); if (!host) return;
+    host.classList.toggle('street-on', street);   /* koʻcha ichida “Qavatlar” shartli belgisi yashiriladi (panel ustiga tushardi) */
     if (!street) { if (pad) pad.hidden = true; return; }
     if (!pad) {
       pad = document.createElement('div'); pad.id = 'streetPad'; pad.className = 'street-pad';

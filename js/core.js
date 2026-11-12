@@ -24,6 +24,7 @@
     // Asosiy — GPT-6 Sol (kuchli, Astra’dan 5 baravar arzon); mavjud boʻlmasa — eski modellar
     openaiModels: ['gpt-6-sol', 'gpt-5.4-mini', 'gpt-5.5', 'gpt-4.1-mini'],
     openaiDeep: ['gpt-6-sol', 'gpt-5.5', 'gpt-5.4-mini', 'gpt-4.1-mini'],
+    openaiVoice: ['gpt-5.4-mini', 'gpt-6-luna', 'gpt-4.1-mini'],   // ovoz tushunuvchi: oʻlchovda (2026-11-12, 6 ta soʻrov) 5.4-mini oʻrtacha 2.4 s, luna 2.9 s — sifat bir xil
     openaiLight: ['gpt-6-luna', 'gpt-5.4-mini', 'gpt-4.1-mini'],   // koʻp sonli oddiy soʻrovlar (suratda svetofor bormi)
     weatherUrl: 'https://api.open-meteo.com/v1/forecast',
     tomtomIncidentsUrl: 'https://api.tomtom.com/traffic/services/5/incidentDetails',

@@ -232,7 +232,14 @@
     const start = () => {
       if (!st.on) return;
       const r = new SR(); r.lang = st.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1; st.r = r; const gen = ++st.gen;
-      r.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) { const t = toLatin(e.results[i][0].transcript).trim(); if (t) { st.results++; cb(t, !!e.results[i].isFinal, gen + ':' + i); } } };
+      // Chrome oraliq matnni koʻpincha IKKI boʻlakka boʻlib beradi (barqaror qism + oxirgi soʻzlar) — bitta gap sifatida birlashtiriladi (oldin boʻlaklar alohida buyruq boʻlib, takror bajarilardi)
+      r.onresult = e => {
+        let fT = '', iT = '', fI = -1, iI = -1;
+        for (let i = e.resultIndex; i < e.results.length; i++) { const x = e.results[i][0].transcript; if (e.results[i].isFinal) { fT += x + ' '; if (fI < 0) fI = i; } else { iT += x + ' '; if (iI < 0) iI = i; } }
+        fT = toLatin(fT).replace(/\s+/g, ' ').trim(); iT = toLatin(iT).replace(/\s+/g, ' ').trim();
+        if (fT) { st.results++; cb(fT, true, gen + ':' + fI); }
+        if (iT) { st.results++; cb(iT, false, gen + ':' + iI); }
+      };
       r.onerror = e => { st.fails++; if (e.error === 'language-not-supported' && st.lang === 'uz-UZ') st.lang = 'ru-RU'; if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { st.on = false; cb(null, true, 'denied'); } };
       r.onstart = () => { st.fails = 0; st.started++; };
       r.onend = () => { if (st.on && st.r === r) setTimeout(start, st.fails > 5 ? 2500 : 150); };

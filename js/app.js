@@ -199,16 +199,24 @@
   // Buyruqlarda ishlatiladigan soʻzlar (kodning regexlari shularga tayanadi)
   const VVOC = ['kir', 'kiring', 'och', 'ochish', 'ot', 'otish', 'bor', 'korsat', 'qayt', 'hisobot', 'brifing', 'xarita', 'muammolar', 'muammo', 'tizimlar', 'tizim', 'egizak', 'yordamchi', 'natija', 'natijani', 'yop', 'tozala', 'fotoreal', 'maket', 'sxema', 'olchash', 'sayohat', 'hudud', 'belgila', 'yangila', 'tingla', 'probka', 'tirbandlik', 'yaqinlashtir', 'uzoqlashtir', 'tepadan', 'aylantir', 'yozuvlar', 'ochir', 'sozlamalar', 'toxta'];
   const VBASE = new Set(['ga', 'ka', 'qa', 'ni', 'ham', 'va', 'bu', 'shu', 'uch', 'dee', 'bolim', 'bolimi', 'bolimiga', 'sahifa', 'hozir', 'qaysi', 'qayerda']);
-  function canon(t) {
+  function canon(t, thr) {
+    thr = thr || 0.74;   /* uygʻoq rejimda qatʼiyroq (0.84): suhbat parchasi (“bunaqa make…”) buyruq boʻlib ketmasin */
     return t.split(/\s+/).map(w => {
       const wn = NX.translit(w).replace(/[ʻʼ'‘’`ʹ]/g, '');
       if (wn.length < 3 || /\d/.test(wn) || VBASE.has(wn)) return wn;
       // “hisobotni”, “muammolarni” kabi qoʻshimchali shakllarni ham tanish: soʻz boshi oʻxshashmi
       let best = null, bs = 0;
       for (const v of VVOC) { const s2 = v.length < 5 ? wsim(wn, v) : Math.max(wsim(wn, v), wn.length > v.length + 1 ? wsim(wn.slice(0, v.length + 1), v) : 0, wn.length > v.length + 2 ? wsim(wn.slice(0, v.length + 2), v) : 0);  /* qisqa feʼllar (och, bor, kir…) — faqat butun soʻz bilan */ if (s2 > bs) { bs = s2; best = v; } }
-      return bs >= 0.74 ? best : wn;
+      return bs >= thr ? best : wn;
     }).join(' ');
   }
+  // Uygʻoq rejimda tinglovchi “City Jam” soʻzini oʻzbekcha matnga “dim”, “30224” kabi yozadi — gap boshidagi bunday qoldiq buyruqqa kirmaydi
+  const RESID = /^(?:(?:\d{3,}|dim\d*|siti\s*j[ae]m|city\s*jam)[\s,.!]+)+/i;
+  const residOnly = x => /^(?:\d{3,}|dim\d*|[\s,.!])+$/i.test(String(x || '').trim());
+  // Tomon (xaritani surish uchun): “tepaga”, “pastga”, “chapga”, “oʻngga” (qoʻshaloq harf va “onga/unga” ham)
+  const dirOf = s => { const x = String(s).replace(/(.)\1+/g, '$1'); return /\b(onga|unga|ongroq|ong (tomon|taraf)\w*|sharqa|sharqga)\b/.test(x) ? 'right' : /\b(chapga|chaproq|chap (tomon|taraf)\w*|garbga)\b/.test(x) ? 'left' : /\b(yuqoriga|tepaga|teparoq|yuqoriroq|shimolga)\b/.test(x) ? 'up' : /\b(pastga|pastroq|quyiga|janubga)\b/.test(x) ? 'down' : ''; };
+  // Buyruq boʻlimga oʻtishni aniq aytganmi (“…boʻlimiga kir/oʻt/och”): faqat boʻlim nomi boʻlsa — davomi kelishi mumkin
+  const tabGo = x => /\b(och|ochib|ochgin|ochish|kir|kiring|kirgin|ot|otish|otgin|otib|bor|borgin|korsat|qayt|qaytgin|bolim\w*|bolm\w*|sahifa\w*)\b/.test(NX.translit(String(x).toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' '));
   const VTABS = { map: 'Xarita', problems: 'Muammolar', systems: 'Tizimlar', twin: '3D egizak', ai: 'AI yordamchi', report: 'Hisobot' };
   const gotab = (k, extra) => ({ label: VTABS[k] + ' boʻlimi', run: () => { setTab(k); if (extra) extra(); } });
   // Yaqinlashtirish/uzoqlashtirish: 3D (MapLibre yoki fotoreal), Yandex yoki Leaflet — qaysi biri faol boʻlsa
@@ -302,11 +310,16 @@
     wakeoff: { label: 'doim tinglash oʻchirildi', run: () => wakeSet(false) },
   };
   // Matn → bajariladigan buyruq (yoki null = savol). Yon taʼsirsiz.
-  function voicePlan(t0) {
-    const t = String(t0 || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam|сити\s*(джем|жам|жем))[,.!\s]*/i, '').trim();
-    if (!t) return null;
-    const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim());
-    const go = /\b(kir|kiring|och|ochish|ot|otish|bor|korsat|qayt)\b|\b\w+ga\b/.test(ct), nw = ct.split(/\s+/).filter(Boolean).length;
+  function voicePlan(t0, o) {
+    const t = String(t0 || '').toLowerCase().replace(/[ʻ'‘’`ʼ]/g, '').replace(/^\s*(hey\s*|salom\s*)?(city\s*jam|siti\s*(jam|djem|jem)|sitijam|сити\s*(джем|жам|жем))[,.!\s]*/i, '').replace(RESID, '').trim();
+    if (!t || residOnly(t)) return null;
+    const ct = canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim(), o && o.strict ? 0.84 : 0);
+    const nw = ct.split(/\s+/).filter(Boolean).length;
+    const isQ = /\?|\b(nima\w*|qanday|qaysi|necha|nechta|qancha|nega|qayer\w*|qachon)\b/.test(ct);
+    // Boʻlimga oʻtish belgisi: feʼl (kir/och/oʻt…), “boʻlimi…” soʻzi (notoʻgʻri eshitilgan “boʻlmoqda/boʻlmagan” ham) yoki boʻlim nomining oʻzi “-ga” bilan (“xaritaga”, “hisobotga”)
+    const go = /\b(kir|kiring|kirgin|kirdi|och|ochish|ochgin|ochib|ot|otish|otgin|otib|otamiz|bor|borgin|korsat|qayt|qaytgin|qaytamiz)\b/.test(ct) || /\b(bol\w*|sahifa\w*)\b/.test(ct) || /\b(xarita|karta|muammolar|tizimlar|hisobot|brifing|egizak|yordamchi)(ga|ka|qa)\b/.test(ct);
+    // “Yana”, “yana bir marta”, “davom et” — oxirgi surish/yaqinlashtirish/aylantirish buyrugʻi takrorlanadi
+    if (nw <= 3 && /^(yana|yana bir marta|yana bitta|yana bir|yana ozgina|yana biroz|davom et|davom ettir)$/.test(ct) && S.lastRep) return S.lastRep;
     // Yaqinlashtir / uzoqlashtir: imlo va talaffuz xatolariga chidamli (“узоклаш”, “uzaqlashtir”, “yakinlastir”)
     if (nw <= 5 && !/\?|nima|qanday|qaysi|necha|qancha/.test(ct)) {
       const ZV = { zoomin: ['yaqinlashtir', 'kattalashtir', 'yaqinlash', 'kattalash'], zoomout: ['uzoqlashtir', 'kichraytir', 'kichiklashtir', 'uzoqlash', 'kichray'] };
@@ -340,6 +353,10 @@
     }
     // “Panelda pastga sur / maʼlumotni tepaga tushir”: panel soʻzi bor — xarita emas, panel aylantiriladi
     if (nw <= 6 && /\b(panel|malumot|royxat)\w*/.test(ct) && /(pastga|tepaga|yuqoriga|pastroq|orqaga)/.test(ct) && !/\?|nima|qanday/.test(ct)) return /(tepa|yuqori|orqaga)/.test(ct) ? VCMD.scrollup : VCMD.scrolldown;
+    // “Xaritani tepaga koʻtar / pastga tushir / chapga yurgiz”: xarita + tomon → surish (feʼl qanday eshitilganidan qatʼi nazar: “sir”, “tushayar”) — boʻlimga oʻtib ketmaydi
+    if (nw <= 6 && !isQ && /\b(xarita|karta|harita|qarita)\w*/.test(ct) && !/\b(bolim\w*|sahifa\w*|kir|kiring|och|ochgin|panel\w*|malumot\w*|royxat\w*)\b/.test(ct)) {
+      const dr = dirOf(ct); if (dr) return VCMD[{ right: 'panright', left: 'panleft', up: 'panup', down: 'pandown' }[dr]];
+    }
     // “Xaritani <tomonsiz> sur”: yon aniq emas — boʻlimga oʻtib ketmaydi
     if (nw <= 5 && /\b(sur|surib|surgin|siljit)\w*/.test(ct) && /xarita/.test(ct) && !/(ong|ung|chap|yuqori|tepa|past|shimol|janub|sharq|garb)/.test(ct)) return { warn: true, label: 'Qaysi tomonga? “oʻngga sur”, “chapga sur”, “yuqoriga sur” yoki “pastga sur” deng', run: () => { } };
     // “Shuni och”, “buni bos”, “mana shu muammoni och”: hozir koʻrinib turgan/ochiq muammo
@@ -379,36 +396,45 @@
     }
     if (/(real|haqiqiy|skan\w*)\s*(3\s*d\s*)?(kocha|yol)|3\s*d\s*(real\s*)?kocha|skanlangan/.test(ct) && !/\?|nima|qanday|qaysi/.test(ct)) return VCMD.scan3d;
     // Koʻchani koʻrsatish: “Registon koʻchasini koʻrsat”
-    const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;
+    const st0 = S.model && (/\b(korsat|och|top|qayerda|xarita\w*)\b/.test(ct) || nw <= 3) && !/probka|tirband|suv|zilzila|evaku|nima|qanday|qaysi|\?/.test(ct) && !/\b(maydon|stadion|bozor|maktab|masjid|madrasa|muzey|universitet|institut|kollej|bogcha|poliklinika|kasalxona|shifoxona|bekat|park|vokzal|aeroport|mehmonxona|restoran|markaz|majmua|rasadxona|maqbara|teatr|minora)\w*/.test(ct) ? NX.ai.detectStreets(t0, S.model)[0] : null;   /* “Registon maydoni” — koʻcha emas, joy */
     if (st0) {
       const ntk = NX.translit(st0.s.name).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2), wk = NX.translit(t).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2);
       return { street: true, weak: !wk.some(w => ntk.some(n => wsim(w, n) >= 0.85)), label: (/ko.?cha|кўча|улица|street/i.test(st0.s.name) ? st0.s.name : st0.s.name + ' koʻchasi') + ' — xaritada', run: () => openStreet(st0.s.id) };
     }
     if (nw <= 5 && /\bmuammo(ni|si|sini)?\b/.test(ct) && /(yop|ochir|olib\s*tashla|kerakmas)/.test(ct) && !/muammolar|\?|nima/.test(ct)) return VCMD.closeproblem;
     const TABS = [['twin', /3\s*d|\bd\b|egizak|tvin/], ['map', /xarita|karta/], ['problems', /muammo/], ['systems', /tizim/], ['report', /hisobot|brifing/], ['ai', /yordamchi|\bchat\b|\bai\b/]];
-    const tab = TABS.find(([, re]) => re.test(ct));
-    const rest = tab ? ct.replace(tab[1], ' ').replace(/\b(\w*ga|ka|qa|ni|kir\w*|och\w*|ot\w*|bor|korsat|qayt|bolim\w*|sahifa|uch|dee)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim() : '';
-    // “xaritani <tushunarsiz soʻz>”: boʻlimga oʻtib ketmaymiz, taxmin ham qilmaymiz
-    const rest2 = rest.split(/\s+/).filter(w => w.length > 2 && !/^(lar\w*|dagi|dan|ning|bolimi|d)$/.test(w) && !TABS.some(([, re]) => re.test(w)));
-    if (tab && !go && nw <= 4 && rest2.length === 1) return { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
-    if (tab && rest.split(/\s+/).filter(w => w.length > 2).length >= 2 && !go) return null;   // boʻlim nomi bor, lekin bu — savol
-    if (tab && (go || nw <= 3)) {
-      const k = tab[0]; if (k === 'twin' && /fotoreal|real/.test(ct)) return VCMD.fotoreal;
-      return VCMD[k];
+    // Savol (“muammolar boʻlimida nechta muammo bor?”) — boʻlimga oʻtish buyrugʻi emas
+    const tab = isQ ? null : TABS.find(([, re]) => re.test(ct));
+    const ctw = ct.split(' '), rw = NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+    let rest2 = [], locForm = false;
+    if (tab) {
+      const ti = ctw.findIndex(w => tab[1].test(w)), tw = ti >= 0 && rw.length === ctw.length ? rw[ti] : '';
+      // boʻlim nomidan tashqari “mazmunli” soʻzlar: oʻtish feʼllari, “boʻlimi…”, iltimos/endi kabi toʻldiruvchilar hisobga olinmaydi
+      const NAV = /^(\w*ga|ka|qa|ni|kir\w*|och\w*|ot|ot[a-z]{1,5}|bor|borgin|korsat\w*|qayt\w*|bol\w*|sahifa\w*|uch\w{0,2}|dee|bormi|ber|bering|yubor|qoy|iltimos|endi|qani|menga|hozir|tez|yana|shu|oziga|marhamat)$/;
+      rest2 = ctw.filter((w, i) => i !== ti && w.length > 2 && !NAV.test(w) && !/^(lar\w*|dagi|dan|ning)$/.test(w) && !TABS.some(([, re]) => re.test(w)));
+      locForm = /(da|dan|dagi)$/.test(tw) && tw.length > 5;   // “xaritada …ni koʻrsat” — boʻlimga oʻtish emas, joy/savol
+      // “xaritani”, “muammoni” (tushum kelishigi, davomi aytilmagan) — boʻlimga oʻtib ketmaydi
+      if (nw === 1 && /ni$/.test(tw)) return { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
+      if (!rest2.length && !locForm && (go || nw <= 3)) return VCMD[tab[0]];
     }
     // “Belgini olib tashla”, “joyni/koʻchani oʻchir”, “chiziqni yoʻqot”: koʻrsatilgan joy/koʻcha/bino belgisini xaritadan olib tashlash
     if (nw <= 6 && !/\?|nima|qanday|qaysi/.test(ct) && (/\b(belgi|belgini|belgilarni|nuqta|nuqtani|chiziq|chiziqni|marker|joyni|kochani|binoni|aylana|aylanani|pin)\b/.test(ct) && /(olib\s*tashla|ochir|tozala|yoqot|yop|yashir|kerakmas|kerak\s*emas)/.test(ct) || /\b(olib\s*tashla|hammasini\s*(olib\s*tashla|ochir|tozala))\b/.test(ct)) && !/muammo\w*\s*(ni)?\s*(yop|ochir)|hisobot|tizim/.test(ct)) return VCMD.clearmarks;
-    if (/natija|tozala|hammasini yop|\byop\b/.test(ct) && !/\?|nima|qanday/.test(ct)) return VCMD.clear;
-    if (/fotoreal/.test(ct)) return VCMD.fotoreal;
-    if (/maket|sxema/.test(ct)) return VCMD.maket;
-    if (/olchash|olchov|\bolcha/.test(ct) && !/tirband|probka/.test(ct)) return VCMD.measure;
-    if (/sayohat|\btur\b/.test(ct)) return VCMD.tour;
-    if (/hudud\s*(belgila|chiz)|belgila\s*hudud/.test(ct)) return VCMD.area;
-    if (/doim\s*tingla|tinglab\s*tur/.test(ct)) return VCMD.wakeon;
-    if (/tingla\w*\s*(ochir|toxtat)|\btinglama\b/.test(ct)) return VCMD.wakeoff;
-    if (/yangila|refresh/.test(ct) && nw <= 3) return VCMD.refresh;
-    if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(ct)) return VCMD.theme;
-    if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(ct)) return VCMD.traffic;
+    // Kalit soʻzli buyruqlar faqat qisqa gapda (uzun gap — suhbat yoki savol)
+    if (nw <= 5 && !isQ) {
+      if (/natija|tozala|hammasini yop|\byop\b/.test(ct)) return VCMD.clear;
+      if (/fotoreal/.test(ct)) return VCMD.fotoreal;
+      if (/maket|sxema/.test(ct)) return VCMD.maket;
+      if (/olchash|olchov|\bolcha/.test(ct) && !/tirband|probka/.test(ct)) return VCMD.measure;
+      if (/sayohat|\btur\b/.test(ct)) return VCMD.tour;
+      if (/hudud\s*(belgila|chiz)|belgila\s*hudud/.test(ct)) return VCMD.area;
+      if (/doim\s*tingla|tinglab\s*tur/.test(ct)) return VCMD.wakeon;
+      if (/tingla\w*\s*(ochir|toxtat)|\btinglama\b/.test(ct)) return VCMD.wakeoff;
+      if (/yangila|refresh/.test(ct) && nw <= 3) return VCMD.refresh;
+      if (/(qorongi|tungi)\s*rejim|yorug\s*rejim/.test(ct)) return VCMD.theme;
+      if (/(real|jonli)\s*(probka|tirbandlik)\s*(qatlam|xarita)/.test(ct)) return VCMD.traffic;
+    }
+    // “xaritani <bitta tushunarsiz soʻz>”: aniq oʻtish soʻzi boʻlsa — boʻlim; boʻlmasa taxmin qilinmaydi
+    if (tab && rest2.length === 1 && !locForm && nw <= 4 && !/ni$/.test(rw[ctw.indexOf(rest2[0])] || '')) return go ? VCMD[tab[0]] : { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
     return null;
   }
   // Matn tilda qisqa va savol emas boʻlsa, lekin local moslash topmadi — AI maʼnosini aniqlaydi
@@ -421,7 +447,7 @@
   let PLX = null;
   async function placeIndex() {
     if (PLX) return PLX;
-    const out = [], add = (name, c, kind) => { const n = String(name || '').trim(); if (n.length < 3 || !c || c.length < 2) return; out.push({ name: n, c, kind: kind || '', tk: NX.translit(n).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 1) }); };
+    const out = [], add = (name, c, kind) => { const n = String(name || '').trim(); if (n.length < 3 || !c || c.length < 2) return; out.push({ name: n, c, kind: kind || '', tk: NX.translit(n).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 1), kt: NX.translit(kind || '').replace(/[ʻʼ'‘’`ʹ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length > 2) }); };
     try {
       const pl = await (placesP = placesP || fetch('data/places-samarqand.json').then(r => (r.ok ? r.json() : null)).catch(() => null));
       if (pl) { (pl.spaces || []).forEach(x => add(x.name, x.c, x.kind)); (pl.places || []).forEach(x => add(x.name, x.c, 'joy')); (pl.svc || []).forEach(x => add(x.name, x.c, 'xizmat')); }
@@ -441,28 +467,67 @@
     try { ((NX.map3d && NX.map3d.landmarks && NX.map3d.landmarks()) || []).forEach(l => add(l.n, l.c, 'obida')); } catch (e) { /* */ }
     return (PLX = out);
   }
-  const PSTOP = ['yaqinlash', 'yaqinlas', 'kattalash', 'uzoqlash', 'korsat', 'korsating', 'kursat', 'top', 'toping', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
-  const PGEN = ['kocha', 'kochasi', 'kuchasi', 'kucha', 'ulitsa', 'ulica', 'prospekt', 'shosse', 'tupik', 'proezd', 'mahalla', 'mavze', 'stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo'];
+  const PSTOP = ['yaqinlash', 'yaqinlas', 'kattalash', 'uzoqlash', 'korsat', 'korsating', 'korsatgin', 'korsatib', 'korsa', 'kursat', 'kursating', 'top', 'toping', 'topib', 'topgin', 'ochgin', 'bergin', 'berib', 'yubor', 'yuborgin', 'qoy', 'olib', 'obor', 'oborgin', 'iltimos', 'endi', 'hozir', 'nomli', 'degan', 'koraylik', 'boraylik', 'qayerda', 'qayerida', 'qayerdaligini', 'och', 'ochib', 'ber', 'bering', 'menga', 'xaritada', 'xaritadan', 'kor', 'joylashgan', 'joyi', 'manzili', 'manzil', 'shu', 'bu', 'ni', 'ga', 'da', 'qani', 'qayoqda', 'bor', 'uch', 'oborib', 'kel', 'qil', 'goto', 'show', 'ochgin'];
+  const PGEN = ['kocha', 'kochasi', 'kuchasi', 'kucha', 'ulitsa', 'ulica', 'prospekt', 'shosse', 'tupik', 'proezd', 'mahalla', 'mavze', 'stadion', 'stadium', 'maktab', 'school', 'kasalxona', 'bolnitsa', 'hospital', 'bekat', 'ostanovka', 'universitet', 'institut', 'kollej', 'bogcha', 'poliklinika', 'park', 'bozor', 'masjid', 'madrasa', 'markaz', 'sport', 'majmua', 'majmuasi', 'savdo', 'maydon', 'maqbara', 'muzey', 'rasadxona', 'vokzal', 'aeroport', 'mehmonxona', 'restoran', 'dorixona', 'hokimiyat', 'hokimlik', 'teatr', 'kutubxona', 'litsey', 'akademiya', 'shifoxona', 'klinika', 'koprik', 'xiyobon', 'ansambl', 'minora', 'darvoza'];
   const pgen = w => PGEN.some(g => w === g || (w.length > g.length && w.startsWith(g)) || wsim(w, g) >= 0.85);
-  async function placeFind(text) {
-    const t = NX.translit(String(text || '').toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  // Joy nomlari uchun QATʼIY oʻxshashlik (jurnal: “misol uchun” → “Maslo Jir…”, “dan” → “18 dan kichik…”, “bolamayapti” → “Ona va Bola…” — unlisiz skelet va soʻz boshi qoidasi haddan tashqari yumshoq edi)
+  const PSUF = /(larning|laridan|larida|lariga|larini|lardan|larda|larga|larni|lari|sining|ining|ning|sidan|sida|siga|sini|idan|dagi|dan|lar|ini|iga|ida|ni|ga|da|si)$/;
+  const pstem = w => { const s = w.replace(PSUF, ''); return s.length >= 4 ? s : w; };
+  const PNc = new Map();
+  const PN = w => { let r = PNc.get(w); if (r === undefined) { r = PK(w).replace(/ts/g, 's').replace(/dj/g, 'j').replace(/iy|yi/g, 'i').replace(/au/g, 'av').replace(/y$/, ''); if (PNc.size > 30000) PNc.clear(); PNc.set(w, r); } return r; };
+  function psim(w, n) {
+    const a = PN(w), b = PN(n); if (!a || !b) return 0; if (a === b) return 1;
+    if (/^\d+$/.test(a) || /^\d+$/.test(b)) return 0;                        // raqam — faqat aynan
+    const as = PN(pstem(w)), bs = PN(pstem(n));
+    if (as === bs || as === b || a === bs) return 0.97;                      // kelishik qoʻshimchasi (“stadionini”, “koʻchasidan”)
+    const L = Math.max(as.length, bs.length); if (Math.min(as.length, bs.length) < 4) return 0;   // qisqa soʻz — faqat aynan
+    if (as[0] !== bs[0] && L < 8) return 0;
+    const d = lev(as, bs); if (L <= 5) return d <= 1 ? 0.82 : 0;             // 4–5 harf: bitta xato
+    return 1 - d / L;
+  }
+  // Suhbatda koʻp uchraydigan, joy nomi boʻla olmaydigan soʻzlar
+  const PFW = new Set(['dan', 'uchun', 'bilan', 'ham', 'yana', 'endi', 'keyin', 'hozir', 'shunday', 'bunaqa', 'shunaqa', 'misol', 'masalan', 'degan', 'deb', 'ekan', 'emas', 'kerak', 'mumkin', 'qilib', 'qilish', 'boladi', 'bolsa', 'lekin', 'chunki', 'agar', 'juda', 'eng', 'hamma', 'barcha', 'har', 'bir', 'ikki', 'narsa', 'gap', 'ish', 'yaxshi', 'yomon', 'katta', 'kichik', 'yangi', 'eski', 'qara', 'mana', 'ana', 'xop', 'mayli', 'rahmat', 'salom', 'iltimos', 'marhamat', 'yerda', 'yerga', 'joyda', 'joyga', 'tomon', 'taraf', 'degani', 'nima', 'odam', 'bugun', 'ertaga', 'kecha']);
+  // Aniq “koʻrsat/top/olib bor” soʻrovi bormi (uygʻoq rejimda joy faqat shunda ochiladi)
+  const PVERB = /\b(korsat\w*|kursat\w*|korsa|top|toping|topib|topgin|qayerda\w*|qayerida|qayoqda|qani|och|ochib|ochgin|obor\w*|olib\s*bor\w*|olib\s*kel\w*|yaqinlash\w*|kattalash\w*|boraylik|koraylik|show|goto)\b/;
+  async function placeFind(text, o) {
+    const t = NX.translit(String(text || '').toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(RESID, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     const words = t.split(' ').filter(Boolean);
     if (!words.length || words.length > 7 || /\?|nima|qanday|qaysi|necha|qancha|nega|probka|tirband|suv|zilzila|evaku|yongin|bosh reja/.test(t)) return null;
-    const q = words.filter(w => !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3) || wsim(w, x) >= 0.86));
-    const hasVerb = words.length > q.length, gen = q.filter(w => pgen(w));
-    let strong = q.filter(w => w.length > 2 && !pgen(w) && !VVOC.some(v => wsim(w, v) >= 0.8 || (w.length > v.length + 1 && w.startsWith(v))));
-    // “Samarqand” har joyda uchraydi — yolgʻiz oʻzi joy nomi emas (shovqin matnidan tasodifiy joy ochilmasin)
-    const CITY = w => wsim(w, 'samarqand') >= 0.75 || wsim(w, 'shahar') >= 0.85;
+    const hasVerb = PVERB.test(t);
+    if (o && o.needVerb && !hasVerb) return null;
+    // Toʻldiruvchi soʻzlar: qisqalari faqat aynan (oldin “ber…”, “uch…”, “shu…”, “kor…” bilan boshlangan nomlar — Beruniy, Uchtepa, Shuhrat, Korzinka — tashlab yuborilardi)
+    const q = words.filter(w => !PSTOP.some(x => w === x || (x.length >= 5 && w.length > x.length && w.startsWith(x)) || (w.length >= 5 && wsim(w, x) >= 0.86)));
+    const gen = q.filter(w => pgen(w)), num = q.filter(w => /^\d+$/.test(w));
+    // “Samarqand”, “shahar” har joyda uchraydi — yolgʻiz oʻzi joy nomi emas (shovqin matnidan tasodifiy joy ochilmasin)
+    const CITY = w => { const s = pstem(w); return wsim(s, 'samarqand') >= 0.75 || wsim(s, 'shahar') >= 0.85 || wsim(w, 'samarqand') >= 0.75; };
+    const strong = q.filter(w => w.length > 3 && !/^\d+$/.test(w) && !pgen(w) && !PFW.has(w) && !PFW.has(pstem(w)) && !VVOC.some(v => wsim(w, v) >= 0.8 || (v.length >= 5 && w.length > v.length + 1 && w.startsWith(v))));
     const specific = strong.filter(w => !CITY(w));
-    if (!specific.length && !(strong.length && gen.length && hasVerb)) return null;
-    if (!strong.length) return null;
+    // raqamli nom (“24-maktab”, “5-bogʻcha”) — faqat tur soʻzi bilan birga
+    if (!specific.length && !(num.length && gen.length) && !(strong.length && gen.length && hasVerb)) return null;
+    const need = specific.length ? strong : num.length && gen.length ? num : strong, cityOnly = !specific.length && need === strong;
+    if (!need.length) return null;
     const idx = await placeIndex(); let best = null, bs = 0;
-    const tsim = (w, tk) => { let b = 0; tk.forEach(n => { let s2 = wsim(w, n); if (n.length >= 4 && w.length > n.length && w.startsWith(n.slice(0, Math.max(4, n.length - 1)))) s2 = Math.max(s2, 0.9); if (s2 > b) b = s2; }); return b; };
+    const jw = q.filter(w => !/^\d+$/.test(w) && !pgen(w) && !PFW.has(w) && !CITY(w));   // qisqa soʻzlar ham: “temir yoʻl” = “Temiryoʻl”
+    const joined = specific.length && jw.length >= 1 && jw.length <= 3 ? PN(jw.map(pstem).join('')) : '';
+    // nomning ajratuvchi soʻzlari (tur soʻzi va shahar nomidan tashqari) — bir marta hisoblanadi
+    const distOf = p => p.dist || (p.dist = p.tk.filter(n => /^\d+$/.test(n) || (n.length > 2 && !/^(samarqand|samarkand|shahar)/.test(n) && !PGEN.some(g => n === g || (n.length > g.length && n.startsWith(g))))));
     for (const p of idx) {
       if (!p.tk.length) continue;
-      const ss = strong.map(w => tsim(w, p.tk)); if (Math.min.apply(null, ss) < 0.8) continue;
-      const gs = q.filter(w => pgen(w)).map(w => tsim(w, p.tk.concat(NX.translit(p.kind).split(/\s+/))));
-      const sc = ss.reduce((a, b) => a + b, 0) / ss.length + (gs.length ? 0.05 * Math.max.apply(null, gs) : 0) - 0.02 * Math.max(0, p.tk.length - strong.length);
+      let ss = need.map(w => { let b = 0; for (const n of p.tk) { const s2 = psim(w, n); if (s2 > b) b = s2; } return b; });
+      let miss = ss.filter(x => x < 0.8).length, pen = 0, jn = false;
+      // Qoʻshilib/ajralib eshitilgan nom: “shohizinda” = “Shohi Zinda”, “bibi xonim” = “Bibixonim”
+      if (miss && joined && p.tk.length <= 4) { const dj = distOf(p); if (dj.length && dj.length <= 3) { const j2 = PN(dj.join('')), L = Math.max(joined.length, j2.length), r = L >= 6 ? 1 - lev(joined, j2) / L : 0; if (r >= 0.85) { ss = need.map(() => r); miss = 0; jn = true; } } }
+      // bitta soʻz notoʻgʻri eshitilgan boʻlishi mumkin: qolgani aniq va tur soʻzi (“universitet”) mos kelsa — qabul
+      if (miss > 1 || (miss === 1 && !(need.length >= 2 && hasVerb && gen.length && ss.some(x => x >= 0.9)))) continue;
+      let gH = null; const gHit = () => (gH == null ? (gH = gen.some(w => p.tk.concat(p.kt || []).some(n => psim(w, n) >= 0.8 || wsim(pstem(w), pstem(n)) >= 0.85))) : gH);
+      if (miss === 1) { if (!gHit()) continue; pen = 0.15; }
+      // Soʻralgan tur (“universitet”) topilgan joy turiga (“koʻcha”) mos kelmasa — bu boshqa joy (“Beruniy universiteti” ≠ “Beruniy koʻchasi”)
+      if (gen.length && !gHit() && (p.og == null ? (p.og = p.tk.concat(p.kt || []).some(n => PGEN.some(g => n === g || (n.length > g.length && n.startsWith(g))))) : p.og)) continue;
+      const dist = distOf(p), hit = jn ? dist.length : dist.filter(n => need.some(w => psim(w, n) >= 0.8)).length, cov = dist.length ? hit / dist.length : 1;
+      // nomning kamida yarmi aytilgan boʻlsin; “…ni koʻrsat” + tur soʻzi mos kelsa — bitta ajratuvchi soʻz ham yetadi
+      if (cityOnly ? !gHit() : (cov < 0.5 && !(hasVerb && hit >= 1 && gHit()))) continue;
+      const good = ss.filter(x => x >= 0.8);
+      const sc = good.reduce((x, y) => x + y, 0) / Math.max(1, good.length) + (gen.length && gHit() ? 0.06 : 0) + (p.kind === 'obida' ? 0.03 : 0) + 0.1 * cov - pen - 0.01 * Math.max(0, p.tk.length - need.length);
       if (sc > bs) { bs = sc; best = p; }
     }
     return best;
@@ -487,8 +552,8 @@
     const bb = p.bbox && (p.bbox[1][0] - p.bbox[0][0] < 0.04 && p.bbox[1][1] - p.bbox[0][1] < 0.05) ? p.bbox : null;
     return new Promise(res => setTimeout(() => { NX.view.showPlace({ labels: [{ lat, lon, cls: 'rd-mumkin', title: '📍 ' + p.name, note: p.kind || '' }], ring: p.lines ? null : [lat, lon], lines: p.lines || null, noCenter: !!p.lines, fit: bb || [[lat - 0.0025, lon - 0.0035], [lat + 0.0025, lon + 0.0035]] }); setTimeout(res, 900); }, 350));
   }
-  async function placePlan(list) {
-    for (const c of list) { const p = await placeFind(c); if (p) return { label: p.name + (p.kind ? ' (' + p.kind + ')' : '') + ' — xaritada', run: () => placeShow(p) }; }
+  async function placePlan(list, o) {
+    for (const c of list) { const p = await placeFind(c, o); if (p) return { label: p.name + (p.kind ? ' (' + p.kind + ')' : '') + ' — xaritada', run: () => placeShow(p) }; }
     return null;
   }
   // Ovoz tushunuvchi uchun nomzodlar: eshitilgan soʻzlarga fonetik oʻxshash joy, koʻcha va katalog savollari
@@ -643,27 +708,66 @@
   }
   // Joyni butun shahar boʻyicha qidirish (Worker /geocode → OpenStreetMap): lugʻatda yoʻq koʻcha/joy ham topiladi
   const proxyBase = () => ((window.CITYJAM_KEYS && window.CITYJAM_KEYS.aiProxy) || '').trim().replace(/\/+$/, '');
-  async function geoFind(q) {
-    if (!proxyBase() || String(q || '').trim().length < 2) return null;
-    try {
-      const r = await NX.fetchJSON(proxyBase() + '/geocode?q=' + encodeURIComponent(String(q).trim()), {}, 9000);
-      const it = r.ok && r.data && r.data.items && r.data.items[0]; if (!it) return null;
-      return { name: it.name || q, kind: it.kind || 'joy', c: [it.lat, it.lon], lines: it.lines && it.lines.length ? it.lines : null, bbox: it.bbox || null, tk: [] };
-    } catch (e) { return null; }
+  // Gapdan qidiruv soʻrovi: feʼl va toʻldiruvchi soʻzlar olib tashlanadi, nomdagi kelishik qoʻshimchasi kesiladi (“shavmiyani koʻchasini koʻrsat” → “shavmiyan kochasi”)
+  function geoQuery(n0) {
+    return String(n0 || '').replace(RESID, '').split(/\s+/).filter(w => w.length > 2 && !PVERB.test(w) && !PFW.has(w) && !PSTOP.some(x => w === x || (x.length >= 5 && w.length > x.length && w.startsWith(x)))).map(w => (pgen(w) ? w.replace(/(sini|sidan|siga|sida|ni|ga|da|dan)$/, m => (/^si/.test(m) ? 'si' : '')) : w.replace(/(ni|ning|ga|dan|dagi)$/, ''))).join(' ').trim();
   }
-  async function geoShow(q) {
-    const pl = await geoFind(q);
-    if (!pl) { hud('warn', '«' + q + '» xaritadan topilmadi', ''); return; }
+  // Tur soʻzi → OpenStreetMap obyekt turlari (topilgan joy soʻralgan turga mosmi)
+  const GKIND = { kocha: /residential|secondary|primary|tertiary|unclassified|living_street|service|trunk|road|pedestrian/, kucha: /residential|secondary|primary|tertiary|unclassified|living_street|service|trunk|road/, universitet: /university|college/, institut: /university|college/, maktab: /school/, bogcha: /kindergarten/, stadion: /stadium|sports_centre|pitch/, vokzal: /station|halt/, aeroport: /aerodrome|airport/, kasalxona: /hospital|clinic/, shifoxona: /hospital|clinic/, poliklinika: /clinic|doctors|hospital/, bozor: /marketplace|market/, masjid: /place_of_worship|mosque/, park: /park|garden/, mehmonxona: /hotel|guest_house|hostel/, muzey: /museum/, bekat: /bus_stop|platform|tram_stop/, restoran: /restaurant|cafe|fast_food/, dorixona: /pharmacy/, teatr: /theatre/, kutubxona: /library/, mahalla: /neighbourhood|suburb|quarter/ };
+  async function geoRaw(q) {
+    try { const r = await NX.fetchJSON(proxyBase() + '/geocode?q=' + encodeURIComponent(q), {}, 9000); return (r.ok && r.data && r.data.items) || []; } catch (e) { return []; }
+  }
+  // Qidiruv xizmati (Nominatim) hamma soʻz mos kelishini talab qiladi: “beruniy universiteti”, “temir yoʻl vokzali” — 0 natija, “beruniy”, “vokzal” — topiladi.
+  // Shuning uchun variantlar KETMA-KET sinaladi (xizmat sekundiga 1 soʻrovdan ortigʻini yoqtirmaydi): toʻliq gap → shaharda yagona obyekt turi (vokzal, aeroport) → faqat nom → eng uzun soʻz.
+  async function geoFind(q) {
+    const base = nrm(q); if (!proxyBase() || base.length < 2) return null;
+    const cityW = w => /^(samarqand|samarkand|shahar)/.test(w);
+    const toks = base.split(' ').filter(w => w.length > 2), gens = toks.filter(w => pgen(w)), dist = toks.filter(w => !pgen(w) && !PFW.has(w) && !cityW(w));
+    const gk = gens.map(g => Object.keys(GKIND).find(k => g === k || g.startsWith(k) || wsim(pstem(g), k) >= 0.85)).filter(Boolean);
+    const only = gk.find(k => /^(vokzal|aeroport)$/.test(k));   // shaharda bitta: nomi qanday aytilganidan qatʼi nazar
+    const vars = [[String(q).trim(), 'full']];
+    if (only) vars.push([only, 'kind']);
+    if (dist.length && dist.length < toks.length) vars.push([dist.join(' '), 'name']);
+    if (dist.length > 1) { const w = dist.slice().sort((x, y) => y.length - x.length)[0]; if (w.length >= 5) vars.push([w, 'word']); }
+    const seen = new Set(); let best = null, bs = -1;
+    for (const [v, how] of vars) {
+      const key = nrm(v); if (!key || seen.has(key)) continue; seen.add(key);
+      const items = await geoRaw(v);
+      items.forEach((it, ii) => {
+        if (/administrative|city|state|country|county|region/.test(it.kind || '')) return;   // shaharning oʻzi — javob emas
+        const tk = nrm(it.name).split(' ').filter(w => w.length > 2);
+        const hit = dist.filter(w => tk.some(n => psim(w, n) >= 0.8)).length, gName = gens.some(g => tk.some(n => psim(g, n) >= 0.8 || wsim(pstem(g), pstem(n)) >= 0.85));
+        const kOk = gk.length ? (gk.some(k => GKIND[k].test(it.kind || '') || tk.some(n => n.startsWith(k))) || gName) : null;
+        if (how === 'kind' ? !kOk : (dist.length ? !hit : !(kOk || gName))) return;
+        const sc = (dist.length ? hit / dist.length : 0.5) + (kOk ? (how === 'kind' ? 1 : 0.5) : kOk === false ? -0.3 : 0) + (how === 'full' ? 0.2 : 0) - ii * 0.02;
+        if (sc > bs) { bs = sc; best = { name: it.name || q, kind: it.kind || 'joy', c: [it.lat, it.lon], lines: it.lines && it.lines.length ? it.lines : null, bbox: it.bbox || null, tk: [], miss: kOk === false ? gens[0] : '' }; }
+      });
+      if (best && !best.miss) break;   // mos joy topildi — keyingi variantlar soʻralmaydi
+    }
+    return best;
+  }
+  async function geoShow(q, pre) {
+    const pl = (pre && await pre) || await geoFind(q);
+    if (!pl) { hud('warn', '«' + q + '» xaritadan topilmadi', 'nomini aniqroq ayting yoki yaqinidagi koʻchani ayting'); return; }
+    if (pl.miss) hud('warn', 'Aynan shunday joy topilmadi — shu nomdagi boshqa obyekt koʻrsatildi', pl.name);   // halol: “universitet” soʻralgan, topilgani — koʻcha
     placeShow(pl);
   }
   // AI/audio natijasi (JSON) → bajariladigan reja yoki savol matni
-  async function resToPlan(res, list) {
+  async function resToPlan(res, list, geoPre) {
     let plan = null, qText = null;
     if (!res) return { plan, qText };
     if (res.t === 'cmd' && VCMD[res.k]) plan = VCMD[res.k];
     else if (res.t === 'place') { const pl = await placeByName(res.n); if (pl && (res.heard || placeHeard(list, pl))) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
-    else if (res.t === 'street') { const sd = (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(res.n)); if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) }; else { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; } }
-    else if (res.t === 'geo' && res.q) plan = { label: '🔎 ' + res.q + ' — xaritada qidirilmoqda', run: () => { geoShow(res.q); } };
+    else if (res.t === 'street') {
+      // AI nomzodlar roʻyxatidan eng “yaqinini” tanlaydi — eshitilgan soʻzga oʻxshamasa ham (sinov: “shavmiyani koʻchasi” → “Shayxzoda koʻchasi”). Nom eshitilganga fonetik mos kelmasa — qabul qilinmaydi, shahar boʻylab qidiriladi
+      const hw = list.join(' ').split(/\s+/).map(w => nrm(w)).filter(w => w.length > 3 && !pgen(w)), nt = nrm(res.n).split(' ').filter(w => w.length > 3 && !pgen(w));
+      const heardOk = !nt.length || nt.some(n => hw.some(w => psim(w, n) >= 0.72));
+      const sd = heardOk ? (S.model ? S.model.namedStreets : []).find(z => nrm(z.name) === nrm(res.n)) : null;
+      if (sd) plan = { label: sd.name + ' — xaritada', run: () => openStreet(sd.id) };
+      else if (heardOk) { const pl = await placeByName(res.n); if (pl) plan = { label: pl.name + ' — xaritada', run: () => placeShow(pl) }; }
+      else { const gq = geoQuery(nrm(list[0])); if (gq.length > 3) { const pre = geoPre && nrm(geoPre.q) === nrm(gq) ? geoPre.p : null; plan = { label: '🔎 ' + gq + ' — xaritada qidirilmoqda', run: () => { geoShow(gq, pre); } }; } }
+    }
+    else if (res.t === 'geo' && res.q) { const pre = geoPre && nrm(geoPre.q) === nrm(res.q) ? geoPre.p : null; plan = { label: '🔎 ' + res.q + ' — xaritada qidirilmoqda', run: () => { geoShow(res.q, pre); } }; }
     else if (res.t === 'q' && res.text) qText = String(res.text).trim();
     else if (res.t === 'act' && NX.agent) plan = { label: res.say || 'Bajarilmoqda', run: () => { agentRun(res, list, 0); } };
     else if (res.t === 'chat' && res.say) plan = { label: res.say, run: () => { } };
@@ -681,60 +785,80 @@
     // Brauzer matni bilan tushunilmadi — server (aniqroq) matni bilan qayta urinish
     if (st === 'unclear' && opts && opts.audio && !opts.retried) {
       let ar = null; try { ar = await voiceAudioRes([raw].concat(opts.cands || [])); } catch (e) { /* */ }
-      if (ar && ar.t !== 'unclear') return voiceCommand0(ar.heard || raw, quiet, [raw], { retried: true, ambient: opts.ambient, preRes: ar });
+      if (ar && ar.t !== 'unclear') return voiceCommand0(ar.heard || raw, quiet, [raw], { retried: true, ambient: opts.ambient, preRes: ar, rec: opts.rec });
     }
     if (st === 'unclear' && opts && opts.later && !opts.retried) {
       const l = await (typeof opts.later === 'function' ? opts.later() : opts.later);
-      if (l && l !== raw) { return voiceCommand0(l, quiet, [raw], { retried: true, ambient: opts.ambient }); }
+      if (l && l !== raw) { return voiceCommand0(l, quiet, [raw], { retried: true, ambient: opts.ambient, rec: opts.rec }); }
       if (!quiet && !(opts && opts.ambient)) hud('warn', 'Aniq eshitilmadi — qayta ayting', '«' + raw + '»');
     }
   }
+  // Uygʻoq rejimda eshitilgan gap buyruqmi yoki atrofdagi suhbatmi
+  const STMT = /\b(emas|ekan|edi|uchun|chunki|lekin|deb|degan|deys\w*|dedim|aytdim|misol|masalan|menimcha)\b|\b\w+(yapti|yapdi|yapman|yapsan|yapmiz|moqda)\b/;
+  const CMDEV = /\b(och\w*|kir|kiring|kirgin|ot|otgin|otish|otib|korsat\w*|kursat\w*|top|toping|topib|yop\w*|sur\w*|siljit\w*|bur|buril\w*|qara\w*|yur\w*|yashir\w*|qaytar\w*|qayt\w*|yoq|yoqgin|ochir\w*|tozala\w*|belgila\w*|olcha\w*|yangila\w*|aylantir\w*|tushir\w*|kotar\w*|bos|bosgin|bosing|olib|obor\w*|chiz\w*|tanla\w*|skrol\w*|toxta\w*|boshla\w*|qil|qilgin|qiling|ber|bergin|bering|\w*lashtir\w*|hal)\b/;
+  const REPK = () => [VCMD.zoomin, VCMD.zoomout, VCMD.panleft, VCMD.panright, VCMD.panup, VCMD.pandown, VCMD.scrolldown, VCMD.scrollup, VCMD.rotate, VCMD.lookup, VCMD.lookdown, VCMD.turnleft, VCMD.turnright, VCMD.forward, VCMD.backward];
   async function voiceCommand0(raw, quiet, cands, opts) {
+    const amb = !!(opts && opts.ambient), vp = x => voicePlan(x, amb ? { strict: true } : null);
     let list = [raw].concat(cands || []).map(x => String(x || '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
     list = list.filter(x => !/^\s*(samarqand|самарканд|самарқанд)\W*$/i.test(x));   // STT prompt aks-sadosi (jim/shovqinli ovozda model “Samarqand.” deb yozadi)
-    list = list.filter(x => !/[\u0600-\u06FF\u0750-\u077F\u4E00-\u9FFF\u0590-\u05FF]/.test(x));   // arab/xitoy/ivrit yozuvi — til noaniq, shovqin: bajarilmaydi
-    if (!list.length) { if (!quiet && !(opts && opts.ambient)) hud('warn', 'Aniq eshitilmadi — qayta ayting', ''); return 'warn'; }
+    list = list.filter(x => !/[؀-ۿݐ-ݿ一-鿿֐-׿]/.test(x));   // arab/xitoy/ivrit yozuvi — til noaniq, shovqin: bajarilmaydi
+    list = list.filter(x => !residOnly(x));   // faqat chaqiruv soʻzi qoldigʻi (“dim”, “30224”)
+    if (!list.length) { if (!quiet && !amb) hud('warn', 'Aniq eshitilmadi — qayta ayting', ''); return 'warn'; }
     if (list.length > 1) { const sc = list.map((x, i) => [x, vscore(x), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]); if (sc[0][1] > sc[sc.length - 1][1] + 0.15) list = sc.map(x => x[0]); }
+    const n0 = NX.translit(list[0].toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const QW0 = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
+    // Uygʻoq rejim: hikoya/suhbat gapi (“…emas ekan”, “misol uchun…”, “…qilyapti”) — buyruq emas, jimgina oʻtkaziladi
+    if (amb && STMT.test(n0) && !QW0.test(list[0])) return 'warn';
     let plan = null, used = list[0];
-    for (const c of list) { const p = voicePlan(c); if (p) { plan = p; used = c; break; } }
+    for (const c of list) { const p = vp(c); if (p) { plan = p; used = c; break; } }
     let via = plan ? 'local' : '';
     // “Dinamo stadionidan yaqinlashdir” — kamera buyrugi emas, joyni topib koʻrsatish
     const VIEWK = [VCMD.zoomin, VCMD.zoomout, VCMD.top, VCMD.side, VCMD.rotate];
-    if (plan && plan.weak) { const pp = await placePlan(list); if (pp) plan = pp; else if (NX.ai.available()) plan = null; }   // eshitilgan soʻz koʻcha nomiga aniq oʻxshamasa — joy yoki AI
-    if (plan && VIEWK.includes(plan) && PLX) { const pp = await placePlan(list); if (pp) plan = pp; }   // indeks tayyor boʻlmasa kamera buyrugʻi kechikmasin
-    if (!plan) { plan = await placePlan(list); if (plan) via = 'place'; }
+    const po = amb ? { needVerb: true } : null;
+    if (plan && plan.weak) { const pp = await placePlan(list, po); if (pp) plan = pp; else if (NX.ai.available()) plan = null; }   // eshitilgan soʻz koʻcha nomiga aniq oʻxshamasa — joy yoki AI
+    if (plan && VIEWK.includes(plan) && PLX && n0.split(' ').length >= 2) { const pp = await placePlan(list, po); if (pp) plan = pp; }   // indeks tayyor boʻlmasa kamera buyrugʻi kechikmasin
+    if (!plan) { plan = await placePlan(list, po); if (plan) via = 'place'; }
     let qText = null;
     if (opts && opts.preRes) { const r0 = await resToPlan(opts.preRes, list); if (r0.plan) { plan = r0.plan; used = list[0]; } if (r0.qText) qText = r0.qText; if (plan || qText) via = 'audio'; }
-    const amb = !!(opts && opts.ambient), QW0 = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
     // Uygʻoq rejim: atrofdagi suhbat/shovqin matni — buyruqqa oʻxshamasa jimgina eʼtiborsiz qoldiriladi (hech narsa koʻrsatilmaydi)
-    if (amb && !plan && !(vscore(list[0]) >= 0.25 || QW0.test(list[0]) || list.some(x => voicePlan(x)))) return 'warn';
+    // (buyruq soʻzi ham, savol belgisi ham yoʻq gap — “shaharda Registon maydoni bor” — AI ga ham yuborilmaydi)
+    const askOK = QW0.test(list[0]) || /\b\w{3,}mi\b/.test(n0) || /\b(ayt\w*|tushuntir\w*|hisobla\w*|tahlil|solishtir\w*|bahola\w*|taklif|tavsiya|reja\w*|korsat\w*|tuz|tuzib)\b/.test(n0);
+    if (amb && !plan && !(CMDEV.test(n0) || askOK)) return 'warn';
     // Erkin gap (uzun/qoʻshma: “…koʻrsat, endi yaqinlashtir”) — AI tushunadi; AI ishlamasa mahalliy qoida
     const localPlan = plan;
     if (plan && NX.ai.available() && (list[0].split(/\s+/).length > 4 || (list[0].split(/\s+/).length > 3 && /\b(endi|keyin|hazil)\b/i.test(NX.translit(list[0]))))) plan = null;   // “yana uzoqlashtir” kabi oddiy buyruq AI ga ketmaydi (jurnal: ~1.5 s tejaladi)
     const nw0 = list[0].split(/\s+/).length, QW = /nima|qanday|qaysi|qayer|necha|qancha|nega|bormi|boladimi|bo.?ladimi|\?/i;
+    // Toza savol (savol soʻzi bor, soʻzlari lugʻatda) — AI “tuzatuvchi”siz toʻgʻridan-toʻgʻri savol sifatida ketadi (jurnal: “balandligi qanday” 4 s kutgan)
+    const cleanQ = !plan && nw0 >= 2 && QW.test(list[0]) && vscore(list[0]) >= 0.75;
     // Ishonchli uzun savol boʻlmasa — AI domen lugʻati bilan nima deyilganini aniqlaydi (buzilgan soʻzlarni tuzatadi)
-    if (!plan && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
-      
+    if (!plan && !cleanQ && NX.ai.available() && !(nw0 >= 5 && vscore(list[0]) >= 0.55)) {
+      // “…ni koʻrsat” soʻrovi lugʻatda topilmadi: butun shahar qidiruvi AI bilan BIR VAQTDA boshlanadi (oldin ketma-ket: AI 3 s + qidiruv 1 s)
+      let geoPre = null;
+      if (proxyBase() && PVERB.test(n0) && !QW.test(list[0]) && nw0 <= 6) { const gq = geoQuery(n0); if (gq.length > 3) geoPre = { q: gq, p: geoFind(gq) }; }
       try {
         const x = await vlex(list), res = await Promise.race([new Promise(r => setTimeout(() => r(null), 4000)), NX.ai.voiceResolve(list, { tab: VTABS[S.tab] || S.tab, prev: S.lastVoice || '', hist: S.vhist || [], state: uiState(), places: x.places, streets: x.streets, questions: x.questions, ui: NX.agent ? NX.agent.compact(NX.agent.snapshot()) : '' })]);
-        if (res) { const r1 = await resToPlan(res, list); if (r1.plan) plan = r1.plan; if (r1.qText) qText = r1.qText; if (plan) used = list[0]; if (r1.plan || r1.qText) via = 'ai'; }
+        if (res) {
+          // Uygʻoq rejim: AI “buyruq” degan boʻlsa ham gapda birorta buyruq soʻzi boʻlmasa (suhbat parchasi) — bajarilmaydi; “chat” javoblari ham faqat salom/rahmatga
+          const drop = amb && ((/^(cmd|act|place|street|geo)$/.test(res.t) && !CMDEV.test(n0)) || (res.t === 'chat' && !/\b(salom|rahmat|sagol|qalay\w*|yaxshimi\w*|isming|kimsan)\b/.test(n0)));
+          if (!drop && !(amb && res.t === 'q' && !askOK && !CMDEV.test(n0))) { const r1 = await resToPlan(res, list, geoPre); if (r1.plan) plan = r1.plan; if (r1.qText) qText = r1.qText; if (plan) used = list[0]; if (r1.plan || r1.qText) via = 'ai'; }
+        } else if (geoPre) { const g = await Promise.race([geoPre.p, new Promise(r => setTimeout(() => r(null), 1500))]); if (g) { plan = { label: g.name + ' — xaritada', run: () => { placeShow(g); } }; via = 'geo'; } }
       } catch (e) { /* AI ishlamasa — mahalliy qoidalar */ }
     }
     if (!plan && localPlan) plan = localPlan;
     // AI yoʻq: “…koʻrsat/top” soʻrovi lugʻatda topilmasa — butun shahar qidiruvi
-    if (!plan && !qText && !NX.ai.available() && proxyBase() && /\b(korsat|top|toping|qayerda|olib bor|obor|och)\w*/.test(NX.translit(list[0].toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '')) && !QW.test(list[0]) && nw0 <= 6) {
-      const gq = NX.translit(list[0].toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').split(/\s+/).filter(w => w.length > 2 && !PSTOP.some(x => w === x || (w.length > x.length + 1 && w.startsWith(x) && x.length >= 3))).join(' ');
+    if (!plan && !qText && !NX.ai.available() && proxyBase() && PVERB.test(n0) && !QW.test(list[0]) && nw0 <= 6) {
+      const gq = geoQuery(n0);
       if (gq.length > 3) { plan = { label: '🔎 ' + gq + ' — xaritada qidirilmoqda', run: () => { geoShow(gq); } }; via = 'geo'; }
     }
-    if (!plan && !qText) { plan = await voiceAI(list); }
+    if (!plan && !qText && !amb) { plan = await voiceAI(list); }
     // Maʼnosiz (tanish xatosi) gap savol sifatida yuborilmaydi
-    if (!plan && !qText && amb && !(nw0 >= 3 && (QW.test(list[0]) || vscore(list[0]) >= 0.5))) return 'warn';
+    if (!plan && !qText && amb && !(nw0 >= 3 && askOK && vscore(list[0]) >= 0.34)) return 'warn';
     if (!plan && !qText && !(nw0 >= 3 && (vscore(list[0]) >= 0.34 || QW.test(list[0])))) plan = { warn: true, label: 'Aniq eshitilmadi — qayta ayting', run: () => { } };
-    const vrec = st => { S.vlast = { heard: list.slice(0, 3), via: via || '?', label: plan ? plan.label : (qText ? 'savol: ' + qText : ''), status: st, retried: !!(opts && opts.retried) }; };
+    const vrec = st => { S.vlast = { heard: list.slice(0, 3), via: via || '?', label: plan ? plan.label : (qText ? 'savol: ' + qText : ''), status: st, retried: !!(opts && opts.retried) }; if (opts && opts.rec) Object.assign(opts.rec, S.vlast); };
     if (plan && plan.warn && opts && opts.later && !opts.retried) { vrec('unclear'); return 'unclear'; }
     if (plan && plan.warn && amb) { vrec('ambient'); return 'warn'; }
     if (plan && plan.warn) { vrec('warn'); if (!quiet) { hud('warn', plan.label, '«' + used + '»'); } return; }
-    if (plan) { vrec('ok'); if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); plan.run(); return; }
+    if (plan) { vrec('ok'); if (!quiet) { hud('ok', '✓ ' + plan.label, '«' + used + '»'); } S.lastVoice = plan.label; (S.vhist = S.vhist || []).push(used + ' → ' + plan.label); if (S.vhist.length > 4) S.vhist.shift(); if (REPK().includes(plan)) S.lastRep = plan; plan.run(); return; }
     // Qolgani — savol: 3D boʻlimida 3D egizak chatiga, aks holda AI yordamchiga (natija xaritada)
     vrec('question');
     const t0 = qText || list[0], t = NX.translit(t0).replace(/[ʻ'‘’`ʼ]/g, '');
@@ -753,8 +877,8 @@
     const x = String(t || '').trim(); if (!x || x.split(/\s+/).length > 5) return;
     let pl = null; try { pl = voicePlan(x); } catch (e) { /* */ }
     if (!pl || pl.warn || pl.weak || pl.street) return;
-    const isTab = Object.keys(VTABS).some(k => VCMD[k] === pl), go = /\b(och|ochib|kir|kiring|ot|otish|bor|korsat|qayt|ochgin)\w*\b/.test(NX.translit(x.toLowerCase()));
-    if (isTab && !go) return;
+    const isTab = Object.keys(VTABS).some(k => VCMD[k] === pl);
+    if (isTab && !tabGo(x)) return;
     liveT = setTimeout(() => { if (NX.voice.active()) NX.voice.stop(); }, isTab ? 600 : 350);
   }
   // ---------- Ovoz jurnali: nima eshitildi / nima bajarildi / necha ms — sifatni haqiqiy maʼlumot bilan yaxshilash uchun ----------
@@ -826,38 +950,61 @@
   let awake = null;
   // Uygʻoq rejim (kompyuter): doimiy brauzer tinglovchisi → buyruqlar darrov. Boshlanmasa false (eski sikl ishlaydi).
   async function awakeSRMode() {
-    const done = new Set(); let liveTimer = 0, lastSeen = Date.now(), ctl = null, ended = false;
+    let timer = 0, ctl = null, ended = false, pend = null, last = { full: '', at: 0, key: '', label: '' };
     const isTab = pl => Object.keys(VTABS).some(k => VCMD[k] === pl);
+    const norm = x => NX.translit(String(x).toLowerCase()).replace(/[ʻʼ'‘’`ʹ]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const plan = x => { try { return voicePlan(x, { strict: true }); } catch (e) { return null; } };
     const end = (why) => {
-      if (ended) return; ended = true; clearInterval(tick); clearTimeout(liveTimer); try { ctl && ctl.stop(); } catch (e) { /* */ }
+      if (ended) return; ended = true; clearInterval(tick); clearTimeout(timer); try { ctl && ctl.stop(); } catch (e) { /* */ }
       const was = awake; awake = null; wakePill(null); NX.voice.wakeHold(false);
       if (was && why === 'timeout') toast('🎙 Uygʻoq rejim tugadi — qayta uygʻotish uchun “City Jam” deng.', 'ok');
     };
     const tick = setInterval(() => {
       if (!awake) return end('x');
-      const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true);
+      const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill(left, true);
       if (Date.now() >= awake.until) end(awake.until ? 'timeout' : 'stop');
     }, 700);
-    const exec = async (t, key, via) => {
-      if (done.has(key)) return; done.add(key); if (done.size > 300) done.clear();
+    const exec = async p => {
+      if (pend === p) pend = null;
+      const pl = plan(p.text);
+      last = { full: p.full, text: p.text, at: Date.now(), key: p.key, label: pl && !pl.warn ? pl.label : '' };
       awake && (awake.until = Date.now() + AWAKE_MS);
-      const t0 = Date.now(); S.vlast = null;
-      try { await voiceCommand(t, false, [], { ambient: true }); } catch (e) { /* */ }
-      if (S.vlast && S.vlast.status !== 'ambient') vlogAdd(Object.assign({}, S.vlast, { via: S.vlast.via + '/sr', ms: { speech: 0, think: Date.now() - t0, lag: Date.now() - t0, stt: 0, kb: 0 } }));
-      if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(NX.translit(String(t)).replace(/[ʻʼ'‘’`]/g, ''))) end('stop');
+      const t0 = Date.now(), rec = {};
+      try { await voiceCommand(p.text, false, [], { ambient: true, rec }); } catch (e) { /* */ }
+      if (rec.status && rec.status !== 'ambient') vlogAdd(Object.assign({}, rec, { via: rec.via + '/sr', ms: { speech: 0, think: Date.now() - t0, lag: Date.now() - t0, stt: 0, kb: 0 } }));
+      if (/\b(uxla|uhla|dam\s*ol|yetarli|rahmat|sagol)\b/i.test(norm(p.text))) end('stop');
     };
-    ctl = NX.voice.awakeSR((t, fin, key) => {
+    // Har bir natija (oraliq yoki yakuniy) shu yerga keladi. Qoidalar:
+    //  • bir xil gap ikki marta bajarilmaydi (Android Chrome bitta gapni 2–3 marta “yakuniy” qilib beradi; kompyuterda oraliq matn bajarilgach yakuniysi keladi);
+    //  • gap davom etsa (bajarilgan qism + yangi soʻzlar) — faqat yangi qismi bajariladi;
+    //  • faqat boʻlim nomi (“muammolar”, “xaritani”) — davomi kelishi mumkin: 0.9 s kutiladi, kelgan boʻlak bilan birlashtiriladi (“xaritani” + “yaqinlashtir”).
+    const onRes = (t, fin, key) => {
       if (key === 'denied') { end('x'); return; }
-      if (!t) return; lastSeen = Date.now();
-      clearTimeout(liveTimer);
-      if (fin) { exec(t, key, 'final'); return; }
-      // oraliq matn 0.35 s oʻzgarmasa va xavfsiz buyruqqa mos boʻlsa — gap tugashini kutmasdan bajariladi (boʻlim nomlari — 0.6 s va “och/kir” bilan)
-      let pl = null; try { pl = voicePlan(t); } catch (e) { /* */ }
-      if (!pl || pl.warn || pl.weak || pl.street || t.split(/\s+/).length > 5) return;
-      const go = /\b(och|ochib|kir|kiring|ot|otish|bor|korsat|qayt|ochgin)\w*\b/.test(NX.translit(t.toLowerCase()));
-      if (isTab(pl) && !go) return;
-      liveTimer = setTimeout(() => exec(t, key, 'live'), isTab(pl) ? 600 : 350);
-    });
+      const now = Date.now(), full = norm(t); if (!full) return;
+      let text = String(t).trim();
+      if (last.full) {
+        const same = key === last.key, dt = now - last.at;
+        if (full === last.full && (same || dt < 1300)) return;                                   // aynan oʻsha gap
+        if ((same || dt < 2500) && full.length > last.full.length && full.startsWith(last.full)) {
+          // bajarilgan gapning davomi: soʻz chegarasida uzilgan boʻlsa — faqat yangi qismi; soʻz ichida davom etsa (“boʻlimi” → “boʻlimiga kir”) — butun gap
+          const edge = full.charAt(last.full.length) === ' ', rem = full.slice(last.full.length).trim(), ws = text.split(/\s+/), k = last.full.split(' ').length;
+          const remText = edge ? (ws.length === full.split(' ').length ? ws.slice(k).join(' ') : rem) : rem;
+          const whole = plan(text), rp = plan(remText);
+          if (whole && !whole.warn && whole.label === last.label && !(edge && rp && !rp.warn)) return;   // oʻsha buyruqning davomi (“…kir”, “…iltimos”) — qayta bajarilmaydi
+          if (edge) { text = remText; if (!norm(text)) return; }
+        } else if (same && full.endsWith(' ' + last.full)) return;                               // yakuniy variant oldiga soʻz qoʻshilgan (“dim …”)
+        else if (same) { const pl = plan(text); if (pl && !pl.warn && pl.label === last.label) return; }
+        else if (dt < 1500 && last.label) { const jp = plan(last.text + ' ' + text), rp = plan(text); if (jp && !jp.warn && jp.label === last.label && !(rp && !rp.warn)) return; }   // bajarilgan buyruqning keyingi boʻlagi (“muammolar” … “boʻlimiga kir”)
+      }
+      // tugallanmagan oldingi boʻlak bilan birlashtirish
+      if (pend && pend.key !== key && now - pend.at < 1500 && !full.startsWith(pend.full)) text = pend.text + ' ' + text;
+      clearTimeout(timer);
+      const pl = plan(text), good = !!(pl && !pl.warn && !pl.weak && !pl.street), tabOnly = (good && isTab(pl) && !tabGo(text)) || (!!pl && pl.warn && norm(text).split(' ').length === 1);
+      const wait = fin ? (good && !tabOnly ? 0 : tabOnly ? 900 : 350) : (good && !tabOnly && norm(text).split(' ').length <= 5 ? (isTab(pl) ? 600 : 350) : 2200);
+      const p = pend = { text, full, key, at: now };
+      if (!wait) exec(p); else timer = setTimeout(() => exec(p), wait);
+    };
+    ctl = NX.voice.awakeSR(onRes);
     if (!ctl) { clearInterval(tick); return false; }
     return true;
   }
@@ -868,7 +1015,7 @@
     // Kompyuterda: bitta doimiy tinglovchi — gap tugashi bilan (yoki oraliq matn barqaror boʻlsa) darrov bajariladi, server tanishi kutilmaydi
     if (NX.voice.awakeSR && (!navigator.webdriver || window.__awakeSR) && await awakeSRMode()) return;
     try { await NX.voice.hold(true); } catch (e) { /* ruxsat boʻlmasa — har gapda alohida */ }
-    const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill('🟢 Uygʻoq — buyruq ayting (' + left + ' s)', true); }, 1000);
+    const tick = setInterval(() => { if (!awake) return; const left = Math.max(0, Math.ceil((awake.until - Date.now()) / 1000)); wakePill(left, true); }, 1000);
     try {
       while (awake && Date.now() < awake.until && wakeWanted()) {
         if (document.hidden) { await new Promise(r => setTimeout(r, 1500)); awake.until += 1500; continue; }   // yashirin tabda ishlamaydi
@@ -886,7 +1033,7 @@
   }
   const awakeStop = () => { if (awake) { awake.until = 0; } };
   NX.awakeLoop = awakeLoop; NX.awakeStop = awakeStop; NX.awakeOn = () => !!awake;
-  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.problemFind = problemFind; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
+  NX.voiceCommand = voiceCommand; NX.voicePlan = voicePlan; NX._live = liveWatch; NX.problemFind = problemFind; NX.canon = t => canon(NX.translit(t).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()); NX.placeByName = n => placeByName(n); NX.geoProbe = q => geoFind(q); NX.placeProbe2 = async (q, o) => { const p = await placeFind(q, o); return p ? p.name + ' (' + p.kind + ')' : null; }; NX.placeProbe = async q => { const p = voicePlan(q) ? 'cmd' : await placeFind(q); return p && p.name ? p.name + ' ' + p.c : p; };
   // Telefon/planshet: doim tinglash oʻchiq (Android Chrome har qayta ishga tushishda “dit-dit” tovush chiqaradi va fonda ishonchsiz) — qoʻlda 🎙 tugmasi
   const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
   const wakeWanted = () => NX.store.get('voice:wake', !IS_MOBILE);
@@ -910,17 +1057,19 @@
   function wakeBadge() {
     let el = $('#wakeBadge');
     const info = NX.voice.wakeInfo && NX.voice.wakeInfo(), want = wakeWanted();
-    if ((!want && !info) || (IS_MOBILE && !info)) { if (el) el.remove(); return; }
-    if (!el) { el = document.createElement('button'); el.id = 'wakeBadge'; el.type = 'button'; el.onclick = vlogShow; document.body.appendChild(el); }
-    let cls = 'off', txt = '🎙 chaqiruv oʻchiq';
-    if (info) {
-      if (awake) { cls = 'awake'; txt = '🟢 uygʻoq'; }
-      else if (info.hold || info.paused) { cls = 'pause'; txt = '⏸ buyruq tinglanmoqda'; }
-      else if (info.lastErr && !/^(no-speech|aborted)$/.test(info.lastErr) && info.fails > 2) { cls = 'err'; txt = '⚠ chaqiruv ishlamayapti: ' + info.lastErr; }
-      else if (info.listening) { cls = 'on'; txt = '● «City Jam» deng'; }
-      else { cls = 'pause'; txt = '… qayta ulanmoqda'; }
-    } else if (want) { cls = 'err'; txt = '⚠ chaqiruv yoqilmagan (sahifaga bir marta bosing)'; }
-    el.className = cls; el.textContent = txt; el.title = 'Bosing — batafsil';
+    if (!awake && ((!want && !info) || (IS_MOBILE && !info))) { if (el) el.remove(); return; }
+    // Sarlavhada, 🎙 tugmasi yonida (oldin xarita pastida turib, shartli belgilar va 3D koʻcha panelini toʻsardi)
+    if (!el) { el = document.createElement('button'); el.id = 'wakeBadge'; el.type = 'button'; el.innerHTML = '<i></i><span></span>'; el.onclick = vlogShow; const bv = $('#btnVoice'); if (bv && bv.parentNode) bv.parentNode.insertBefore(el, bv); else document.body.appendChild(el); }
+    let cls = 'off', ic = '🎙', txt = 'chaqiruv oʻchiq';
+    if (awake) { cls = 'awake'; ic = '🟢'; txt = 'uygʻoq' + (S.awakeLeft ? ' · ' + S.awakeLeft + ' s' : ''); }
+    else if (info) {
+      if (info.hold || info.paused) { cls = 'pause'; ic = '⏸'; txt = 'tinglanmoqda'; }
+      else if (info.lastErr && !/^(no-speech|aborted)$/.test(info.lastErr) && info.fails > 2) { cls = 'err'; ic = '⚠'; txt = 'chaqiruv ishlamayapti: ' + info.lastErr; }
+      else if (info.listening) { cls = 'on'; ic = '●'; txt = '«City Jam» deng'; }
+      else { cls = 'pause'; ic = '…'; txt = 'ulanmoqda'; }
+    } else if (want) { cls = 'err'; ic = '⚠'; txt = 'sahifaga bir marta bosing'; }
+    el.className = cls; el.firstChild.textContent = ic; el.lastChild.textContent = txt;
+    el.title = (cls === 'awake' ? 'Uygʻoq — chaqiruv soʻzisiz buyruq ayting' : cls === 'on' ? 'Doim tinglash yoqilgan — “City Jam” deng' : cls === 'err' && !info ? 'Doim tinglash brauzer ruxsati uchun sahifaga bir marta bosishni kutyapti' : txt) + (S.wakeHeard ? '. Oxirgi eshitilgani: «' + String(S.wakeHeard).slice(0, 60) + '»' : '') + ' (bosing — ovoz jurnali)';
   }
   setInterval(wakeBadge, 1500);
   // Doim tinglash (Sozlamalar → “City Jam” deb chaqirish): chaqiruv soʻzidan keyin buyruq yoziladi va bajariladi
@@ -931,14 +1080,8 @@
     let m = null; try { m = NX.voice.wakeTest && NX.voice.wakeTest(String(t)); } catch (e) { /* */ }
     vlogAdd({ heard: [String(t).slice(0, 120)], via: 'wake', label: m ? 'CHAQIRUV TANILDI' : '', status: m ? 'match' : 'heard' });
   }
-  let wpT = 0;
-  function wakePill(t, awakeMode) {
-    let e = $('#wakePill'); if (!e) { e = document.createElement('div'); e.id = 'wakePill'; document.body.appendChild(e); }
-    if (t == null) { e.classList.remove('show', 'awake'); return; }
-    if (awake && !awakeMode) return;   // uygʻoq paytida taymer koʻrinadi
-    e.classList.toggle('awake', !!awakeMode);
-    e.textContent = awakeMode ? t : '🎙 «' + String(t).trim().slice(0, 60) + '»'; e.classList.add('show'); clearTimeout(wpT); if (!awakeMode) wpT = setTimeout(() => e.classList.remove('show'), 2500);
-  }
+  // Uygʻoq rejim taymeri — sarlavhadagi belgida (oldin ekran pastida alohida yozuv chiqardi: xarita mualliflik yozuvini toʻsar, har eshitilgan gapda miltillardi)
+  function wakePill(t, awakeMode) { S.awakeLeft = awakeMode ? t : 0; wakeBadge(); }
   function wakeSet(on) {
     const b = $('#btnVoice');
     NX.store.set('voice:wake', !!on);
@@ -951,7 +1094,7 @@
       }, function (st) {
         if (st === 'on') { b && b.classList.add('wake'); if (!wakeSet.told) { wakeSet.told = true; toast('🎙 Doim tinglash yoqildi — “City Jam” deng (signaldan keyin buyruq).', 'ok'); } }
         if (st === 'heard' && arguments[2] && String(arguments[1]).trim()) wakeLog(arguments[1]);
-        if (st === 'heard') { S.wakeHeard = arguments[1]; wakePill(arguments[1]); if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
+        if (st === 'heard') { S.wakeHeard = arguments[1]; if (b) b.title = 'Doim tinglash. Oxirgi eshitilgani: «' + arguments[1] + '»'; const h = $('#wakeHeard'); if (h) h.textContent = 'Eshitilgan: «' + arguments[1] + '»'; }
         if (st === 'error') toast('Doim tinglash xatosi: ' + arguments[1] + ' (internet yoki mikrofon)', 'warn');
         if (st === 'denied') { b && b.classList.remove('wake'); NX.store.set('voice:wake', false); toast('Mikrofonga ruxsat berilmagan — doim tinglash oʻchirildi.', 'warn'); }
       });

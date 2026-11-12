@@ -840,7 +840,7 @@ Qoidalar:
   }
   async function voiceResolve(list, extra) {
     const msg = voiceMsg(list, extra);
-    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VRES_SYS }, { role: 'user', content: msg }], NX.config.openaiLight, 'router');
+    const r = await callOpenAI(userKey(), null, null, null, [{ role: 'system', content: VRES_SYS }, { role: 'user', content: msg }], NX.config.openaiVoice || NX.config.openaiLight, 'router');
     const m = String(r.text || '').match(/\{[\s\S]*\}/); if (!m) return null;
     try { const j = JSON.parse(m[0]); if (j.t === 'cmd' && !VRES_CMDS[j.k]) return null; if (j.t === 'act' && !Array.isArray(j.steps)) return null; return j; } catch (e) { return null; }
   }
